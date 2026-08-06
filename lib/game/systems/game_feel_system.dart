@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flame/components.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/constants/game_config.dart';
@@ -160,8 +162,8 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
 
     // Smoothly glide volume & pitch toward their targets.
     _windVol = MathUtils.lerp(_windVol, _windTarget, (4.0 * dt).clamp(0.0, 1.0));
-    _ = wind.setVolume(_windVol);
-    _ = wind.setPlaybackRate(_windRate);
+    unawaited(wind.setVolume(_windVol));
+    unawaited(wind.setPlaybackRate(_windRate));
   }
 
   void _disposeWind() {
@@ -363,7 +365,7 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
       player.onPlayerComplete.listen((_) async {
         await player.dispose();
       });
-      _ = player.play(BytesSource(bytes), volume: volume);
+      unawaited(player.play(BytesSource(bytes), volume: volume));
     } catch (_) {
       // Audio safely ignored if unsupported (tests / headless).
     }
