@@ -1,9 +1,9 @@
 import 'dart:math' as math;
 import 'dart:ui';
-
+import 'package:flutter/painting.dart';
 import 'package:flame/components.dart';
 
-import '../paper_flight_game.dart';
+import '../../paper_flight_game.dart';
 
 /// Spawns a satisfying coin-pickup feedback at [position] on the [game]: a gold
 /// sparkle burst plus a floating "+points" text that drifts up and fades out.
@@ -57,7 +57,7 @@ class CoinSparkleBurst extends PositionComponent {
       return;
     }
     for (final p in _particles) {
-      p.pos += p.dir * dt;
+      p.pos.add(p.dir * dt);
       p.dir *= (1 - 2.0 * dt); // decelerate outward
       p.size *= (1 - 2.5 * dt); // shrink
     }
