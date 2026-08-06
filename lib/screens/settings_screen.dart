@@ -33,20 +33,53 @@ class SettingsScreen extends ConsumerWidget {
 
           _SegmentedRow<ControlScheme>(
             label: 'Steering',
-            options: const [ControlScheme.tilt, ControlScheme.touchZones],
-            labels: const ['Tilt', 'Touch Zones'],
+            options: const [
+              ControlScheme.tilt,
+              ControlScheme.drag,
+              ControlScheme.touchZones
+            ],
+            labels: const ['Tilt', 'Drag', 'Zones'],
             selected: settings.controlScheme,
             onChanged: (v) => notifier.setControlScheme(v),
           ),
-          const SizedBox(height: 20),
-
+          const SizedBox(height: 16),
+          // Explain drag mode.
+          if (settings.controlScheme == ControlScheme.drag)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceAlt,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.divider),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.touch_app, color: AppColors.accent, size: 18),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Drag: slide finger left/right to steer. Hold anywhere to climb. Flick up or tap BOOST for emergency snap.',
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (settings.controlScheme == ControlScheme.drag) const SizedBox(height: 16),
           _SliderRow(
-            label: 'Tilt Sensitivity',
+            label: settings.controlScheme == ControlScheme.drag
+                ? 'Drag / Steering Sensitivity'
+                : 'Tilt Sensitivity',
             value: settings.tiltSensitivity,
             min: 0.3,
             max: 2.0,
             divisions: 17,
-            enabled: settings.controlScheme == ControlScheme.tilt,
+            enabled: settings.controlScheme == ControlScheme.tilt ||
+                settings.controlScheme == ControlScheme.drag,
             onChanged: (v) => notifier.setTiltSensitivity(v),
             valueLabel: settings.tiltSensitivity.toStringAsFixed(1),
           ),
@@ -102,7 +135,7 @@ class SettingsScreen extends ConsumerWidget {
 
           const SizedBox(height: 40),
 
-          // ── Tilt calibration tip ──────────────────────────────────────────
+          // ── Calibration tip ───────────────────────────────────────────────
           if (settings.controlScheme == ControlScheme.tilt)
             Container(
               padding: const EdgeInsets.all(16),
@@ -118,6 +151,56 @@ class SettingsScreen extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       'Hold your phone in your normal playing position, then start a run — tilt auto-calibrates to your posture each run.',
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (settings.controlScheme == ControlScheme.drag)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.divider),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: AppColors.textMuted, size: 18),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Drag uses one finger only — no tilt needed. Great for tablets and one-handed play. Your BOOST charges recharge over distance.',
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (settings.controlScheme == ControlScheme.touchZones)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.divider),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: AppColors.textMuted, size: 18),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Zones: tap left or right half of screen to steer. Hold anywhere to climb. Use flick-up or BOOST for emergency snap.',
                       style: TextStyle(
                         color: AppColors.textMuted,
                         fontSize: 12,

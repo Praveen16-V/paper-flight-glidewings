@@ -12,6 +12,7 @@ import '../core/enums/game_enums.dart';
 import '../models/run_result.dart';
 import '../providers/game_session_provider.dart';
 import '../providers/save_data_provider.dart';
+import '../providers/settings_provider.dart';
 import 'components/background/parallax_background.dart';
 import 'components/effects/coin_feedback.dart';
 import 'components/plane_component.dart';
@@ -122,6 +123,13 @@ class PaperFlightGame extends FlameGame
     );
     world.add(plane);
 
+    // Sync initial control scheme + sensitivity from persisted settings.
+    try {
+      final settings = ref.read(settingsProvider);
+      inputManager.updateControlScheme(settings.controlScheme);
+      inputManager.updateSensitivity(settings.tiltSensitivity);
+    } catch (_) {}
+
     await super.onLoad();
   }
 
@@ -129,6 +137,18 @@ class PaperFlightGame extends FlameGame
 
   @override
   void update(double dt) {
+    // Keep input manager in sync with live settings (allows mid-run
+    // sensitivity change if settings are altered via debug overlay).
+    try {
+      final settings = ref.read(settingsProvider);
+      if (settings.controlScheme != inputManager.currentScheme) {
+        inputManager.updateControlScheme(settings.controlScheme);
+      }
+      if ((settings.tiltSensitivity - inputManager.currentSensitivity).abs() > 0.001) {
+        inputManager.updateSensitivity(settings.tiltSensitivity);
+      }
+    } catch (_) {}
+
     if (_phase != GamePhase.playing) {
       super.update(dt);
       return;
@@ -189,6 +209,15 @@ class PaperFlightGame extends FlameGame
     _coinRushShowerTimer = 0;
     _phase = GamePhase.playing;
     _isReviving = false;
+
+    // Resync control scheme at run start (ensures calibration is fresh).
+    try {
+      final settings = ref.read(settingsProvider);
+      inputManager.updateControlScheme(settings.controlScheme);
+      inputManager.updateSensitivity(settings.tiltSensitivity);
+      inputManager.calibrateTilt();
+    } catch (_) {}
+    inputManager.reset();
 
     plane.reset();
     obstacleSpawner.reset();
@@ -300,17 +329,22 @@ class PaperFlightGame extends FlameGame
 
   @override
   void onTapDown(TapDownEvent event) {
-    inputManager.onTapDown(event.devicePosition);
+    inputManager.onTapDown(event.canvasPosition);
   }
 
   @override
   void onTapUp(TapUpEvent event) {
-    inputManager.onTapUp(event.devicePosition);
+    inputManager.onTapUp(event.canvasPosition);
   }
 
   @override
   void onDragStart(DragStartEvent event) {
-    inputManager.onDragStart(event.devicePosition);
+    inputManager.onDragStart(event.canvasPosition);
+  }
+
+  @override
+  void onDragUpdate(DragUpdateEvent event) {
+    inputManager.onDragUpdate(event.canvasPosition);
   }
 
   @override
@@ -320,6 +354,9 @@ class PaperFlightGame extends FlameGame
 
   @override
   void onDragCancel(DragCancelEvent event) {
-    inputManager.onDragEnd();
+    inputManager.onDragCancel();
   }
+
+  /// Called by HUD BOOST button.
+  bool triggerSnapBoost() => inputManager.requestSnapFromButton();
 }
