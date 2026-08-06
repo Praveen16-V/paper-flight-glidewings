@@ -179,6 +179,8 @@ class _PlaneCard extends StatelessWidget {
                     label: 'Fall',
                     value: plane.fallSpeedMultiplier,
                   ),
+                  const SizedBox(height: 3),
+                  _PowerUpBadge(plane: plane),
                 ],
               ),
             ),
@@ -287,6 +289,39 @@ class _StatBadge extends StatelessWidget {
             color: delta == 0
                 ? AppColors.textMuted
                 : (positive ? AppColors.success : AppColors.warning),
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PowerUpBadge extends StatelessWidget {
+  const _PowerUpBadge({required this.plane});
+  final PlaneType plane;
+
+  @override
+  Widget build(BuildContext context) {
+    // The dart's signature action is the charge-based BOOST burst rather than
+    // a timed power-up.
+    final text = plane.usesBoostAsSignatureAction
+        ? 'BOOST burst'
+        : plane.signaturePowerUp.displayName;
+
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 3,
+      children: [
+        const Text(
+          'Power-up:',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 11),
+        ),
+        Text(
+          text,
+          style: const TextStyle(
+            color: AppColors.accent,
             fontSize: 11,
             fontWeight: FontWeight.w700,
           ),

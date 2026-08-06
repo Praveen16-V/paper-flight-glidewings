@@ -212,6 +212,33 @@ extension PlaneLabel on PlaneType {
   }
 }
 
+/// Signature power-up each plane carries, fired by the flick-up / double-tap
+/// gesture when the "flick to use power-up" setting is enabled.
+///
+/// The trigger is generic — the gesture no longer hard-wires to the paper-snap
+/// BOOST burst; each plane activates its own action instead.
+extension PlanePowerUp on PlaneType {
+  /// True when this plane's signature action is the paper-snap BOOST burst
+  /// (charge-based, no timer) rather than a timed power-up.
+  bool get usesBoostAsSignatureAction => this == PlaneType.dart;
+
+  /// The timed power-up this plane carries. Only meaningful when
+  /// [usesBoostAsSignatureAction] is false (the dart falls back to BOOST).
+  PowerUpType get signaturePowerUp {
+    switch (this) {
+      case PlaneType.dart:
+        // Unused (dart fires the BOOST burst) — kept for exhaustiveness.
+        return PowerUpType.magnet;
+      case PlaneType.glider:
+        // Coin-earner: pull nearby coins toward the plane.
+        return PowerUpType.magnet;
+      case PlaneType.stuntFold:
+        // Skill plane: phase through obstacles.
+        return PowerUpType.ghost;
+    }
+  }
+}
+
 // ── Wind ─────────────────────────────────────────────────────────────────────
 
 enum WindType {

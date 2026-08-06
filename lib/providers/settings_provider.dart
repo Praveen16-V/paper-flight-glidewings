@@ -51,6 +51,18 @@ class SettingsNotifier extends Notifier<SettingsModel> {
     state = SettingsModel.fromMap(state.toMap());
     await PersistenceService.instance.writeSettings(state);
   }
+
+  Future<void> setShowOnScreenControls(bool enabled) async {
+    state.showOnScreenControls = enabled;
+    state = SettingsModel.fromMap(state.toMap());
+    await PersistenceService.instance.writeSettings(state);
+  }
+
+  Future<void> setFlickToUsePowerUp(bool enabled) async {
+    state.flickToUsePowerUp = enabled;
+    state = SettingsModel.fromMap(state.toMap());
+    await PersistenceService.instance.writeSettings(state);
+  }
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, SettingsModel>(
