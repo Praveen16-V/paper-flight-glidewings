@@ -1,4 +1,4 @@
-﻿import 'dart:math';
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flame/collisions.dart';
@@ -202,14 +202,15 @@ class PlaneComponent extends PositionComponent
     // ── Vertical Physics ─────────────────────────────────────────────────────
 
     if (pressEdge) {
-      // Snap kick: set velocity directly for an instant snappy feel.
-      _velocityY = GameConfig.liftSnapKick;
+      // Do not assign an upward velocity here. The hold target below is eased
+      // toward from the current velocity, so touching down never jolts the plane.
       _glideArcActive = false;
-      _oscillationStrength = 0.0; // damp oscillation while holding
+      _oscillationStrength = 0.0;
       _playHoldKickEffect();
-    } else if (isHolding) {
-      // Exponential decay from kick toward cruise speed.
-      // lerp t = liftKickDecayRate × dt gives ~63% convergence per 1/rate seconds.
+    }
+
+    if (isHolding) {
+      // Ease into a calm climb rather than applying a one-frame lift kick.
       _velocityY = MathUtils.lerp(
         _velocityY,
         GameConfig.liftCruiseSpeed,
@@ -222,8 +223,8 @@ class PlaneComponent extends PositionComponent
       // Release path.
       if (releaseEdge) {
         if (_velocityY < 0) {
-          // Preserve upward momentum for the glide arc.
-          _velocityY *= GameConfig.glideArcPreservation;
+          // Keep the exact current momentum. Gravity takes over gradually,
+          // which makes finger-up continuous instead of a velocity jump.
           _glideArcActive = true;
         } else {
           // Released while already falling — skip arc, go straight to fall.
@@ -302,7 +303,10 @@ class PlaneComponent extends PositionComponent
         sensitivity;
 
     _velocityX = MathUtils.lerp(
-        _velocityX, targetVX + laneWind.lateralForce, 0.18);
+      _velocityX,
+      targetVX + laneWind.lateralForce,
+      GameConfig.tiltVelocityResponse,
+    );
 
     // ── Integrate Position ────────────────────────────────────────────────────
 
@@ -327,8 +331,8 @@ class PlaneComponent extends PositionComponent
 
     // ── Wing Fold ─────────────────────────────────────────────────────────────
 
-    // Snappier lerp (0.20) vs original 0.14.
-    _wingFold = MathUtils.lerp(_wingFold, isHolding ? 1.0 : 0.0, 0.20);
+    // Ease the wing response as well, matching the softer hold/release motion.
+    _wingFold = MathUtils.lerp(_wingFold, isHolding ? 1.0 : 0.0, 0.10);
 
     // ── Edge Tracking ─────────────────────────────────────────────────────────
 

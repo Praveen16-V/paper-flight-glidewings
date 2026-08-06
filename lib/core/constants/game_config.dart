@@ -26,17 +26,24 @@ abstract class GameConfig {
   /// Upward screen velocity (px/s) while holding.
   static const double liftForce = 310.0;
 
-  /// Downward gravity force (px/s²).
-  static const double gravity = 420.0;
+  /// Downward gravity force (px/s²). Kept gentle so releasing a hold curves
+  /// into a glide instead of dropping the plane abruptly.
+  static const double gravity = 320.0;
 
   /// Maximum downward fall speed.
   static const double maxFallSpeed = 500.0;
 
-  /// Horizontal tilt max speed (px/s at full tilt).
-  static const double maxTiltSpeed = 280.0;
+  /// Horizontal tilt max speed (px/s at full tilt). A modest cap makes a
+  /// full phone tilt feel like a controlled bank rather than a sideways jump.
+  static const double maxTiltSpeed = 175.0;
 
   /// Low-pass filter coefficient for tilt smoothing (0 = no smoothing, 1 = frozen).
-  static const double tiltLowPassAlpha = 0.25;
+  /// This is deliberately small: sensor samples ease into the steering target.
+  static const double tiltLowPassAlpha = 0.10;
+
+  /// Per-frame blend used when the plane follows its filtered tilt target.
+  /// Keeping this below the input filter removes sudden lateral direction changes.
+  static const double tiltVelocityResponse = 0.07;
 
   /// Default tilt sensitivity (1.0 = neutral, range 0.3–2.0 via settings).
   static const double defaultTiltSensitivity = 1.0;
@@ -54,29 +61,27 @@ abstract class GameConfig {
   static const double planeHitboxScale = 0.55;
 
   // ── Enhanced Flight Physics ───────────────────────────────────────────────
-  // Feel target: hold = snappy upward kick that settles into a steady climb;
-  // release = ~0.4–0.6 s of upward coast before the plane curves naturally
-  // downward, like a real paper plane thrown and let go.
+  // Feel target: hold eases into a gentle climb; release keeps that momentum
+  // and curves naturally into a glide. Neither transition changes velocity on
+  // a single frame.
 
-  /// Instant upward velocity set (px/s, negative = up) applied on the very
-  /// first frame of a hold press. Creates the "snappy kick" feel.
+  /// Maximum upward velocity (px/s, negative = up) allowed for a snap burst.
+  /// Normal holds do not set this directly.
   static const double liftSnapKick = -185.0;
 
-  /// Terminal climb speed (px/s, negative = up) that the velocity
-  /// exponentially decays toward while holding after the snap kick.
-  static const double liftCruiseSpeed = -265.0;
+  /// Gentle terminal climb speed (px/s, negative = up) while holding.
+  static const double liftCruiseSpeed = -135.0;
 
-  /// Exponential decay rate for blending snap kick → cruise speed.
-  /// Used as lerp t = liftKickDecayRate × dt each frame.
-  static const double liftKickDecayRate = 7.0;
+  /// Rate for easing the current vertical velocity toward the hold target.
+  static const double liftKickDecayRate = 2.4;
 
-  /// Fraction of upward velocity preserved at the moment of release.
-  /// 1.0 = full momentum kept; 0.0 = immediate transition to gravity.
-  static const double glideArcPreservation = 0.72;
+  /// Retained for tuning compatibility. Release now preserves velocity fully,
+  /// avoiding the visible speed change that occurred at finger-up.
+  static const double glideArcPreservation = 1.0;
 
   /// Gravity multiplier during the glide arc phase (lighter than full gravity).
   /// Gives the "coast" feel before the natural dive takes over.
-  static const double glideGravityScale = 0.50;
+  static const double glideGravityScale = 0.62;
 
   /// Gravity multiplier once the glide arc is exhausted (normal fall).
   static const double fullGravityScale = 1.0;
