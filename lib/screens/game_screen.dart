@@ -86,10 +86,29 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           Positioned.fill(
             child: GameWidget(
               game: _game,
-              backgroundBuilder: (_) =>
-                  Container(color: AppColors.background),
+              // Keep a real sky behind the renderer while Android creates the
+              // SurfaceView. This prevents a blank/black flash on slow devices.
+              backgroundBuilder: (_) => const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [AppColors.accentAlt, AppColors.skyDay],
+                  ),
+                ),
+              ),
               loadingBuilder: (_) => const Center(
-                child: CircularProgressIndicator(color: AppColors.accent),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: AppColors.accent),
+                    SizedBox(height: 12),
+                    Text(
+                      'Preparing your flight…',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

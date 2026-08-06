@@ -44,12 +44,19 @@ Future<void> main() async {
         // Firebase — stub options until flutterfire configure is run.
         // Fail soft so local/dev builds still launch.
         try {
-          await Firebase.initializeApp(
-            options: DefaultFirebaseOptions.currentPlatform,
-          );
-          _firebaseReady = true;
-          FlutterError.onError =
-              FirebaseCrashlytics.instance.recordFlutterFatalError;
+          // Hot restart can preserve the native default Firebase app.  Do not
+          // initialise it a second time: that emits a duplicate-app exception
+          // and obscures actual game-start failures in logcat.
+          if (Firebase.apps.isEmpty) {
+            await Firebase.initializeApp(
+              options: DefaultFirebaseOptions.currentPlatform,
+            );
+          }
+          _firebaseReady = Firebase.apps.isNotEmpty;
+          if (_firebaseReady) {
+            FlutterError.onError =
+                FirebaseCrashlytics.instance.recordFlutterFatalError;
+          }
         } catch (e, st) {
           debugPrint('Firebase init skipped: $e');
           debugPrintStack(stackTrace: st);
