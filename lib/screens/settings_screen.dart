@@ -83,6 +83,47 @@ class SettingsScreen extends ConsumerWidget {
             onChanged: (v) => notifier.setTiltSensitivity(v),
             valueLabel: settings.tiltSensitivity.toStringAsFixed(1),
           ),
+          // Show/hide the on-screen control visuals (joystick stick or
+          // touch-zone guides) — only relevant for those two schemes.
+          if (settings.controlScheme == ControlScheme.joystick ||
+              settings.controlScheme == ControlScheme.touchZones) ...[
+            const SizedBox(height: 20),
+            _SwitchRow(
+              label: settings.controlScheme == ControlScheme.joystick
+                  ? 'Show joystick on screen'
+                  : 'Show control zones on screen',
+              value: settings.showOnScreenControls,
+              onChanged: (v) => notifier.setShowOnScreenControls(v),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              settings.controlScheme == ControlScheme.joystick
+                  ? 'Hide the floating stick for a cleaner view — touching anywhere still steers.'
+                  : 'Hide the zone guides for a cleaner view — tapping left or right half still steers.',
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ],
+          const SizedBox(height: 20),
+          // Flick/double-tap gesture → the plane's own power-up. Generic
+          // trigger, not hard-wired to the snap burst.
+          _SwitchRow(
+            label: 'Flick to use power-up',
+            value: settings.flickToUsePowerUp,
+            onChanged: (v) => notifier.setFlickToUsePowerUp(v),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Flick up or double-tap fires your plane\'s power-up — Dart: BOOST · Glider: Magnet · Stunt Fold: Ghost. The BOOST button always works.',
+            style: TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
           const SizedBox(height: 32),
 
           // ── Audio ────────────────────────────────────────────────────────

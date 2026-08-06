@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
 import '../models/run_result.dart';
+import '../models/settings_model.dart';
 import '../providers/game_session_provider.dart';
 import '../providers/save_data_provider.dart';
 import '../providers/settings_provider.dart';
@@ -17,6 +18,7 @@ import 'components/background/parallax_background.dart';
 import 'components/effects/coin_feedback.dart';
 import 'components/joystick_component.dart';
 import 'components/plane_component.dart';
+import 'components/touch_zones_overlay.dart';
 import 'systems/input_manager.dart';
 import 'systems/obstacle_spawner.dart';
 import 'systems/collectible_spawner.dart';
@@ -72,6 +74,11 @@ class PaperFlightGame extends FlameGame
   late final PlaneComponent plane;
   late final ParallaxBackground background;
 
+  // ── On-screen control visuals (joystick / touch-zone guides) ─────────────
+
+  late final JoystickComponent joystickComponent;
+  late final TouchZonesOverlay touchZonesOverlay;
+
   // ── State ─────────────────────────────────────────────────────────────────
 
   GamePhase _phase = GamePhase.idle;
@@ -124,14 +131,19 @@ class PaperFlightGame extends FlameGame
     );
     world.add(plane);
 
-    // Floating virtual joystick visual — on top of everything (z-order by add).
-    world.add(JoystickComponent(inputManager: inputManager));
+    // On-screen control visuals — on top of everything (z-order by add).
+    joystickComponent = JoystickComponent(inputManager: inputManager);
+    touchZonesOverlay = TouchZonesOverlay(inputManager: inputManager);
+    world.add(joystickComponent);
+    world.add(touchZonesOverlay);
 
     // Sync initial control scheme + sensitivity from persisted settings.
     try {
       final settings = ref.read(settingsProvider);
       inputManager.updateControlScheme(settings.controlScheme);
       inputManager.updateSensitivity(settings.tiltSensitivity);
+      inputManager.updateGesturePowerUp(settings.flickToUsePowerUp);
+      _syncOnScreenControlsVisibility(settings);
     } catch (_) {}
 
     await super.onLoad();
@@ -151,11 +163,20 @@ class PaperFlightGame extends FlameGame
       if ((settings.tiltSensitivity - inputManager.currentSensitivity).abs() > 0.001) {
         inputManager.updateSensitivity(settings.tiltSensitivity);
       }
+      inputManager.updateGesturePowerUp(settings.flickToUsePowerUp);
+      _syncOnScreenControlsVisibility(settings);
     } catch (_) {}
 
     if (_phase != GamePhase.playing) {
       super.update(dt);
       return;
+    }
+
+    // Generic gesture trigger: flick-up / double-tap fires the equipped
+    // plane's signature power-up (Dart: BOOST, Glider: Magnet, Stunt Fold:
+    // Ghost) instead of always hard-wiring to the snap burst.
+    if (inputManager.consumeGestureAction()) {
+      _handleGesturePowerUp();
     }
 
     final scaledDt = dt * _timeScale;
@@ -198,6 +219,14 @@ class PaperFlightGame extends FlameGame
 
   // ── Public API ────────────────────────────────────────────────────────────
 
+  /// Mirrors the "show on-screen controls" setting onto the joystick and
+  /// touch-zone visuals. Hiding them never disables input — it only stops the
+  /// cosmetic overlays from being drawn.
+  void _syncOnScreenControlsVisibility(SettingsModel settings) {
+    joystickComponent.visible = settings.showOnScreenControls;
+    touchZonesOverlay.visible = settings.showOnScreenControls;
+  }
+
   /// Scroll speed for a given distance reached, clamped to [min, max].
   ///
   /// Because it is a pure function of meters traveled, the ramp-up is identical
@@ -219,6 +248,7 @@ class PaperFlightGame extends FlameGame
       final settings = ref.read(settingsProvider);
       inputManager.updateControlScheme(settings.controlScheme);
       inputManager.updateSensitivity(settings.tiltSensitivity);
+      inputManager.updateGesturePowerUp(settings.flickToUsePowerUp);
       inputManager.calibrateTilt();
     } catch (_) {}
     inputManager.reset();
@@ -301,6 +331,75 @@ class PaperFlightGame extends FlameGame
   void beginCoinRush() {
     _coinRushShowerTimer = 0;
     collectibleSpawner.spawnCoinShower();
+  }
+
+  /// Applies a timed/charge power-up effect. Shared by on-world pickups
+  /// ([PowerUpComponent]) and gesture-triggered plane power-ups so both paths
+  /// behave identically.
+  void applyPowerUp(PowerUpType type) {
+    final notifier = ref.read(gameSessionProvider.notifier);
+    switch (type) {
+      case PowerUpType.shield:
+        // Absorbs exactly one hit — no timer; consumed on impact.
+        notifier.activatePowerUp(PowerUpType.shield);
+      case PowerUpType.magnet:
+        notifier.activatePowerUp(PowerUpType.magnet);
+        Future.delayed(
+          Duration(milliseconds: (GameConfig.magnetDuration * 1000).toInt()),
+          () => notifier.deactivatePowerUp(PowerUpType.magnet),
+        );
+      case PowerUpType.ghost:
+        // Phase through every obstacle — the big "fly through the wall" moment.
+        notifier.activatePowerUp(PowerUpType.ghost);
+        Future.delayed(
+          Duration(milliseconds: (GameConfig.ghostDuration * 1000).toInt()),
+          () => notifier.deactivatePowerUp(PowerUpType.ghost),
+        );
+      case PowerUpType.slowMo:
+        notifier.activatePowerUp(PowerUpType.slowMo);
+        applySlowMo(GameConfig.slowMoDuration);
+      case PowerUpType.coinRush:
+        // 2× coin value for the duration, plus an immediate coin shower.
+        notifier.activatePowerUp(PowerUpType.coinRush);
+        beginCoinRush();
+        Future.delayed(
+          Duration(milliseconds: (GameConfig.coinRushDuration * 1000).toInt()),
+          () => notifier.deactivatePowerUp(PowerUpType.coinRush),
+        );
+    }
+  }
+
+  /// Fires the equipped plane's signature power-up from the flick-up /
+  /// double-tap gesture.
+  ///
+  /// The gesture is generic — each plane activates its own action:
+  ///   • Paper Dart    → BOOST paper-snap burst (charge-based)
+  ///   • Glider Fold   → Magnet (coin pull)
+  ///   • Stunt Fold    → Ghost (phase through obstacles)
+  /// Respects the "flick to use power-up" setting.
+  void _handleGesturePowerUp() {
+    final settings = ref.read(settingsProvider);
+    if (!settings.flickToUsePowerUp) return;
+
+    final save = ref.read(saveDataProvider);
+    final planeType = PlaneType.values[save.equippedPlaneIndex];
+
+    // Dart's signature action is the charge-based paper-snap burst — route
+    // through the same path as the BOOST button.
+    if (planeType.usesBoostAsSignatureAction) {
+      inputManager.requestSnapFromButton();
+      return;
+    }
+
+    final type = planeType.signaturePowerUp;
+    final session = ref.read(gameSessionProvider);
+    if (session.activePowerUps.contains(type)) {
+      // Already running — no-op so repeated flicks can't stack timers.
+      return;
+    }
+
+    spawnPowerUpFeedback(this, plane.position, type);
+    applyPowerUp(type);
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────

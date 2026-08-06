@@ -7,7 +7,6 @@ import 'package:flame/components.dart';
 import '../../../core/constants/game_config.dart';
 import '../../../core/enums/game_enums.dart';
 import '../../../core/utils/math_utils.dart';
-import '../../../providers/game_session_provider.dart';
 import '../../paper_flight_game.dart';
 import '../effects/coin_feedback.dart';
 import '../plane_component.dart';
@@ -120,40 +119,12 @@ class PowerUpComponent extends PositionComponent
   }
 
   void _applyEffect() {
-    final notifier = gameRef.ref.read(gameSessionProvider.notifier);
-
     // Announce the pickup with a colored burst + banner before applying it.
     spawnPowerUpFeedback(gameRef, position, type);
 
-    switch (type) {
-      case PowerUpType.shield:
-        // Absorbs exactly one hit — no timer; consumed on impact.
-        notifier.activatePowerUp(PowerUpType.shield);
-      case PowerUpType.magnet:
-        notifier.activatePowerUp(PowerUpType.magnet);
-        Future.delayed(
-          Duration(milliseconds: (GameConfig.magnetDuration * 1000).toInt()),
-          () => notifier.deactivatePowerUp(PowerUpType.magnet),
-        );
-      case PowerUpType.ghost:
-        // Phase through every obstacle — the big "fly through the wall" moment.
-        notifier.activatePowerUp(PowerUpType.ghost);
-        Future.delayed(
-          Duration(milliseconds: (GameConfig.ghostDuration * 1000).toInt()),
-          () => notifier.deactivatePowerUp(PowerUpType.ghost),
-        );
-      case PowerUpType.slowMo:
-        notifier.activatePowerUp(PowerUpType.slowMo);
-        gameRef.applySlowMo(GameConfig.slowMoDuration);
-      case PowerUpType.coinRush:
-        // 2× coin value for the duration, plus an immediate coin shower.
-        notifier.activatePowerUp(PowerUpType.coinRush);
-        gameRef.beginCoinRush();
-        Future.delayed(
-          Duration(milliseconds: (GameConfig.coinRushDuration * 1000).toInt()),
-          () => notifier.deactivatePowerUp(PowerUpType.coinRush),
-        );
-    }
+    // Shared activation logic — also used by gesture-triggered plane
+    // power-ups (flick-up / double-tap), so both paths behave identically.
+    gameRef.applyPowerUp(type);
   }
 
   // ── Render ────────────────────────────────────────────────────────────────

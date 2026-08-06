@@ -21,11 +21,10 @@ import '../paper_flight_game.dart';
 /// vertical axis is still hold-based so one thumb can both steer (X) and climb
 /// (press) without a second gesture.
 ///
-/// Paper-snap burst: triggered by any of
-///   • double-tap (legacy, kept for compat)
-///   • quick flick-up gesture (pointer Y moves up quickly)
-///   • dedicated BOOST button (HUD calls [requestSnapFromButton])
-/// Each consumes one of [snapMaxCharges] charges that recharge over distance.
+/// Gesture power-up action: the double-tap and flick-up gestures are generic
+/// triggers — the game decides what they fire (the equipped plane's signature
+/// power-up). The dedicated BOOST button ([requestSnapFromButton]) always
+/// fires the charge-based paper-snap burst.
 class InputManager extends Component {
   InputManager({required this.game});
 
@@ -57,6 +56,16 @@ class InputManager extends Component {
     return delta.normalized() * radius;
   }
 
+  // ── Touch-zone readouts (for the on-screen zone-guide visual) ────────────
+
+  /// True while the left half of the screen is being pressed
+  /// (touch-zones scheme).
+  bool get touchZoneLeft => _touchLeft;
+
+  /// True while the right half of the screen is being pressed
+  /// (touch-zones scheme).
+  bool get touchZoneRight => _touchRight;
+
   /// True if a paper-snap burst was consumed this frame.
   bool consumeSnap() {
     if (_snapQueued && _snapCharges > 0) {
@@ -86,14 +95,31 @@ class InputManager extends Component {
     }
   }
 
-  /// Called when a flick-up gesture is detected.
-  bool _queueSnapFromGesture() {
-    if (_snapCharges > 0 && !_snapQueued) {
-      _snapQueued = true;
-      HapticFeedback.mediumImpact();
+  /// True if a gesture power-up action was queued and is now consumed.
+  /// The game polls this each frame and fires the equipped plane's signature
+  /// power-up (Dart: BOOST burst, Glider: Magnet, Stunt Fold: Ghost).
+  bool consumeGestureAction() {
+    if (_gestureActionQueued) {
+      _gestureActionQueued = false;
       return true;
     }
     return false;
+  }
+
+  /// Called when a flick-up gesture or double-tap is detected. Only queues
+  /// the generic action when the "flick to use power-up" setting is enabled.
+  bool _queueGestureAction() {
+    if (!_gesturePowerUpEnabled || _gestureActionQueued) return false;
+    _gestureActionQueued = true;
+    HapticFeedback.mediumImpact();
+    return true;
+  }
+
+  /// Whether the flick/double-tap gesture may fire power-ups. Mirrors the
+  /// "flick to use power-up" setting; when off, gestures do nothing.
+  void updateGesturePowerUp(bool enabled) {
+    _gesturePowerUpEnabled = enabled;
+    if (!enabled) _gestureActionQueued = false;
   }
 
   int get snapCharges => _snapCharges;
@@ -113,6 +139,10 @@ class InputManager extends Component {
   int _snapCharges = GameConfig.snapMaxCharges;
   bool _snapQueued = false;
   double _snapRechargeProgress = 0.0;
+
+  // Generic gesture → power-up action (flick-up / double-tap).
+  bool _gestureActionQueued = false;
+  bool _gesturePowerUpEnabled = true;
 
   // Touch-zone tracking for alt control scheme.
   bool _touchLeft = false;
@@ -252,6 +282,7 @@ class InputManager extends Component {
     _snapCharges = GameConfig.snapMaxCharges;
     _snapQueued = false;
     _snapRechargeProgress = 0.0;
+    _gestureActionQueued = false;
     _touchLeft = false;
     _touchRight = false;
     _joystickActive = false;
@@ -348,8 +379,8 @@ class InputManager extends Component {
     final now = DateTime.now();
     if (_lastTapTime != null &&
         now.difference(_lastTapTime!) < _doubleTapWindow) {
-      // Queue snap without interrupting hold state.
-      if (_snapCharges > 0) _snapQueued = true;
+      // Queue the generic power-up action without interrupting hold state.
+      _queueGestureAction();
       _lastTapTime = null;
     } else {
       _lastTapTime = now;
@@ -364,7 +395,7 @@ class InputManager extends Component {
     if (dy > -GameConfig.snapFlickMinDistance) return; // not enough upward travel
     final velocity = -dy / (dtMs / 1000.0); // px/s upward positive
     if (velocity < GameConfig.snapFlickMinVelocity) return;
-    _queueSnapFromGesture();
+    _queueGestureAction();
   }
 
   static double get _snapRechargePerMeter => 1.0 / GameConfig.snapRechargeMeters;

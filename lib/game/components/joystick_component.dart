@@ -18,11 +18,17 @@ import '../systems/input_manager.dart';
 ///   • The stick fades in where the thumb lands and fades out on release.
 ///   • The knob tracks the (radius-clamped) stick deflection.
 ///   • Only visible while the [ControlScheme.joystick] scheme is active.
+///   • When [visible] is false the stick is never drawn — input still works,
+///     so players can steer blind for a cleaner view.
 class JoystickComponent extends PositionComponent {
   JoystickComponent({required this.inputManager})
       : super(size: Vector2(GameConfig.designWidth, GameConfig.designHeight));
 
   final InputManager inputManager;
+
+  /// Whether the stick may be drawn. Tied to the "show on-screen controls"
+  /// setting — when false the stick fades out and stays hidden.
+  bool visible = true;
 
   /// Smooth fade amount — 0 = hidden, 1 = fully visible.
   double _alpha = 0.0;
@@ -37,6 +43,16 @@ class JoystickComponent extends PositionComponent {
 
   @override
   void update(double dt) {
+    // Never draw when on-screen controls are hidden — fade out softly so the
+    // stick doesn't pop, then stay off.
+    if (!visible) {
+      if (_alpha > 0.01) {
+        final fadeOut = 5.0;
+        _alpha += (0.0 - _alpha) * (fadeOut * dt).clamp(0.0, 1.0);
+      }
+      return;
+    }
+
     // Never show unless the joystick scheme is active.
     if (inputManager.currentScheme != ControlScheme.joystick) {
       _alpha = 0.0;
@@ -52,6 +68,7 @@ class JoystickComponent extends PositionComponent {
   @override
   void render(Canvas canvas) {
     if (_alpha <= 0.01) return;
+    if (!visible) return;
     if (inputManager.currentScheme != ControlScheme.joystick) return;
 
     final base = inputManager.joystickBasePosition.toOffset();
