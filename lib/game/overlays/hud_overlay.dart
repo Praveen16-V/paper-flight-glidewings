@@ -88,8 +88,8 @@ class HudOverlay extends ConsumerWidget {
             child: _BoostButton(game: game),
           ),
 
-          // ── Drag hint (subtle, only for drag scheme, first 3s of run) ─
-          if (settings.controlScheme == ControlScheme.drag &&
+          // ── Joystick hint (subtle, only for joystick scheme, first 3s of run) ─
+          if (settings.controlScheme == ControlScheme.joystick &&
               session.phase == GamePhase.playing)
             Positioned(
               bottom: 92,
@@ -103,7 +103,7 @@ class HudOverlay extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'DRAG TO STEER  •  HOLD TO CLIMB  •  FLICK UP OR TAP BOOST',
+                    'MOVE THUMB TO STEER  •  HOLD TO CLIMB  •  FLICK UP OR TAP BOOST',
                     style: TextStyle(
                       color: Color(0xBBFFFFFF),
                       fontSize: 9,

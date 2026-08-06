@@ -15,6 +15,7 @@ import '../providers/save_data_provider.dart';
 import '../providers/settings_provider.dart';
 import 'components/background/parallax_background.dart';
 import 'components/effects/coin_feedback.dart';
+import 'components/joystick_component.dart';
 import 'components/plane_component.dart';
 import 'systems/input_manager.dart';
 import 'systems/obstacle_spawner.dart';
@@ -122,6 +123,9 @@ class PaperFlightGame extends FlameGame
       planeType: PlaneType.values[save.equippedPlaneIndex],
     );
     world.add(plane);
+
+    // Floating virtual joystick visual — on top of everything (z-order by add).
+    world.add(JoystickComponent(inputManager: inputManager));
 
     // Sync initial control scheme + sensitivity from persisted settings.
     try {

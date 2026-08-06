@@ -14,11 +14,12 @@ import '../paper_flight_game.dart';
 /// Supports three control schemes:
 ///   [ControlScheme.tilt]       — accelerometer/gyro X axis → horizontal
 ///   [ControlScheme.touchZones] — left half / right half touch → horizontal
-///   [ControlScheme.drag]       — one-finger direct drag: horizontal pointer X → steer
+///   [ControlScheme.joystick]   — floating virtual joystick: the stick appears
+///                                where the thumb lands and deflects to steer
 ///
-/// Vertical: hold anywhere = lift, release = glide (bool). In drag mode the
-/// vertical axis is still hold-based so one finger can both steer (X) and
-/// climb (press) without a second gesture.
+/// Vertical: hold anywhere = lift, release = glide (bool). In joystick mode the
+/// vertical axis is still hold-based so one thumb can both steer (X) and climb
+/// (press) without a second gesture.
 ///
 /// Paper-snap burst: triggered by any of
 ///   • double-tap (legacy, kept for compat)
@@ -37,6 +38,24 @@ class InputManager extends Component {
 
   /// Horizontal intent [-1, 1]. Negative = left, positive = right.
   double get horizontalInput => _filteredTilt;
+
+  // ── Virtual joystick readouts (for the on-screen visual) ─────────────────
+
+  /// True while the floating joystick is being held.
+  bool get joystickActive => _joystickActive;
+
+  /// World position of the joystick base ring (design coordinates).
+  Vector2 get joystickBasePosition => _joystickBase ?? Vector2.zero();
+
+  /// Knob displacement from the base, clamped to the stick radius
+  /// (design coordinates) — used to draw the knob.
+  Vector2 get joystickKnobOffset {
+    final delta = _joystickDelta;
+    if (delta == null) return Vector2.zero();
+    final radius = GameConfig.joystickRadius;
+    if (delta.length <= radius) return delta.clone();
+    return delta.normalized() * radius;
+  }
 
   /// True if a paper-snap burst was consumed this frame.
   bool consumeSnap() {
@@ -99,10 +118,11 @@ class InputManager extends Component {
   bool _touchLeft = false;
   bool _touchRight = false;
 
-  // Direct drag tracking.
-  Vector2? _dragPointerPos;  // current finger position while holding
-  Vector2? _dragStartPos;
-  DateTime? _dragStartTime;
+  // Floating virtual joystick tracking.
+  bool _joystickActive = false;      // thumb is down on the stick
+  Vector2? _joystickBase;            // where the stick appeared (pointer down)
+  Vector2? _joystickDelta;           // pointer offset from base (unclamped)
+  DateTime? _joystickStartTime;      // for flick-up snap detection
 
   // Double-tap detection (legacy).
   DateTime? _lastTapTime;
@@ -150,10 +170,11 @@ class InputManager extends Component {
     _filteredTilt = 0.0;
     _touchLeft = false;
     _touchRight = false;
-    if (scheme != ControlScheme.drag) {
-      _dragPointerPos = null;
-      _dragStartPos = null;
-      _dragStartTime = null;
+    if (scheme != ControlScheme.joystick) {
+      _joystickActive = false;
+      _joystickBase = null;
+      _joystickDelta = null;
+      _joystickStartTime = null;
     }
   }
 
@@ -167,43 +188,54 @@ class InputManager extends Component {
 
   void onTapDown(Vector2 position) {
     _isHolding = true;
-    _dragPointerPos = position.clone();
-    _dragStartPos = position.clone();
-    _dragStartTime = DateTime.now();
+    _joystickActive = true;
+    _joystickBase = position.clone();
+    _joystickDelta = Vector2.zero();
+    _joystickStartTime = DateTime.now();
     _handleTouchZone(position, true);
     _checkDoubleTap();
   }
 
   void onTapUp(Vector2 position) {
     _isHolding = false;
+    _joystickActive = false;
     _handleTouchZone(position, false);
     _checkFlickUp(position);
-    // keep last pointer for a frame so drag decay is smooth
+    // Keep the stick position for a frame so steering decays smoothly.
   }
 
   void onDragStart(Vector2 position) {
     _isHolding = true;
-    _dragPointerPos = position.clone();
-    _dragStartPos = position.clone();
-    _dragStartTime = DateTime.now();
+    _joystickActive = true;
+    _joystickBase = position.clone();
+    _joystickDelta = Vector2.zero();
+    _joystickStartTime = DateTime.now();
     _handleTouchZone(position, true);
   }
 
   void onDragUpdate(Vector2 position) {
     _isHolding = true;
-    _dragPointerPos = position.clone();
+    if (_joystickBase != null) {
+      _joystickDelta = position - _joystickBase!;
+    } else {
+      _joystickBase = position.clone();
+      _joystickDelta = Vector2.zero();
+    }
     _handleTouchZone(position, true);
   }
 
   void onDragEnd() {
-    final endPos = _dragPointerPos?.clone();
+    final endPos = _joystickBase != null && _joystickDelta != null
+        ? _joystickBase! + _joystickDelta!
+        : null;
     _isHolding = false;
+    _joystickActive = false;
     _touchLeft = false;
     _touchRight = false;
-    if (endPos != null && _dragStartPos != null) {
+    if (endPos != null && _joystickBase != null) {
       _checkFlickUp(endPos);
     }
-    // Don't immediately clear _dragPointerPos — let it decay in _updateHorizontalFromScheme
+    // Don't immediately clear the stick — let steering decay in _updateHorizontalFromScheme
   }
 
   void onDragCancel() => onDragEnd();
@@ -222,9 +254,10 @@ class InputManager extends Component {
     _snapRechargeProgress = 0.0;
     _touchLeft = false;
     _touchRight = false;
-    _dragPointerPos = null;
-    _dragStartPos = null;
-    _dragStartTime = null;
+    _joystickActive = false;
+    _joystickBase = null;
+    _joystickDelta = null;
+    _joystickStartTime = null;
     _tiltCalibrated = false;
   }
 
@@ -259,23 +292,23 @@ class InputManager extends Component {
       return;
     }
 
-    if (scheme == ControlScheme.drag) {
-      if (_isHolding && _dragPointerPos != null) {
-        // Map pointer X to [-1,1]. Dead-zone around centre.
-        final raw = (_dragPointerPos!.x - GameConfig.designWidth / 2) /
-            (GameConfig.designWidth / 2);
-        final deadZoneNorm = GameConfig.dragDeadZone / (GameConfig.designWidth / 2);
+    if (scheme == ControlScheme.joystick) {
+      if (_joystickActive && _joystickDelta != null) {
+        // Stick deflection maps to [-1,1] with a dead zone around centre —
+        // steering is relative to where the thumb landed, not the screen.
+        final raw = _joystickDelta!.x / GameConfig.joystickRadius;
+        final deadZoneNorm = GameConfig.joystickDeadZone / GameConfig.joystickRadius;
         double target = raw.clamp(-1.0, 1.0);
         if (target.abs() < deadZoneNorm) target = 0.0;
-        // Apply sensitivity scaling for drag as well.
+        // Apply sensitivity scaling for the joystick as well.
         target = (target * _sensitivity).clamp(-1.0, 1.0);
         _filteredTilt = MathUtils.lowPass(
           _filteredTilt,
           target,
-          GameConfig.dragSmoothingAlpha,
+          GameConfig.joystickSmoothingAlpha,
         );
       } else {
-        // Decay to centre when finger released — plane coasts.
+        // Decay to centre when the stick is released — plane coasts.
         _filteredTilt = MathUtils.lowPass(_filteredTilt, 0.0, 0.14);
       }
       return;
@@ -324,9 +357,9 @@ class InputManager extends Component {
   }
 
   void _checkFlickUp(Vector2 endPos) {
-    if (_dragStartPos == null || _dragStartTime == null) return;
-    final dy = endPos.y - _dragStartPos!.y; // negative = upward
-    final dtMs = DateTime.now().difference(_dragStartTime!).inMilliseconds.toDouble();
+    if (_joystickBase == null || _joystickStartTime == null) return;
+    final dy = endPos.y - _joystickBase!.y; // negative = upward
+    final dtMs = DateTime.now().difference(_joystickStartTime!).inMilliseconds.toDouble();
     if (dtMs <= 0 || dtMs > GameConfig.snapFlickMaxDurationMs) return;
     if (dy > -GameConfig.snapFlickMinDistance) return; // not enough upward travel
     final velocity = -dy / (dtMs / 1000.0); // px/s upward positive
