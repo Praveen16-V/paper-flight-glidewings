@@ -1,8 +1,9 @@
-﻿import 'package:flame/components.dart';
+import 'package:flame/components.dart';
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../providers/game_session_provider.dart';
+import '../components/effects/coin_feedback.dart';
 import '../paper_flight_game.dart';
 
 /// Owns all score calculation and pushes updates to [gameSessionProvider].
@@ -77,9 +78,11 @@ class ScoringSystem extends Component {
   }
 
   /// Call when a near-miss is detected.
-  int onNearMiss() {
+  int onNearMiss({Vector2? position}) {
     _nearMissesThisRun++;
     game.ref.read(gameSessionProvider.notifier).addNearMiss();
+    final spawnPos = position ?? game.plane.position.clone();
+    spawnNearMissFeedback(game, spawnPos, GameConfig.nearMissPoints);
     return GameConfig.nearMissPoints;
   }
 

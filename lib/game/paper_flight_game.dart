@@ -13,6 +13,7 @@ import '../models/run_result.dart';
 import '../providers/game_session_provider.dart';
 import '../providers/save_data_provider.dart';
 import 'components/background/parallax_background.dart';
+import 'components/effects/coin_feedback.dart';
 import 'components/plane_component.dart';
 import 'systems/input_manager.dart';
 import 'systems/obstacle_spawner.dart';
@@ -203,6 +204,7 @@ class PaperFlightGame extends FlameGame
     }
 
     _phase = GamePhase.dying;
+    spawnCrashFeedback(this, plane.position);
     pauseEngine();
 
     // Brief freeze then transition to game over.
