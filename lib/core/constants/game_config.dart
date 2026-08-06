@@ -230,16 +230,20 @@ abstract class GameConfig {
   static const double biomeNightEnd = 4000.0;
   // Edge of Atmosphere = beyond 4000 m, endgame loop
 
-  // ── Direct Drag Steering ─────────────────────────────────────────────────
-  /// Dead zone (px) around drag start before steering kicks in.
-  static const double dragDeadZone = 8.0;
+  // ── Virtual Joystick Steering ────────────────────────────────────────────
+  /// Radius (px) of the floating joystick base. The knob travels within this
+  /// circle; full deflection at the rim maps to full steering.
+  static const double joystickRadius = 56.0;
 
-  /// Smoothing factor for drag horizontal input (low-pass). Higher = snappier.
-  static const double dragSmoothingAlpha = 0.18;
+  /// Dead zone (px) around the stick center before steering kicks in.
+  static const double joystickDeadZone = 10.0;
 
-  /// Max horizontal speed when dragging full width (px/s). Slightly higher than
-  /// tilt to make finger steering feel responsive.
-  static const double dragMaxSteerSpeed = 160.0;
+  /// Smoothing factor for joystick horizontal input (low-pass). Higher = snappier.
+  static const double joystickSmoothingAlpha = 0.28;
+
+  /// Max horizontal speed at full stick deflection (px/s). Slightly higher than
+  /// tilt so thumb steering feels responsive.
+  static const double joystickMaxSteerSpeed = 170.0;
 
   // ── Snap Burst (Paper-Snap) ───────────────────────────────────────────────
   static const int snapMaxCharges = 2;

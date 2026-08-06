@@ -496,8 +496,8 @@ class PlaneComponent extends PositionComponent
         : 1.0;
 
     final turnMult = planeType.turnSpeedMultiplier;
-    final baseSpeed = input.currentScheme == ControlScheme.drag
-        ? GameConfig.dragMaxSteerSpeed
+    final baseSpeed = input.currentScheme == ControlScheme.joystick
+        ? GameConfig.joystickMaxSteerSpeed
         : GameConfig.maxTiltSpeed;
     final targetVX = input.horizontalInput *
         baseSpeed *

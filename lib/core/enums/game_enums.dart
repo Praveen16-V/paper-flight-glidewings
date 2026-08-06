@@ -227,7 +227,7 @@ enum WindType {
 enum ControlScheme {
   tilt,          // default: accelerometer tilt for L/R
   touchZones,    // alt: on-screen left/right tap zones
-  drag,          // one-finger direct drag: horizontal swipe steers, hold controls altitude
+  joystick,      // floating virtual joystick: thumb deflects to steer, hold controls altitude
 }
 
 // ── Collectible ────────────────────────────────────────────────────────────────

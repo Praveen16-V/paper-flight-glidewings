@@ -35,16 +35,16 @@ class SettingsScreen extends ConsumerWidget {
             label: 'Steering',
             options: const [
               ControlScheme.tilt,
-              ControlScheme.drag,
+              ControlScheme.joystick,
               ControlScheme.touchZones
             ],
-            labels: const ['Tilt', 'Drag', 'Zones'],
+            labels: const ['Tilt', 'Joystick', 'Zones'],
             selected: settings.controlScheme,
             onChanged: (v) => notifier.setControlScheme(v),
           ),
           const SizedBox(height: 16),
-          // Explain drag mode.
-          if (settings.controlScheme == ControlScheme.drag)
+          // Explain joystick mode.
+          if (settings.controlScheme == ControlScheme.joystick)
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -54,11 +54,11 @@ class SettingsScreen extends ConsumerWidget {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.touch_app, color: AppColors.accent, size: 18),
+                  Icon(Icons.gamepad, color: AppColors.accent, size: 18),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Drag: slide finger left/right to steer. Hold anywhere to climb. Flick up or tap BOOST for emergency snap.',
+                      'Joystick: touch anywhere — a virtual stick appears under your thumb. Slide it to steer, keep it held to climb. Flick up or tap BOOST for emergency snap.',
                       style: TextStyle(
                         color: AppColors.textMuted,
                         fontSize: 12,
@@ -69,17 +69,17 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ),
             ),
-          if (settings.controlScheme == ControlScheme.drag) const SizedBox(height: 16),
+          if (settings.controlScheme == ControlScheme.joystick) const SizedBox(height: 16),
           _SliderRow(
-            label: settings.controlScheme == ControlScheme.drag
-                ? 'Drag / Steering Sensitivity'
+            label: settings.controlScheme == ControlScheme.joystick
+                ? 'Joystick / Steering Sensitivity'
                 : 'Tilt Sensitivity',
             value: settings.tiltSensitivity,
             min: 0.3,
             max: 2.0,
             divisions: 17,
             enabled: settings.controlScheme == ControlScheme.tilt ||
-                settings.controlScheme == ControlScheme.drag,
+                settings.controlScheme == ControlScheme.joystick,
             onChanged: (v) => notifier.setTiltSensitivity(v),
             valueLabel: settings.tiltSensitivity.toStringAsFixed(1),
           ),
@@ -161,7 +161,7 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ),
             ),
-          if (settings.controlScheme == ControlScheme.drag)
+          if (settings.controlScheme == ControlScheme.joystick)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -175,7 +175,7 @@ class SettingsScreen extends ConsumerWidget {
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Drag uses one finger only — no tilt needed. Great for tablets and one-handed play. Your BOOST charges recharge over distance.',
+                      'The joystick is floating — it appears wherever you touch, so one thumb is all you need. Great for tablets and one-handed play. Your BOOST charges recharge over distance.',
                       style: TextStyle(
                         color: AppColors.textMuted,
                         fontSize: 12,
