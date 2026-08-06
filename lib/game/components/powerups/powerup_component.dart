@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flame/collisions.dart';
@@ -10,6 +10,7 @@ import '../../../core/enums/game_enums.dart';
 import '../../../core/utils/math_utils.dart';
 import '../../../providers/game_session_provider.dart';
 import '../../paper_flight_game.dart';
+import '../effects/coin_feedback.dart';
 import '../plane_component.dart';
 
 /// A single power-up pickup. Pooled and recycled by [PowerUpSpawner].
@@ -101,8 +102,12 @@ class PowerUpComponent extends PositionComponent
   void _applyEffect() {
     final notifier = gameRef.ref.read(gameSessionProvider.notifier);
 
+    // Announce the pickup with a colored burst + banner before applying it.
+    spawnPowerUpFeedback(gameRef, position, type);
+
     switch (type) {
       case PowerUpType.shield:
+        // Absorbs exactly one hit — no timer; consumed on impact.
         notifier.activatePowerUp(PowerUpType.shield);
       case PowerUpType.magnet:
         notifier.activatePowerUp(PowerUpType.magnet);
@@ -110,21 +115,24 @@ class PowerUpComponent extends PositionComponent
           Duration(milliseconds: (GameConfig.magnetDuration * 1000).toInt()),
           () => notifier.deactivatePowerUp(PowerUpType.magnet),
         );
-      case PowerUpType.turboGust:
-        notifier.activatePowerUp(PowerUpType.turboGust);
+      case PowerUpType.ghost:
+        // Phase through every obstacle — the big "fly through the wall" moment.
+        notifier.activatePowerUp(PowerUpType.ghost);
         Future.delayed(
-          Duration(milliseconds: (GameConfig.turboDuration * 1000).toInt()),
-          () => notifier.deactivatePowerUp(PowerUpType.turboGust),
+          Duration(milliseconds: (GameConfig.ghostDuration * 1000).toInt()),
+          () => notifier.deactivatePowerUp(PowerUpType.ghost),
         );
       case PowerUpType.slowMo:
         notifier.activatePowerUp(PowerUpType.slowMo);
         gameRef.applySlowMo(GameConfig.slowMoDuration);
-      case PowerUpType.secondWind:
-        // Second Wind: instant revive-like effect — restores to mid-screen.
-        gameRef.plane.revive();
-        notifier.activatePowerUp(PowerUpType.secondWind);
-        Future.delayed(const Duration(milliseconds: 200),
-            () => notifier.deactivatePowerUp(PowerUpType.secondWind));
+      case PowerUpType.coinRush:
+        // 2× coin value for the duration, plus an immediate coin shower.
+        notifier.activatePowerUp(PowerUpType.coinRush);
+        gameRef.beginCoinRush();
+        Future.delayed(
+          Duration(milliseconds: (GameConfig.coinRushDuration * 1000).toInt()),
+          () => notifier.deactivatePowerUp(PowerUpType.coinRush),
+        );
     }
   }
 
@@ -193,17 +201,27 @@ class PowerUpComponent extends PositionComponent
         );
         canvas.drawRect(Rect.fromLTWH(cx - 8, cy - 2, 4, 8), paint);
         canvas.drawRect(Rect.fromLTWH(cx + 4, cy - 2, 4, 8), paint);
-      case PowerUpType.turboGust:
-        // Lightning bolt
-        final path = Path()
-          ..moveTo(cx + 3, cy - 10)
-          ..lineTo(cx - 2, cy - 1)
-          ..lineTo(cx + 2, cy - 1)
-          ..lineTo(cx - 3, cy + 10)
-          ..lineTo(cx + 4, cy + 1)
-          ..lineTo(cx - 1, cy + 1)
+      case PowerUpType.ghost:
+        // Friendly ghost — rounded dome with wavy hem and eyes.
+        final body = Path()
+          ..moveTo(cx - 8, cy + 1)
+          ..lineTo(cx - 8, cy - 3)
+          ..cubicTo(cx - 8, cy - 13, cx + 8, cy - 13, cx + 8, cy - 3)
+          ..lineTo(cx + 8, cy + 1)
+          ..lineTo(cx + 5, cy - 1)
+          ..lineTo(cx + 2, cy + 1)
+          ..lineTo(cx - 1, cy - 1)
+          ..lineTo(cx - 4, cy + 1)
+          ..lineTo(cx - 7, cy - 1)
+          ..lineTo(cx - 8, cy + 1)
           ..close();
-        canvas.drawPath(path, paint);
+        canvas.drawPath(body, paint);
+        // Eyes
+        final eyePaint = Paint()
+          ..color = const Color(0xFF00363A)
+          ..style = PaintingStyle.fill;
+        canvas.drawCircle(Offset(cx - 3.5, cy - 3), 1.3, eyePaint);
+        canvas.drawCircle(Offset(cx + 3.5, cy - 3), 1.3, eyePaint);
       case PowerUpType.slowMo:
         // Clock / hourglass
         final circlePaint = Paint()
@@ -213,40 +231,35 @@ class PowerUpComponent extends PositionComponent
         canvas.drawCircle(Offset(cx, cy), 8, circlePaint);
         canvas.drawLine(Offset(cx, cy), Offset(cx + 5, cy - 4), circlePaint);
         canvas.drawLine(Offset(cx, cy - 8), Offset(cx, cy - 5), paint);
-      case PowerUpType.secondWind:
-        // Wind swirl
-        final swirls = Paint()
+      case PowerUpType.coinRush:
+        // Gold coin with a "+" spark — a burst of wealth.
+        canvas.drawCircle(Offset(cx, cy), 8, paint);
+        final innerPaint = Paint()
+          ..color = const Color(0xFFFFB300)
+          ..style = PaintingStyle.fill;
+        canvas.drawCircle(Offset(cx, cy), 5.5, innerPaint);
+        final plusPaint = Paint()
           ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.5;
-        for (int i = 0; i < 3; i++) {
-          canvas.drawArc(
-            Rect.fromCenter(
-              center: Offset(cx, cy - 4 + i * 4.0),
-              width: 14 - i * 2,
-              height: 6,
-            ),
-            0,
-            math.pi,
-            false,
-            swirls,
-          );
-        }
+          ..strokeWidth = 1.8
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke;
+        canvas.drawLine(Offset(cx - 2.5, cy), Offset(cx + 2.5, cy), plusPaint);
+        canvas.drawLine(Offset(cx, cy - 2.5), Offset(cx, cy + 2.5), plusPaint);
     }
   }
 
   static Color _bgColorForType(PowerUpType type) {
     switch (type) {
       case PowerUpType.shield:
-        return const Color(0xFF1565C0);
+        return const Color(0xFF1565C0); // blue
       case PowerUpType.magnet:
-        return const Color(0xFF6A1B9A);
-      case PowerUpType.turboGust:
-        return const Color(0xFFE65100);
+        return const Color(0xFF6A1B9A); // purple
+      case PowerUpType.ghost:
+        return const Color(0xFF00838F); // deep cyan
       case PowerUpType.slowMo:
-        return const Color(0xFF00695C);
-      case PowerUpType.secondWind:
-        return const Color(0xFF1B5E20);
+        return const Color(0xFF00695C); // teal
+      case PowerUpType.coinRush:
+        return const Color(0xFFC77800); // amber gold
     }
   }
 

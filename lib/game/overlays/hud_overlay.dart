@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_colors.dart';
@@ -269,15 +269,15 @@ class _PowerUpIcon extends StatelessWidget {
   Color _colorForType(PowerUpType type) {
     switch (type) {
       case PowerUpType.shield:
-        return const Color(0xFF1565C0);
+        return const Color(0xFF1565C0); // blue
       case PowerUpType.magnet:
-        return const Color(0xFF6A1B9A);
-      case PowerUpType.turboGust:
-        return const Color(0xFFE65100);
+        return const Color(0xFF6A1B9A); // purple
+      case PowerUpType.ghost:
+        return const Color(0xFF00838F); // deep cyan
       case PowerUpType.slowMo:
-        return const Color(0xFF00695C);
-      case PowerUpType.secondWind:
-        return const Color(0xFF1B5E20);
+        return const Color(0xFF00695C); // teal
+      case PowerUpType.coinRush:
+        return const Color(0xFFC77800); // amber gold
     }
   }
 
@@ -287,12 +287,12 @@ class _PowerUpIcon extends StatelessWidget {
         return '🛡';
       case PowerUpType.magnet:
         return '🧲';
-      case PowerUpType.turboGust:
-        return '⚡';
+      case PowerUpType.ghost:
+        return '👻';
       case PowerUpType.slowMo:
-        return '🌀';
-      case PowerUpType.secondWind:
-        return '💨';
+        return '⏱';
+      case PowerUpType.coinRush:
+        return '💰';
     }
   }
 }

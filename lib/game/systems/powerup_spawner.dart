@@ -1,4 +1,4 @@
-﻿import 'package:flame/components.dart';
+import 'package:flame/components.dart';
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
@@ -8,7 +8,7 @@ import '../components/powerups/powerup_component.dart';
 import '../paper_flight_game.dart';
 
 /// Spawns power-ups procedurally on a slow timer.
-/// Second Wind is rare (~8% of spawns) to keep it exciting.
+/// Ghost and Coin Rush are slightly rarer to keep them exciting.
 class PowerUpSpawner extends Component {
   PowerUpSpawner({required this.game});
 
@@ -52,11 +52,11 @@ class PowerUpSpawner extends Component {
     final type = MathUtils.weightedPick(
       PowerUpType.values,
       [
-        1.5, // shield
-        1.5, // magnet
-        1.2, // turbo
-        1.0, // slowmo
-        0.4, // second wind (rare)
+        1.4, // shield
+        1.3, // magnet
+        1.0, // ghost
+        1.2, // slowmo
+        1.0, // coin rush
       ],
     );
 

@@ -75,7 +75,7 @@ class CoinComponent extends CircleComponent
       );
       if (dist < GameConfig.coinMagnetRadius) {
         final dir = (plane.position - position).normalized();
-        position += dir * (300 * dt);
+        position += dir * (GameConfig.coinMagnetPullSpeed * dt);
       }
     }
 

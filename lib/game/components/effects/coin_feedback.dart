@@ -4,6 +4,7 @@ import 'package:flame/components.dart';
 import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/painting.dart';
 
+import '../../core/enums/game_enums.dart';
 import '../../paper_flight_game.dart';
 
 /// Spawns a satisfying coin-pickup feedback at [position] on the [game]: a gold
@@ -56,11 +57,114 @@ void spawnCrashFeedback(
   _playSfx('crash.mp3');
 }
 
+/// Spawns a satisfying power-up pickup: a colored energy burst in the
+/// power-up's signature color plus a floating banner announcing its name.
+void spawnPowerUpFeedback(
+  PaperFlightGame game,
+  Vector2 position,
+  PowerUpType type,
+) {
+  final world = game.world;
+  world.add(ColoredBurst(position: position.clone(), color: _powerUpColor(type)));
+  world.add(
+    FloatingScoreText(
+      position: position.clone(),
+      text: type.displayName.toUpperCase(),
+      color: _powerUpColor(type),
+      fontSize: 22,
+    ),
+  );
+  _playSfx('powerup_pickup.mp3');
+}
+
+Color _powerUpColor(PowerUpType type) {
+  switch (type) {
+    case PowerUpType.shield:
+      return const Color(0xFF64B5F6); // blue
+    case PowerUpType.magnet:
+      return const Color(0xFFAB47BC); // purple
+    case PowerUpType.ghost:
+      return const Color(0xFF80DEEA); // cyan
+    case PowerUpType.slowMo:
+      return const Color(0xFF26A69A); // teal
+    case PowerUpType.coinRush:
+      return const Color(0xFFFFD700); // gold
+  }
+}
+
 void _playSfx(String fileName) {
   try {
     FlameAudio.play(fileName);
   } catch (_) {
     // Audio playback safely ignored if asset is silent or unsupported in test.
+  }
+}
+
+/// A quick radial burst of sparks in a given color, used for power-up pickups.
+class ColoredBurst extends PositionComponent {
+  ColoredBurst({required super.position, required this.color});
+
+  final Color color;
+  static const int _count = 16;
+  static const double _life = 0.55;
+  static const double _speed = 160.0;
+
+  final List<_StarParticle> _particles = [];
+  double _elapsed = 0;
+
+  @override
+  void onLoad() {
+    for (int i = 0; i < _count; i++) {
+      final angle = math.Random().nextDouble() * math.pi * 2;
+      final speed = _speed * (0.4 + math.Random().nextDouble() * 0.8);
+      _particles.add(
+        _StarParticle(
+          dir: Vector2(math.cos(angle), math.sin(angle)) * speed,
+          size: 3.0 + math.Random().nextDouble() * 4.0,
+          color: i.isEven ? color : const Color(0xFFFFFFFF),
+          rotation: math.Random().nextDouble() * math.pi * 2,
+          rotSpeed: (math.Random().nextDouble() - 0.5) * 9.0,
+        ),
+      );
+    }
+  }
+
+  @override
+  void update(double dt) {
+    _elapsed += dt;
+    if (_elapsed >= _life) {
+      removeFromParent();
+      return;
+    }
+    for (final p in _particles) {
+      p.pos.add(p.dir * dt);
+      p.rotation += p.rotSpeed * dt;
+      p.dir *= (1 - 2.0 * dt);
+      p.size *= (1 - 2.0 * dt);
+    }
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final t = (_elapsed / _life).clamp(0.0, 1.0);
+    final alpha = (1.0 - t).clamp(0.0, 1.0);
+    for (final p in _particles) {
+      final paint = Paint()
+        ..color = p.color.withOpacity(alpha)
+        ..style = PaintingStyle.fill;
+      canvas.save();
+      canvas.translate(p.pos.x, p.pos.y);
+      canvas.rotate(p.rotation);
+      final s = p.size.clamp(0.1, 10.0);
+      final path = Path()
+        ..moveTo(0, -s)
+        ..lineTo(s * 0.35, 0)
+        ..lineTo(0, s)
+        ..lineTo(-s * 0.35, 0)
+        ..close();
+      canvas.drawPath(path, paint);
+      canvas.restore();
+    }
   }
 }
 

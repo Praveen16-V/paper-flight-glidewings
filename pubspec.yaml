@@ -82,9 +82,9 @@ flutter:
     # Power-ups
     - assets/images/powerups/shield.png
     - assets/images/powerups/magnet.png
-    - assets/images/powerups/turbo.png
+    - assets/images/powerups/ghost.png
     - assets/images/powerups/slowmo.png
-    - assets/images/powerups/second_wind.png
+    - assets/images/powerups/coin_rush.png
     # Backgrounds — city rooftops biome (MVP)
     - assets/images/backgrounds/city_sky_far.png
     - assets/images/backgrounds/city_mid.png

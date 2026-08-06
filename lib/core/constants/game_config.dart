@@ -21,9 +21,6 @@ abstract class GameConfig {
   /// (base + 0.16 × meters, clamped to maxScrollSpeed ≈ 2250 m.)
   static const double scrollSpeedPerMeter = 0.16;
 
-  /// Speed multiplier applied during Turbo Gust power-up.
-  static const double turboPowerUpMultiplier = 1.6;
-
   /// Speed multiplier during Slow-Mo power-up.
   static const double slowMoPowerUpMultiplier = 0.45;
 
@@ -180,7 +177,7 @@ abstract class GameConfig {
   static const double coinSpawnY = -40.0;
   static const double coinRecycleY = 920.0;
   static const double coinBaseSpawnInterval = 0.9;
-  static const double coinMagnetRadius = 130.0;
+  static const double coinMagnetRadius = 165.0;
   static const int coinComboResetOnHit = 0; // combo resets to 0 on obstacle hit
   static const double coinSize = 28.0;
 
@@ -204,9 +201,19 @@ abstract class GameConfig {
   static const double powerUpRecycleY = 920.0;
   static const double powerUpBaseSpawnInterval = 8.0;
   static const double shieldDuration = 0.0; // absorbs 1 hit, no time limit
-  static const double magnetDuration = 6.0; // seconds
-  static const double turboDuration = 5.0;
-  static const double slowMoDuration = 4.0;
+  static const double magnetDuration = 8.0; // seconds
+  static const double ghostDuration = 4.0;  // seconds — phase through obstacles
+  static const double slowMoDuration = 4.0; // seconds
+  static const double coinRushDuration = 6.0; // seconds — 2× coin value + shower
+
+  /// Coin score multiplier while Coin Rush is active.
+  static const double coinRushValueMultiplier = 2.0;
+
+  /// How often Coin Rush rains down a coin shower (seconds).
+  static const double coinRushShowerInterval = 0.8;
+
+  /// Coin magnet pull speed (px/s) while Magnet is active.
+  static const double coinMagnetPullSpeed = 340.0;
 
   // ── Monetization / Ad Timing ──────────────────────────────────────────────
   /// Minimum runs before first interstitial is ever shown.
