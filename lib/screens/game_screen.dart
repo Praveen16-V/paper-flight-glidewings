@@ -125,10 +125,10 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final session = ref.read(gameSessionProvider);
 
     // Wait until Flame has finished onLoad so systems/plane exist.
-    for (int i = 0; i < 120 && !_game.isLoaded; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 16));
-      if (!mounted) return;
+    if (!_game.isLoaded) {
+      await _game.loaded;
     }
+    if (!mounted) return;
 
     if (args?.revive == true && session.crashSnapshot != null) {
       final snap = session.crashSnapshot!;
