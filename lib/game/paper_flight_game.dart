@@ -87,6 +87,7 @@ class PaperFlightGame extends FlameGame
     camera = CameraComponent.withFixedResolution(
       width: GameConfig.designWidth,
       height: GameConfig.designHeight,
+      world: world,
     )..viewfinder.anchor = Anchor.topLeft;
 
     // Background parallax layers (farthest first).
