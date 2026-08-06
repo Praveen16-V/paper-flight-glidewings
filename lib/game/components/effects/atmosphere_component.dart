@@ -2,6 +2,7 @@ import 'dart:math';
 import 'dart:ui';
 
 import 'package:flame/components.dart';
+import 'package:flutter/painting.dart';
 
 import '../../../core/constants/game_config.dart';
 import '../../../core/enums/game_enums.dart';

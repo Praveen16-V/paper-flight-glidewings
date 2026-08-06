@@ -48,7 +48,7 @@ class WindSystem extends Component with HasGameRef<PaperFlightGame> {
 
   LaneWind windAt(int laneIndex) {
     final noiseVal = _noise.fbm(laneIndex * GameConfig.windNoiseLaneScale, _time, octaves: 3);
-    final profile = _profile;
+    final profile = this.profile;
     WindType type;
     double lateral;
     double lift = 0;

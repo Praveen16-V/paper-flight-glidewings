@@ -6,6 +6,7 @@ import 'package:flame/components.dart';
 import 'package:flame/effects.dart';
 import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/animation.dart';
+import 'package:flutter/painting.dart';
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
