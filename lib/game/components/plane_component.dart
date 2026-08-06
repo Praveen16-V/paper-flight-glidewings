@@ -4,28 +4,41 @@ import 'dart:ui';
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flame/effects.dart';
+import 'package:flutter/animation.dart';
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../core/utils/math_utils.dart';
 import '../paper_flight_game.dart';
+import 'plane_trail_component.dart';
 
 /// The player's paper plane.
 ///
-/// Physics summary:
-///   Y-axis (vertical on screen):
-///     Hold → apply lift force upward (subtract from Y each frame).
-///     Release → gravity pulls downward (add to Y each frame).
-///     Fall off bottom edge → crash.
+/// Physics model (three states):
 ///
-///   X-axis (horizontal):
-///     inputManager.horizontalInput × maxTiltSpeed → target X velocity.
-///     Modulated by wind lane lateral force.
-///     Clamped to [edgeMargin, width - edgeMargin].
+///   HOLD (press edge)
+///     → Instant snap kick: _velocityY set to liftSnapKick (<0, upward).
+///     → Each subsequent hold frame: exponential decay toward liftCruiseSpeed
+///       via lerp(t = liftKickDecayRate × dt).
+///     → Wing squish ScaleEffect plays on the press edge.
+///
+///   GLIDE ARC (release edge, while upward momentum remains)
+///     → At release: preserve glideArcPreservation fraction of upward velocity.
+///     → Lighter gravity (glideGravityScale) so the arc coasts naturally.
+///     → Sinusoidal oscillation ramps up from zero.
+///     → Nose-up pitch bias while still moving upward.
+///     → Arc ends when velocityY crosses zero (plane tips into fall).
+///
+///   FALL (glide arc spent or releasing from a downward state)
+///     → Full gravity (fullGravityScale × fallSpeedMultiplier).
+///     → Oscillation continues at full strength.
+///
+///   X-axis / wind / thermal: unchanged from original design.
 ///
 ///   Rotation:
-///     Visual tilt tracks vertical velocity — nose up when climbing,
-///     nose down when diving. Horizontal tilt mirrors X velocity.
+///     Adaptive lerp speed — faster response at high velocity changes.
+///     Pitch maps vY → angle; bank maps vX → angle.
+///     Glide-arc nose-up bias while coasting upward.
 class PlaneComponent extends PositionComponent
     with HasGameRef<PaperFlightGame>, CollisionCallbacks {
   PlaneComponent({
@@ -39,32 +52,47 @@ class PlaneComponent extends PositionComponent
   final PaperFlightGame game;
   PlaneType planeType;
 
-  // ── Physics State ─────────────────────────────────────────────────────────
+  // ── Physics State ──────────────────────────────────────────────────────────
 
   double _velocityY = 0.0; // px/s, positive = downward
   double _velocityX = 0.0; // px/s, positive = rightward
 
-  // ── Visual State ──────────────────────────────────────────────────────────
+  // Hold-state tracking for edge detection.
+  bool _wasHolding = false;
+
+  // Glide arc state.
+  bool _glideArcActive = false;
+
+  // Oscillation state.
+  double _oscillationPhase = 0.0;   // radians, ticks every frame
+  double _oscillationStrength = 0.0; // [0,1], ramps up after release
+
+  // ── Visual State ───────────────────────────────────────────────────────────
 
   bool _isAlive = true;
-  double _bankAngle = 0.0;    // visual roll for X movement
-  double _pitchAngle = 0.0;   // visual pitch for Y movement
+  double _bankAngle = 0.0;   // visual roll for X movement
+  double _pitchAngle = 0.0;  // visual pitch for Y movement
 
   /// Wing-fold amount [0 = fully spread (gliding), 1 = folded up (holding)].
-  /// Smoothly lerped each frame toward the current hold state.
   double _wingFold = 0.0;
 
-  // ── Hitbox ────────────────────────────────────────────────────────────────
+  // ── Children ───────────────────────────────────────────────────────────────
 
+  late final PlaneTrailComponent _trail;
   late final RectangleHitbox _hitbox;
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   @override
   Future<void> onLoad() async {
-    // Position plane at start position.
     position = Vector2(
       GameConfig.designWidth * GameConfig.planeStartX,
       GameConfig.designHeight * GameConfig.planeStartY,
     );
+
+    // Trail renders behind the plane (added first → drawn first in Flame).
+    _trail = PlaneTrailComponent(plane: this);
+    add(_trail);
 
     // Hitbox — scaled smaller than sprite for forgiving collisions.
     final hbSize = size * GameConfig.planeHitboxScale;
@@ -76,6 +104,8 @@ class PlaneComponent extends PositionComponent
 
     await super.onLoad();
   }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   @override
   void render(Canvas canvas) {
@@ -89,15 +119,13 @@ class PlaneComponent extends PositionComponent
     final w = size.x;
     final h = size.y;
 
-    // Rotate canvas so that the nose (originally pointing +X in local space)
-    // now points up (-Y in screen space). We rotate around the component
-    // centre, which Flame places at (w/2, h/2) since anchor = Anchor.center.
+    // Rotate canvas so the nose (local +X) points up (screen -Y).
     canvas.save();
     canvas.translate(w / 2, h / 2);
     canvas.rotate(-pi / 2);
     canvas.translate(-w / 2, -h / 2);
 
-    // Shadow (offset slightly down-right before the same rotation).
+    // Shadow offset.
     canvas.save();
     canvas.translate(1.5, 2.5);
     _drawPlaneShape(canvas, shadowPaint, w, h, _wingFold);
@@ -105,7 +133,7 @@ class PlaneComponent extends PositionComponent
 
     _drawPlaneShape(canvas, paint, w, h, _wingFold);
 
-    // Draw a subtle crease line to separate upper/lower wing faces.
+    // Subtle crease line separating upper/lower wing faces.
     final creasePaint = Paint()
       ..color = const Color(0x55000000)
       ..strokeWidth = 0.8
@@ -116,43 +144,38 @@ class PlaneComponent extends PositionComponent
       creasePaint,
     );
 
-    canvas.restore(); // undo the -π/2 rotation
+    canvas.restore();
     super.render(canvas);
   }
 
   /// Draws the paper-plane dart shape.
   ///
-  /// Local-space orientation: nose tip at (w, h/2), tail at left edge.
-  /// [wingFold] in [0, 1]:
-  ///   0 → wings fully spread (horizontal, gliding)
-  ///   1 → wings folded upward (holding for lift), giving a swept look.
-  void _drawPlaneShape(Canvas canvas, Paint paint, double w, double h, double wingFold) {
-    // Wing-fold offsets: tips move upward (toward y=h/2) as fold increases.
-    final spreadY = h * 0.08;                         // extra droop when gliding
-    final topWingY = (h * 0.15) * (1.0 - wingFold)   // top tip sweeps inward
-                   - spreadY * (1.0 - wingFold);
-    final botWingY = h - (h * 0.15) * (1.0 - wingFold) // bottom tip sweeps inward
-                   + spreadY * (1.0 - wingFold);
+  /// Local-space: nose tip at (w, h/2), tail at left edge.
+  /// [wingFold] 0 = wings spread (gliding), 1 = wings folded (holding).
+  void _drawPlaneShape(
+      Canvas canvas, Paint paint, double w, double h, double wingFold) {
+    final spreadY = h * 0.08;
+    final topWingY =
+        (h * 0.15) * (1.0 - wingFold) - spreadY * (1.0 - wingFold);
+    final botWingY =
+        h - (h * 0.15) * (1.0 - wingFold) + spreadY * (1.0 - wingFold);
 
-    // Body centre line (nose → tail)
     final bodyPath = Path()
-      ..moveTo(w, h / 2)           // nose tip
-      ..lineTo(w * 0.3, h / 2)     // body mid-indent
-      ..lineTo(0, h / 2)           // tail centre
+      ..moveTo(w, h / 2)
+      ..lineTo(w * 0.3, h / 2)
+      ..lineTo(0, h / 2)
       ..close();
 
-    // Upper wing triangle
     final upperWing = Path()
-      ..moveTo(w, h / 2)           // nose
-      ..lineTo(w * 0.3, h / 2)     // body indent
-      ..lineTo(0, topWingY)         // upper wing tip (moves with fold)
+      ..moveTo(w, h / 2)
+      ..lineTo(w * 0.3, h / 2)
+      ..lineTo(0, topWingY)
       ..close();
 
-    // Lower wing triangle
     final lowerWing = Path()
-      ..moveTo(w, h / 2)           // nose
-      ..lineTo(w * 0.3, h / 2)     // body indent
-      ..lineTo(0, botWingY)         // lower wing tip (moves with fold)
+      ..moveTo(w, h / 2)
+      ..lineTo(w * 0.3, h / 2)
+      ..lineTo(0, botWingY)
       ..close();
 
     canvas.drawPath(upperWing, paint);
@@ -160,7 +183,7 @@ class PlaneComponent extends PositionComponent
     canvas.drawPath(bodyPath, paint);
   }
 
-  // ── Update ────────────────────────────────────────────────────────────────
+  // ── Update ─────────────────────────────────────────────────────────────────
 
   @override
   void update(double dt) {
@@ -169,36 +192,104 @@ class PlaneComponent extends PositionComponent
 
     final input = game.inputManager;
     final wind = game.windSystem;
-    // Read sensitivity from inputManager (cached from settings, avoids per-frame provider read).
     final sensitivity = game.inputManager.currentSensitivity;
-
-    // ── Vertical ────────────────────────────────────────────────────────────
     final fallMult = planeType.fallSpeedMultiplier;
 
-    if (input.isHolding) {
-      // Lift: accelerate upward (decrement Y velocity toward negative).
-      _velocityY -= GameConfig.liftForce * dt;
+    final isHolding = input.isHolding;
+    final pressEdge = isHolding && !_wasHolding;   // first frame of hold
+    final releaseEdge = !isHolding && _wasHolding; // first frame of release
+
+    // ── Vertical Physics ─────────────────────────────────────────────────────
+
+    if (pressEdge) {
+      // Snap kick: set velocity directly for an instant snappy feel.
+      _velocityY = GameConfig.liftSnapKick;
+      _glideArcActive = false;
+      _oscillationStrength = 0.0; // damp oscillation while holding
+      _playHoldKickEffect();
+    } else if (isHolding) {
+      // Exponential decay from kick toward cruise speed.
+      // lerp t = liftKickDecayRate × dt gives ~63% convergence per 1/rate seconds.
+      _velocityY = MathUtils.lerp(
+        _velocityY,
+        GameConfig.liftCruiseSpeed,
+        (GameConfig.liftKickDecayRate * dt).clamp(0.0, 1.0),
+      );
+      // Damp oscillation while holding — paper is under active lift.
+      _oscillationStrength =
+          (_oscillationStrength - 3.0 * dt).clamp(0.0, 1.0);
     } else {
-      // Gravity: accelerate downward.
-      _velocityY += GameConfig.gravity * fallMult * dt;
+      // Release path.
+      if (releaseEdge) {
+        if (_velocityY < 0) {
+          // Preserve upward momentum for the glide arc.
+          _velocityY *= GameConfig.glideArcPreservation;
+          _glideArcActive = true;
+        } else {
+          // Released while already falling — skip arc, go straight to fall.
+          _glideArcActive = false;
+        }
+        _oscillationPhase = 0.0;
+        _oscillationStrength = 0.0;
+      }
+
+      if (_glideArcActive) {
+        // Lighter gravity during the upward coast.
+        _velocityY +=
+            GameConfig.gravity * GameConfig.glideGravityScale * fallMult * dt;
+
+        // Ramp oscillation up from zero so it doesn't pop in jarringly.
+        _oscillationStrength = (_oscillationStrength +
+                GameConfig.oscillationFadeInRate * dt)
+            .clamp(0.0, 1.0);
+
+        // Arc ends when velocity tips downward — now in natural fall.
+        if (_velocityY >= 0) {
+          _glideArcActive = false;
+        }
+      } else {
+        // Full gravity fall.
+        _velocityY +=
+            GameConfig.gravity * GameConfig.fullGravityScale * fallMult * dt;
+
+        // Keep oscillation at full strength during free fall.
+        _oscillationStrength =
+            (_oscillationStrength + GameConfig.oscillationFadeInRate * dt)
+                .clamp(0.0, 1.0);
+      }
+
+      // Sinusoidal oscillation — simulates the natural undulation of a paper
+      // plane riding air. Added as a velocity contribution each frame.
+      _oscillationPhase +=
+          GameConfig.oscillationFrequency * 2.0 * pi * dt;
+      final oscContrib = sin(_oscillationPhase) *
+          GameConfig.oscillationAmplitude *
+          _oscillationStrength;
+      _velocityY += oscContrib * dt;
     }
 
-    // Paper-snap burst: strong upward kick.
+    // Paper-snap burst: strong upward kick (double-tap power).
     if (input.consumeSnap()) {
-      _velocityY -= GameConfig.liftForce * 2.5;
+      _velocityY = GameConfig.liftSnapKick * 1.8;
+      _glideArcActive = false;
     }
 
-    _velocityY = _velocityY.clamp(
-      -GameConfig.liftForce * 1.2,
-      GameConfig.maxFallSpeed * fallMult,
-    );
-
-    // ── Horizontal ───────────────────────────────────────────────────────────
+    // Thermal lift bonus from wind lane.
     final normX = position.x / GameConfig.designWidth;
     final laneIndex = wind.laneForNormX(normX);
     final laneWind = wind.windAt(laneIndex);
+    if (laneWind.type == WindType.thermal) {
+      _velocityY -= laneWind.liftBonus * dt;
+    }
 
-    // Turbulence reduces horizontal control.
+    // Clamp velocity range.
+    _velocityY = _velocityY.clamp(
+      GameConfig.liftSnapKick * 1.8, // max upward speed matches snap burst
+      GameConfig.maxFallSpeed * fallMult,
+    );
+
+    // ── Horizontal Physics ────────────────────────────────────────────────────
+
     final controlMult = wind.isInTurbulence(normX)
         ? (1.0 - GameConfig.turbulenceControlReduction)
         : 1.0;
@@ -210,52 +301,110 @@ class PlaneComponent extends PositionComponent
         controlMult *
         sensitivity;
 
-    // Apply wind lateral push.
-    final windContrib = laneWind.lateralForce;
+    _velocityX = MathUtils.lerp(
+        _velocityX, targetVX + laneWind.lateralForce, 0.18);
 
-    // Thermal lift bonus.
-    if (laneWind.type == WindType.thermal) {
-      _velocityY -= laneWind.liftBonus * dt;
-    }
+    // ── Integrate Position ────────────────────────────────────────────────────
 
-    _velocityX = MathUtils.lerp(_velocityX, targetVX + windContrib, 0.18);
-
-    // ── Integrate Position ───────────────────────────────────────────────────
     position.x += _velocityX * dt;
     position.y += _velocityY * dt;
 
-    // Clamp horizontal to screen bounds.
     position.x = position.x.clamp(
       GameConfig.horizontalEdgeMargin,
       GameConfig.designWidth - GameConfig.horizontalEdgeMargin,
     );
 
-    // ── Fail State: fell off bottom ───────────────────────────────────────────
+    // ── Fail State ────────────────────────────────────────────────────────────
+
     if (position.y > GameConfig.designHeight + size.y) {
       game.onPlaneCrash();
       return;
     }
 
-    // ── Visual Rotation ───────────────────────────────────────────────────────
-    // Wing fold: smoothly sweep wings in (1.0) when holding, spread (0.0) on release.
-    _wingFold = MathUtils.lerp(
-      _wingFold,
-      input.isHolding ? 1.0 : 0.0,
-      0.14,
+    // ── Visual Rotation (Task 3) ───────────────────────────────────────────────
+
+    _updateRotation();
+
+    // ── Wing Fold ─────────────────────────────────────────────────────────────
+
+    // Snappier lerp (0.20) vs original 0.14.
+    _wingFold = MathUtils.lerp(_wingFold, isHolding ? 1.0 : 0.0, 0.20);
+
+    // ── Edge Tracking ─────────────────────────────────────────────────────────
+
+    _wasHolding = isHolding;
+  }
+
+  // ── Rotation Update (Task 3) ──────────────────────────────────────────────
+
+  void _updateRotation() {
+    // Adaptive pitch lerp: responds faster when velocity is changing quickly.
+    final pitchLerpT = MathUtils.remap(
+      _velocityY.abs(),
+      0,
+      GameConfig.maxFallSpeed,
+      0.06,
+      0.18,
     );
 
-    _pitchAngle = MathUtils.lerp(
-      _pitchAngle,
-      MathUtils.remap(_velocityY, -GameConfig.liftForce, GameConfig.maxFallSpeed, -0.35, 0.45),
-      0.12,
+    // Pitch target: nose-up when climbing, nose-down when falling.
+    // Slightly wider range than original for more expressive feel.
+    double pitchTarget = MathUtils.remap(
+      _velocityY,
+      GameConfig.liftCruiseSpeed, // full climb speed → max nose-up
+      GameConfig.maxFallSpeed,    // max fall speed  → max nose-down
+      -0.42,
+      0.52,
     );
-    _bankAngle = MathUtils.lerp(
-      _bankAngle,
-      MathUtils.remap(_velocityX, -GameConfig.maxTiltSpeed, GameConfig.maxTiltSpeed, -0.2, 0.2),
-      0.10,
+
+    // Glide arc nose-up bias: plane "floats" with nose slightly raised while
+    // coasting upward — the most characteristic paper-plane moment.
+    if (_glideArcActive && _velocityY < 0) {
+      pitchTarget += GameConfig.glideNoseUpBias;
+    }
+
+    _pitchAngle = MathUtils.lerp(_pitchAngle, pitchTarget, pitchLerpT);
+
+    // Adaptive bank lerp.
+    final bankLerpT = MathUtils.remap(
+      _velocityX.abs(),
+      0,
+      GameConfig.maxTiltSpeed,
+      0.07,
+      0.16,
     );
+
+    final bankTarget = MathUtils.remap(
+      _velocityX,
+      -GameConfig.maxTiltSpeed,
+      GameConfig.maxTiltSpeed,
+      -0.22,
+      0.22,
+    );
+
+    _bankAngle = MathUtils.lerp(_bankAngle, bankTarget, bankLerpT);
 
     angle = _pitchAngle + _bankAngle;
+  }
+
+  // ── Wing Squish Effect (Task 4) ────────────────────────────────────────────
+
+  void _playHoldKickEffect() {
+    // Remove any in-progress squish to prevent stacking.
+    children.whereType<ScaleEffect>().toList().forEach(remove);
+
+    // Brief wing-compression squish: slight X spread + Y compress, springs back.
+    add(
+      ScaleEffect.by(
+        Vector2(1.06, GameConfig.wingSquishScaleY),
+        EffectController(
+          duration: GameConfig.wingSquishDuration / 2,
+          reverseDuration: GameConfig.wingSquishDuration / 2,
+          curve: Curves.easeOut,
+          reverseCurve: Curves.easeIn,
+        ),
+      ),
+    );
   }
 
   // ── Collision ─────────────────────────────────────────────────────────────
@@ -266,9 +415,8 @@ class PlaneComponent extends PositionComponent
     PositionComponent other,
   ) {
     super.onCollisionStart(intersectionPoints, other);
-    // Obstacle hits are handled by ObstacleComponent calling game.onPlaneCrash()
-    // directly, so we only need to handle power-up / coin collisions here.
-    // Those components check the collision themselves via onCollisionStart.
+    // Obstacle hits handled by ObstacleComponent → game.onPlaneCrash() directly.
+    // Power-up / coin collisions handled by those components' onCollisionStart.
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -280,11 +428,17 @@ class PlaneComponent extends PositionComponent
     _pitchAngle = 0;
     _bankAngle = 0;
     _wingFold = 0;
+    _wasHolding = false;
+    _glideArcActive = false;
+    _oscillationPhase = 0;
+    _oscillationStrength = 0;
     angle = 0;
     position = Vector2(
       GameConfig.designWidth * GameConfig.planeStartX,
       GameConfig.designHeight * GameConfig.planeStartY,
     );
+
+    _trail.clear();
 
     // Remove any lingering effects.
     children.whereType<Effect>().toList().forEach(remove);
@@ -295,7 +449,14 @@ class PlaneComponent extends PositionComponent
     _velocityY = 0;
     _velocityX = 0;
     _wingFold = 0;
+    _wasHolding = false;
+    _glideArcActive = false;
+    _oscillationPhase = 0;
+    _oscillationStrength = 0;
     position.y = GameConfig.designHeight * 0.5;
+
+    _trail.clear();
+
     // Brief invincibility flash.
     add(
       OpacityEffect.fadeOut(
@@ -309,7 +470,6 @@ class PlaneComponent extends PositionComponent
   }
 
   void playShieldHitAnimation() {
-    // Quick scale bounce to signal a blocked hit.
     add(
       ScaleEffect.by(
         Vector2.all(1.25),

@@ -53,6 +53,75 @@ abstract class GameConfig {
   /// Plane collision box as fraction of sprite size.
   static const double planeHitboxScale = 0.55;
 
+  // ── Enhanced Flight Physics ───────────────────────────────────────────────
+  // Feel target: hold = snappy upward kick that settles into a steady climb;
+  // release = ~0.4–0.6 s of upward coast before the plane curves naturally
+  // downward, like a real paper plane thrown and let go.
+
+  /// Instant upward velocity set (px/s, negative = up) applied on the very
+  /// first frame of a hold press. Creates the "snappy kick" feel.
+  static const double liftSnapKick = -185.0;
+
+  /// Terminal climb speed (px/s, negative = up) that the velocity
+  /// exponentially decays toward while holding after the snap kick.
+  static const double liftCruiseSpeed = -265.0;
+
+  /// Exponential decay rate for blending snap kick → cruise speed.
+  /// Used as lerp t = liftKickDecayRate × dt each frame.
+  static const double liftKickDecayRate = 7.0;
+
+  /// Fraction of upward velocity preserved at the moment of release.
+  /// 1.0 = full momentum kept; 0.0 = immediate transition to gravity.
+  static const double glideArcPreservation = 0.72;
+
+  /// Gravity multiplier during the glide arc phase (lighter than full gravity).
+  /// Gives the "coast" feel before the natural dive takes over.
+  static const double glideGravityScale = 0.50;
+
+  /// Gravity multiplier once the glide arc is exhausted (normal fall).
+  static const double fullGravityScale = 1.0;
+
+  /// Sinusoidal bob amplitude added to vertical velocity (px/s).
+  /// Gives the natural undulation of a paper plane riding air.
+  /// ±22 px/s is subtle and perceptible but not distracting.
+  static const double oscillationAmplitude = 22.0;
+
+  /// Oscillation frequency in cycles per second (Hz).
+  static const double oscillationFrequency = 1.1;
+
+  /// Rate at which oscillation ramps up after release (strength units/s).
+  /// Prevents a jarring jump to full oscillation immediately on release.
+  static const double oscillationFadeInRate = 2.5;
+
+  /// Nose-up pitch bias (radians) added while glide arc is active and
+  /// the plane is still moving upward — gives that "float" moment.
+  static const double glideNoseUpBias = 0.09;
+
+  // ── Wing Squish Effect ────────────────────────────────────────────────────
+
+  /// Scale Y at peak squish when hold is pressed (< 1.0 = compressed).
+  static const double wingSquishScaleY = 0.82;
+
+  /// Total duration (seconds) of the squish-in + spring-back cycle.
+  static const double wingSquishDuration = 0.12;
+
+  // ── Plane Trail ───────────────────────────────────────────────────────────
+
+  /// Number of position samples kept in the trail history.
+  static const int trailLength = 18;
+
+  /// Seconds between trail position samples.
+  static const double trailSampleInterval = 0.030;
+
+  /// Maximum alpha of the trail at its head (0.0–1.0).
+  static const double trailHeadAlpha = 0.38;
+
+  /// Stroke width at the trail head (px).
+  static const double trailHeadWidth = 2.6;
+
+  /// Stroke width at the trail tail (px).
+  static const double trailTailWidth = 0.5;
+
   // ── Wind ────────────────────────────────────────────────────────────────
   /// Number of wind column lanes across screen width.
   static const int windLaneCount = 4;
