@@ -55,6 +55,60 @@ class SaveData extends HiveObject {
   @HiveField(13)
   int dailyLoginStreak;
 
+  // ── Paper Skins (Task 7) ──────────────────────────────────────────────────
+
+  /// Unlocked PaperSkin indices.
+  @HiveField(14)
+  List<int> unlockedSkinIndices;
+
+  /// Equipped PaperSkin index.
+  @HiveField(15)
+  int equippedSkinIndex;
+
+  // ── Daily Challenges ──────────────────────────────────────────────────────
+
+  /// Midnight epoch ms of the active daily set.
+  @HiveField(16)
+  int lastDailyChallengeMs;
+
+  /// Active daily challenge definition ids (size = dailyChallengeCount).
+  @HiveField(17)
+  List<int> dailyChallengeIds;
+
+  /// Progress counters parallel to [dailyChallengeIds].
+  @HiveField(18)
+  List<int> dailyChallengeProgress;
+
+  /// Completed flags parallel to [dailyChallengeIds].
+  @HiveField(19)
+  List<bool> dailyChallengeCompleted;
+
+  /// Claimed flags parallel to [dailyChallengeIds].
+  @HiveField(20)
+  List<bool> dailyChallengeClaimed;
+
+  // ── Weekly Challenges ─────────────────────────────────────────────────────
+
+  /// Monday midnight epoch ms of the active weekly set.
+  @HiveField(21)
+  int lastWeeklyChallengeMs;
+
+  /// Active weekly challenge definition ids.
+  @HiveField(22)
+  List<int> weeklyChallengeIds;
+
+  /// Progress counters parallel to [weeklyChallengeIds].
+  @HiveField(23)
+  List<int> weeklyChallengeProgress;
+
+  /// Completed flags parallel to [weeklyChallengeIds].
+  @HiveField(24)
+  List<bool> weeklyChallengeCompleted;
+
+  /// Claimed flags parallel to [weeklyChallengeIds].
+  @HiveField(25)
+  List<bool> weeklyChallengeClaimed;
+
   SaveData({
     this.coins = 0,
     this.gems = 0,
@@ -70,7 +124,28 @@ class SaveData extends HiveObject {
     this.isFirstSession = true,
     this.lastDailyLoginMs = 0,
     this.dailyLoginStreak = 0,
-  }) : unlockedPlaneIndices = unlockedPlaneIndices ?? [0]; // dart always unlocked
+    List<int>? unlockedSkinIndices,
+    this.equippedSkinIndex = 0, // PaperSkin.plain is index 0 — always free
+    this.lastDailyChallengeMs = 0,
+    List<int>? dailyChallengeIds,
+    List<int>? dailyChallengeProgress,
+    List<bool>? dailyChallengeCompleted,
+    List<bool>? dailyChallengeClaimed,
+    this.lastWeeklyChallengeMs = 0,
+    List<int>? weeklyChallengeIds,
+    List<int>? weeklyChallengeProgress,
+    List<bool>? weeklyChallengeCompleted,
+    List<bool>? weeklyChallengeClaimed,
+  })  : unlockedPlaneIndices = unlockedPlaneIndices ?? [0],
+        unlockedSkinIndices = unlockedSkinIndices ?? [0],
+        dailyChallengeIds = dailyChallengeIds ?? [],
+        dailyChallengeProgress = dailyChallengeProgress ?? [],
+        dailyChallengeCompleted = dailyChallengeCompleted ?? [],
+        dailyChallengeClaimed = dailyChallengeClaimed ?? [],
+        weeklyChallengeIds = weeklyChallengeIds ?? [],
+        weeklyChallengeProgress = weeklyChallengeProgress ?? [],
+        weeklyChallengeCompleted = weeklyChallengeCompleted ?? [],
+        weeklyChallengeClaimed = weeklyChallengeClaimed ?? [];
 
   /// Returns a fresh default save for a new installation.
   factory SaveData.fresh() => SaveData();

@@ -103,6 +103,12 @@ extension ObstacleLabel on ObstacleType {
         return 'kite';
     }
   }
+
+  /// True for organic/nature obstacles — used by Crane's brush-off.
+  bool get isOrganic => this == ObstacleType.treeBranch;
+
+  /// True for building gap obstacles — used for challenge tracking.
+  bool get isBuildingGap => this == ObstacleType.building;
 }
 
 // ── Power-ups ─────────────────────────────────────────────────────────────────
@@ -150,9 +156,11 @@ extension PowerUpLabel on PowerUpType {
 // ── Plane Types ───────────────────────────────────────────────────────────────
 
 enum PlaneType {
-  dart,      // starter, balanced
-  glider,    // wider turn radius, gentle drift — coin earner
-  stuntFold, // tighter turn radius, slightly higher fall speed — skill plane
+  dart,       // starter, balanced + distance bonus
+  glider,     // wider turn radius, gentle drift — coin earner + thermals
+  stuntFold,  // tighter turn radius, slightly higher fall speed — skill plane
+  crane,      // origami crane — forgives one tree branch per run
+  stealthJet, // stealth jet — tiny hitbox, fast dive recovery
 }
 
 extension PlaneLabel on PlaneType {
@@ -164,6 +172,10 @@ extension PlaneLabel on PlaneType {
         return 'Glider Fold';
       case PlaneType.stuntFold:
         return 'Stunt Fold';
+      case PlaneType.crane:
+        return 'Origami Crane';
+      case PlaneType.stealthJet:
+        return 'Stealth Jet';
     }
   }
 
@@ -175,6 +187,58 @@ extension PlaneLabel on PlaneType {
         return 'glider';
       case PlaneType.stuntFold:
         return 'stunt_fold';
+      case PlaneType.crane:
+        return 'crane';
+      case PlaneType.stealthJet:
+        return 'stealth_jet';
+    }
+  }
+
+  /// One-line flavour for the hangar card.
+  String get tagline {
+    switch (this) {
+      case PlaneType.dart:
+        return 'Reliable starter — +15% distance score';
+      case PlaneType.glider:
+        return 'Floats longer, attracts coins, +20% thermal';
+      case PlaneType.stuntFold:
+        return 'Snappy turns, double snap, +50% near-miss';
+      case PlaneType.crane:
+        return 'Graceful — 1 free tree branch brush-off';
+      case PlaneType.stealthJet:
+        return 'Slim hitbox, dives recover instantly';
+    }
+  }
+
+  /// Short trait bullets for hangar detail sheet.
+  List<String> get traitBullets {
+    switch (this) {
+      case PlaneType.dart:
+        return ['+15% distance score', 'Balanced handling', 'BOOST burst'];
+      case PlaneType.glider:
+        return [
+          'Weak coin attraction',
+          'Wider glide arc',
+          '+20% thermal float',
+        ];
+      case PlaneType.stuntFold:
+        return [
+          'Snappy turns',
+          '2× snap recharge',
+          '+50% near-miss score',
+        ];
+      case PlaneType.crane:
+        return [
+          '1 free tree brush-off / run',
+          'Gentle fall curve',
+          'Forgives organic branches',
+        ];
+      case PlaneType.stealthJet:
+        return [
+          'Smaller hitbox (~24% tighter)',
+          'Faster dive recovery',
+          'Enhanced wind control',
+        ];
     }
   }
 
@@ -187,6 +251,23 @@ extension PlaneLabel on PlaneType {
         return 500;
       case PlaneType.stuntFold:
         return 1200;
+      case PlaneType.crane:
+        return 1800;
+      case PlaneType.stealthJet:
+        return 3000;
+    }
+  }
+
+  /// Gem cost to unlock (premium planes may require gems alongside coins).
+  int get unlockGemCost {
+    switch (this) {
+      case PlaneType.dart:
+      case PlaneType.glider:
+      case PlaneType.stuntFold:
+      case PlaneType.crane:
+        return 0;
+      case PlaneType.stealthJet:
+        return 5;
     }
   }
 
@@ -199,6 +280,10 @@ extension PlaneLabel on PlaneType {
         return 0.85; // gentler turns
       case PlaneType.stuntFold:
         return 1.15; // snappier
+      case PlaneType.crane:
+        return 0.95; // graceful, slightly soft
+      case PlaneType.stealthJet:
+        return 1.10; // responsive but not twitchy
     }
   }
 
@@ -210,6 +295,20 @@ extension PlaneLabel on PlaneType {
         return 0.90; // slightly slower fall
       case PlaneType.stuntFold:
         return 1.10; // slightly faster fall
+      case PlaneType.crane:
+        return 0.88; // lightest — hangs in air
+      case PlaneType.stealthJet:
+        return 1.05; // recovers quickly, not plummeting
+    }
+  }
+
+  /// Per-plane hitbox scale override (null → use global default).
+  double? get hitboxScaleOverride {
+    switch (this) {
+      case PlaneType.stealthJet:
+        return GameConfig.stealthHitboxScale;
+      default:
+        return null;
     }
   }
 }
@@ -222,14 +321,15 @@ extension PlaneLabel on PlaneType {
 extension PlanePowerUp on PlaneType {
   /// True when this plane's signature action is the paper-snap BOOST burst
   /// (charge-based, no timer) rather than a timed power-up.
-  bool get usesBoostAsSignatureAction => this == PlaneType.dart;
+  bool get usesBoostAsSignatureAction => this == PlaneType.dart || this == PlaneType.crane;
 
   /// The timed power-up this plane carries. Only meaningful when
-  /// [usesBoostAsSignatureAction] is false (the dart falls back to BOOST).
+  /// [usesBoostAsSignatureAction] is false (the dart/crane fall back to BOOST).
   PowerUpType get signaturePowerUp {
     switch (this) {
       case PlaneType.dart:
-        // Unused (dart fires the BOOST burst) — kept for exhaustiveness.
+      case PlaneType.crane:
+        // Unused (fires BOOST burst) — kept for exhaustiveness.
         return PowerUpType.magnet;
       case PlaneType.glider:
         // Coin-earner: pull nearby coins toward the plane.
@@ -237,8 +337,144 @@ extension PlanePowerUp on PlaneType {
       case PlaneType.stuntFold:
         // Skill plane: phase through obstacles.
         return PowerUpType.ghost;
+      case PlaneType.stealthJet:
+        // Speed plane: briefly slow the world to thread gaps.
+        return PowerUpType.slowMo;
     }
   }
+
+  /// Ability summary for tooltips.
+  String get signatureActionLabel {
+    if (usesBoostAsSignatureAction) return 'BOOST burst';
+    return signaturePowerUp.displayName;
+  }
+}
+
+// ── Paper Skins ───────────────────────────────────────────────────────────────
+
+enum PaperSkin {
+  plain,          // default white
+  newspaper,      // newspaper print
+  graphPaper,     // light blue grid
+  notebookDoodle, // ruled paper + doodles
+  holographicFoil,// iridescent foil
+  watercolorWash, // pastel wash
+  goldLeaf,       // metallic gold
+}
+
+extension PaperSkinLabel on PaperSkin {
+  String get displayName {
+    switch (this) {
+      case PaperSkin.plain:
+        return 'Plain Paper';
+      case PaperSkin.newspaper:
+        return 'Newspaper Print';
+      case PaperSkin.graphPaper:
+        return 'Graph Paper';
+      case PaperSkin.notebookDoodle:
+        return 'Notebook Doodle';
+      case PaperSkin.holographicFoil:
+        return 'Holographic Foil';
+      case PaperSkin.watercolorWash:
+        return 'Watercolor Wash';
+      case PaperSkin.goldLeaf:
+        return 'Gold Leaf';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case PaperSkin.plain:
+        return 'Classic white — clean and crisp';
+      case PaperSkin.newspaper:
+        return 'Vintage newsprint with headlines';
+      case PaperSkin.graphPaper:
+        return 'Engineer\'s blue grid';
+      case PaperSkin.notebookDoodle:
+        return 'Ruled lines + margin doodles';
+      case PaperSkin.holographicFoil:
+        return 'Shimmering iridescent foil';
+      case PaperSkin.watercolorWash:
+        return 'Soft pastel watercolor';
+      case PaperSkin.goldLeaf:
+        return 'Luxurious metallic gold';
+    }
+  }
+
+  int get unlockCostCoins {
+    switch (this) {
+      case PaperSkin.plain:
+        return 0;
+      case PaperSkin.newspaper:
+        return 750;
+      case PaperSkin.graphPaper:
+        return 600;
+      case PaperSkin.notebookDoodle:
+        return 900;
+      case PaperSkin.holographicFoil:
+        return 2000;
+      case PaperSkin.watercolorWash:
+        return 1200;
+      case PaperSkin.goldLeaf:
+        return 3000;
+    }
+  }
+
+  int get unlockCostGems {
+    switch (this) {
+      case PaperSkin.plain:
+      case PaperSkin.newspaper:
+      case PaperSkin.graphPaper:
+      case PaperSkin.notebookDoodle:
+        return 0;
+      case PaperSkin.holographicFoil:
+        return 3;
+      case PaperSkin.watercolorWash:
+        return 0;
+      case PaperSkin.goldLeaf:
+        return 8;
+    }
+  }
+
+  /// Primary tint for procedural rendering.
+  int get baseColorHex {
+    switch (this) {
+      case PaperSkin.plain:
+        return 0xFFF5A623;
+      case PaperSkin.newspaper:
+        return 0xFFE8E0D0;
+      case PaperSkin.graphPaper:
+        return 0xFFB8E0F0;
+      case PaperSkin.notebookDoodle:
+        return 0xFFFFF8E1;
+      case PaperSkin.holographicFoil:
+        return 0xFFCE93D8;
+      case PaperSkin.watercolorWash:
+        return 0xFFB2EBF2;
+      case PaperSkin.goldLeaf:
+        return 0xFFFFD700;
+    }
+  }
+}
+
+// ── Challenge System ────────────────────────────────────────────────────────
+
+enum ChallengePeriod { daily, weekly }
+
+enum ChallengeType {
+  rideThermalsSingleRun,   // e.g. ride 3 thermals in one run
+  coinComboInBiome,        // e.g. 8× combo in Storm
+  skyscraperGapsNoPowerUp, // e.g. 10 building gaps without power-up
+  collectCoinsSingleRun,   // e.g. 50 coins in one run
+  collectCoinsTotal,       // cumulative coins
+  nearMissesSingleRun,     // e.g. 5 near misses in one run
+  nearMissesTotal,         // cumulative
+  travelDistanceSingleRun, // e.g. 1500m in one run
+  travelDistanceTotal,     // cumulative weekly
+  surviveRuns,             // play N runs
+  usePowerUps,             // use N power-ups
+  buildingGapsTotal,       // cumulative gaps
+  rideThermalsTotal,       // cumulative thermals
 }
 
 // ── Wind ─────────────────────────────────────────────────────────────────────

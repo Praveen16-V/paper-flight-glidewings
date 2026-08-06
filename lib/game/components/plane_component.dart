@@ -45,6 +45,7 @@ class PlaneComponent extends PositionComponent
   PlaneComponent({
     required this.game,
     required this.planeType,
+    this.paperSkin = PaperSkin.plain,
   }) : super(
           size: Vector2(48, 32),
           anchor: Anchor.center,
@@ -52,6 +53,7 @@ class PlaneComponent extends PositionComponent
 
   final PaperFlightGame game;
   PlaneType planeType;
+  PaperSkin paperSkin;
 
   // ── Physics State ──────────────────────────────────────────────────────────
 
@@ -109,8 +111,9 @@ class PlaneComponent extends PositionComponent
     _trail = PlaneTrailComponent(plane: this);
     add(_trail);
 
-    // Hitbox — scaled smaller than sprite for forgiving collisions.
-    final hbSize = size * GameConfig.planeHitboxScale;
+    // Hitbox — per-plane override for Stealth Jet.
+    final scale = planeType.hitboxScaleOverride ?? GameConfig.planeHitboxScale;
+    final hbSize = size * scale;
     _hitbox = RectangleHitbox(
       size: hbSize,
       position: (size - hbSize) / 2,
@@ -120,12 +123,31 @@ class PlaneComponent extends PositionComponent
     await super.onLoad();
   }
 
+  /// Update hitbox when plane type changes (hangar equip).
+  void syncHitboxForPlaneType(PlaneType newType) {
+    planeType = newType;
+    final scale = newType.hitboxScaleOverride ?? GameConfig.planeHitboxScale;
+    final hbSize = size * scale;
+    _hitbox.size = hbSize;
+    _hitbox.position = (size - hbSize) / 2;
+  }
+
+  /// Update skin at runtime (hangar equip).
+  void syncSkin(PaperSkin newSkin) {
+    paperSkin = newSkin;
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   @override
   void render(Canvas canvas) {
+    final baseColor = Color(paperSkin.baseColorHex);
+    // Plain keeps classic gold; other skins tint the plane.
+    final Color planeColor = paperSkin == PaperSkin.plain
+        ? const Color(0xFFF5A623)
+        : baseColor;
     final paint = Paint()
-      ..color = const Color(0xFFF5A623) // accent gold
+      ..color = planeColor
       ..style = PaintingStyle.fill;
     final shadowPaint = Paint()
       ..color = const Color(0x33000000)
@@ -149,7 +171,7 @@ class PlaneComponent extends PositionComponent
     // Shadow offset.
     canvas.save();
     canvas.translate(1.5, 2.5);
-    _drawPlaneShape(canvas, shadowPaint, w, h, _wingFold);
+    _drawPlaneShape(canvas, shadowPaint, w, h, _wingFold, isShadow: true);
     canvas.restore();
 
     _drawPlaneShape(canvas, paint, w, h, _wingFold);
@@ -176,6 +198,9 @@ class PlaneComponent extends PositionComponent
       canvas.drawCircle(Offset(w / 2, h / 2 - 55), 82, lamp);
     }
 
+    // Paper-skin overlay patterns (subtle, drawn on top of plane but under effects)
+    _drawSkinOverlay(canvas, w, h);
+
     // Power-up overlay visuals, drawn in screen space around the plane on top
     // of children (trail) so bubbles/auras read clearly.
     if (_ghostActive) _drawGhostShimmer(canvas, w, h);
@@ -185,6 +210,102 @@ class PlaneComponent extends PositionComponent
 
     // Snap charge ring — always visible during playing phase.
     _drawSnapChargeRing(canvas, w, h);
+  }
+
+  void _drawSkinOverlay(Canvas canvas, double w, double h) {
+    // Only draw for non-plain skins; plain already looks classic.
+    if (paperSkin == PaperSkin.plain) return;
+    final pulse = sin(_ghostFlickerPhase * 0.5) * 0.08 + 0.92;
+    switch (paperSkin) {
+      case PaperSkin.plain:
+        break;
+      case PaperSkin.newspaper:
+        // Newspaper: faint horizontal lines + tiny text dots
+        final linePaint = Paint()
+          ..color = const Color(0xFF5D4037).withOpacity(0.18 * pulse)
+          ..strokeWidth = 0.6;
+        for (double y = h * 0.25; y < h * 0.85; y += 3.5) {
+          canvas.drawLine(Offset(w * 0.2, y), Offset(w * 0.85, y), linePaint);
+        }
+        break;
+      case PaperSkin.graphPaper:
+        final gridPaint = Paint()
+          ..color = const Color(0xFF0288D1).withOpacity(0.20)
+          ..strokeWidth = 0.5;
+        for (double x = w * 0.15; x < w; x += 7) {
+          canvas.drawLine(Offset(x, h * 0.2), Offset(x, h * 0.8), gridPaint);
+        }
+        for (double y = h * 0.25; y < h * 0.85; y += 7) {
+          canvas.drawLine(Offset(w * 0.15, y), Offset(w * 0.9, y), gridPaint);
+        }
+        break;
+      case PaperSkin.notebookDoodle:
+        final linePaint = Paint()
+          ..color = const Color(0xFF4FC3F7).withOpacity(0.35)
+          ..strokeWidth = 0.7;
+        for (double y = h * 0.3; y < h * 0.8; y += 6) {
+          canvas.drawLine(Offset(w * 0.18, y), Offset(w * 0.88, y), linePaint);
+        }
+        // Red margin
+        final marginPaint = Paint()
+          ..color = const Color(0xFFFF5252).withOpacity(0.5)
+          ..strokeWidth = 1.0;
+        canvas.drawLine(Offset(w * 0.25, h * 0.18), Offset(w * 0.25, h * 0.82), marginPaint);
+        // Tiny doodle star
+        final doodlePaint = Paint()
+          ..color = const Color(0xFF5D4037).withOpacity(0.22)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.9;
+        canvas.drawCircle(Offset(w * 0.75, h * 0.35), 3.5 * pulse, doodlePaint);
+        break;
+      case PaperSkin.holographicFoil:
+        final foilPaint = Paint()
+          ..shader = LinearGradient(
+            colors: [
+              const Color(0xFFE040FB).withOpacity(0.22),
+              const Color(0xFF00E5FF).withOpacity(0.22),
+              const Color(0xFF76FF03).withOpacity(0.22),
+            ],
+          ).createShader(Rect.fromLTWH(0, 0, w, h))
+          ..style = PaintingStyle.fill;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: Offset(w / 2, h / 2), width: w * 0.92, height: h * 0.72),
+            const Radius.circular(6),
+          ),
+          foilPaint,
+        );
+        break;
+      case PaperSkin.watercolorWash:
+        final washPaint = Paint()
+          ..color = const Color(0xFF80DEEA).withOpacity(0.18 + 0.07 * sin(_ghostFlickerPhase * 0.4))
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4)
+          ..style = PaintingStyle.fill;
+        canvas.drawCircle(Offset(w * 0.55, h * 0.45), 14 * pulse, washPaint);
+        canvas.drawCircle(Offset(w * 0.4, h * 0.6), 9, washPaint);
+        break;
+      case PaperSkin.goldLeaf:
+        final goldPaint = Paint()
+          ..color = const Color(0xFFFFD700).withOpacity(0.28 * pulse)
+          ..style = PaintingStyle.fill;
+        // Small flecks
+        canvas.drawCircle(Offset(w * 0.3, h * 0.4), 2.2, goldPaint);
+        canvas.drawCircle(Offset(w * 0.65, h * 0.52), 1.8, goldPaint);
+        canvas.drawCircle(Offset(w * 0.5, h * 0.7), 1.4, goldPaint);
+        // Rim glow
+        final rim = Paint()
+          ..color = const Color(0xFFFFD700).withOpacity(0.18)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: Offset(w / 2, h / 2), width: w * 0.96, height: h * 0.76),
+            const Radius.circular(5),
+          ),
+          rim,
+        );
+        break;
+    }
   }
 
   /// Shimmering cyan ghost outline + small drift wisps while phasing.
@@ -298,8 +419,6 @@ class PlaneComponent extends PositionComponent
       );
     }
 
-    // (charges==0 case still draws background + partial sweep above; no extra dot needed)
-
     // Flash the ring briefly when a snap was just used — scale via phase.
     if (_snapFlashTimer > 0) {
       final f = (_snapFlashTimer / 0.2).clamp(0.0, 1.0);
@@ -348,34 +467,60 @@ class PlaneComponent extends PositionComponent
   /// Local-space: nose tip at (w, h/2), tail at left edge.
   /// [wingFold] 0 = wings spread (gliding), 1 = wings folded (holding).
   void _drawPlaneShape(
-      Canvas canvas, Paint paint, double w, double h, double wingFold) {
+      Canvas canvas, Paint paint, double w, double h, double wingFold,
+      {bool isShadow = false}) {
     final spreadY = h * 0.08;
     final topWingY =
         (h * 0.15) * (1.0 - wingFold) - spreadY * (1.0 - wingFold);
     final botWingY =
         h - (h * 0.15) * (1.0 - wingFold) + spreadY * (1.0 - wingFold);
 
+    // Plane-variant silhouette tweaks
+    double noseExtra = 0;
+    double wingSweep = 0;
+    if (planeType == PlaneType.glider) {
+      // Glider: slightly longer, broader wings
+      noseExtra = w * 0.06;
+      wingSweep = h * 0.06;
+    } else if (planeType == PlaneType.stealthJet) {
+      // Stealth: sharper, more swept delta
+      noseExtra = w * 0.08;
+      wingSweep = -h * 0.04;
+    } else if (planeType == PlaneType.crane) {
+      // Crane: softer, more folded crane-like
+      noseExtra = -w * 0.04;
+    }
+
     final bodyPath = Path()
-      ..moveTo(w, h / 2)
+      ..moveTo(w + noseExtra, h / 2)
       ..lineTo(w * 0.3, h / 2)
       ..lineTo(0, h / 2)
       ..close();
 
     final upperWing = Path()
-      ..moveTo(w, h / 2)
+      ..moveTo(w + noseExtra, h / 2)
       ..lineTo(w * 0.3, h / 2)
-      ..lineTo(0, topWingY)
+      ..lineTo(0, topWingY - wingSweep)
       ..close();
 
     final lowerWing = Path()
-      ..moveTo(w, h / 2)
+      ..moveTo(w + noseExtra, h / 2)
       ..lineTo(w * 0.3, h / 2)
-      ..lineTo(0, botWingY)
+      ..lineTo(0, botWingY + wingSweep)
       ..close();
 
     canvas.drawPath(upperWing, paint);
     canvas.drawPath(lowerWing, paint);
     canvas.drawPath(bodyPath, paint);
+
+    // Gold leaf / holographic pick up a little highlight only when not shadow
+    if (!isShadow && (paperSkin == PaperSkin.goldLeaf || paperSkin == PaperSkin.holographicFoil)) {
+      final hl = Paint()
+        ..color = Colors.white.withOpacity(0.18)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.9;
+      canvas.drawPath(upperWing, hl);
+    }
   }
 
   // ── Update ─────────────────────────────────────────────────────────────────
@@ -388,6 +533,7 @@ class PlaneComponent extends PositionComponent
     final input = game.inputManager;
     final wind = game.windSystem;
     final sensitivity = game.inputManager.currentSensitivity;
+    // Apply per-plane fall multiplier
     final fallMult = planeType.fallSpeedMultiplier;
 
     final isHolding = input.isHolding;
@@ -445,10 +591,19 @@ class PlaneComponent extends PositionComponent
         _oscillationStrength = 0.0;
       }
 
+      // Glider gets a wider, floatier arc via lighter glide gravity
+      final glideScale = planeType == PlaneType.glider
+          ? GameConfig.glideGravityScale * GameConfig.gliderGlideGravityFactor
+          : GameConfig.glideGravityScale;
+      // Stealth dive recovery: less gravity when falling fast
+      final diveRecoveryScale = (planeType == PlaneType.stealthJet && _velocityY > 60)
+          ? GameConfig.stealthDiveRecoveryGravityScale
+          : 1.0;
+
       if (_glideArcActive) {
         // Lighter gravity during the upward coast.
         _velocityY +=
-            GameConfig.gravity * GameConfig.glideGravityScale * fallMult * wind.profile.gravity * dt;
+            GameConfig.gravity * glideScale * fallMult * wind.profile.gravity * diveRecoveryScale * dt;
 
         // Ramp oscillation up from zero so it doesn't pop in jarringly.
         _oscillationStrength = (_oscillationStrength +
@@ -460,9 +615,10 @@ class PlaneComponent extends PositionComponent
           _glideArcActive = false;
         }
       } else {
-        // Full gravity fall.
+        // Full gravity fall — stealth recovers faster.
+        final fullScale = GameConfig.fullGravityScale * diveRecoveryScale;
         _velocityY +=
-            GameConfig.gravity * GameConfig.fullGravityScale * fallMult * wind.profile.gravity * dt;
+            GameConfig.gravity * fullScale * fallMult * wind.profile.gravity * dt;
 
         // Keep oscillation at full strength during free fall.
         _oscillationStrength =
@@ -488,16 +644,18 @@ class PlaneComponent extends PositionComponent
       _playSnapBurstEffect();
     }
 
-    // Thermal lift bonus from wind lane.
+    // Thermal lift bonus from wind lane — glider gets +20% float.
     final normX = position.x / GameConfig.designWidth;
     final laneIndex = wind.laneForNormX(normX);
     final laneWind = wind.windAt(laneIndex);
     final inThermal = laneWind.type == WindType.thermal;
     _inThermal = inThermal;
     if (inThermal) {
-      _velocityY -= laneWind.liftBonus * dt;
-      // (Task 6) The continuous wind-rush ambient in GameFeelSystem now
-      // provides the wind soundscape — no one-shot loop needed here.
+      double lift = laneWind.liftBonus;
+      if (planeType == PlaneType.glider) {
+        lift *= GameConfig.gliderThermalBonusMultiplier;
+      }
+      _velocityY -= lift * dt;
     }
 
     // Clamp velocity range.
@@ -511,7 +669,11 @@ class PlaneComponent extends PositionComponent
     final controlMult = wind.isInTurbulence(normX)
         ? (1.0 - GameConfig.turbulenceControlReduction)
         : 1.0;
-    final biomeControl = wind.profile.control;
+    double biomeControl = wind.profile.control;
+    // Stealth handles wind better
+    if (planeType == PlaneType.stealthJet) {
+      biomeControl *= GameConfig.stealthWindControlBonus;
+    }
 
     final turnMult = planeType.turnSpeedMultiplier;
     final baseSpeed = input.currentScheme == ControlScheme.joystick
@@ -816,6 +978,24 @@ class PlaneComponent extends PositionComponent
     _ghostFlickerPhase += pi; // flash brighter on phase
   }
 
+  /// Brief green swirl when Crane brushes off a branch.
+  void playBranchBrushAnimation() {
+    children.whereType<ScaleEffect>().toList().forEach(remove);
+    add(
+      ScaleEffect.by(
+        Vector2.all(1.18),
+        EffectController(duration: 0.07, reverseDuration: 0.12),
+      ),
+    );
+    // Spin a little
+    add(
+      RotateEffect.by(
+        0.45,
+        EffectController(duration: 0.08, reverseDuration: 0.08),
+      ),
+    );
+  }
+
   Vector2 get worldPosition => absolutePosition;
 
   /// Current lateral (X) velocity in px/s — used by the game-feel camera
@@ -829,7 +1009,8 @@ class PlaneComponent extends PositionComponent
   /// World-space axis-aligned rect of the collision hitbox — used by
   /// obstacles to compute hitbox-edge clearance for tiered near-misses.
   Rect get worldAabbRect {
-    final hbSize = size * GameConfig.planeHitboxScale;
+    final scale = planeType.hitboxScaleOverride ?? GameConfig.planeHitboxScale;
+    final hbSize = size * scale;
     return Rect.fromCenter(
       center: position.toOffset(),
       width: hbSize.x,

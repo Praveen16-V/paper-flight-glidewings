@@ -353,4 +353,51 @@ abstract class GameConfig {
 
   /// Paper-crease volume (0..1), multiplied by the SFX volume setting.
   static const double paperCreaseVolume = 0.5;
+
+  // ── Plane Signature Abilities (Task 7) ────────────────────────────────────
+
+  /// Paper Dart: +15% extra distance score.
+  static const double dartDistanceBonusMultiplier = 1.15;
+
+  /// Glider Fold: built-in weak coin attraction (smaller/slower than Magnet).
+  static const double gliderCoinAttractRadius = 95.0;
+  static const double gliderCoinAttractSpeed = 140.0;
+
+  /// Glider: wider glide arc → lighter glide gravity (20% floatier).
+  static const double gliderGlideGravityFactor = 0.80;
+
+  /// Glider: +20% longer thermal float (thermal lift bonus multiplier).
+  static const double gliderThermalBonusMultiplier = 1.20;
+
+  /// Stunt Fold: +50% score from near-misses.
+  static const double stuntNearMissMultiplier = 1.50;
+
+  /// Stunt Fold: double snap burst recharge speed.
+  static const double stuntSnapRechargeMultiplier = 2.0;
+
+  /// Stealth Jet: streamlined smaller hitbox and faster dive recovery.
+  static const double stealthHitboxScale = 0.42;
+  static const double stealthDiveRecoveryGravityScale = 0.88;
+  static const double stealthWindControlBonus = 1.08;
+
+  /// Origami Crane: free brush-offs against tree branches per run.
+  static const int craneBranchCharges = 1;
+
+  // ── Paper Skins ───────────────────────────────────────────────────────────
+  static const List<String> skinAssetHints = [
+    'Plain Paper',
+    'Newspaper Print',
+    'Graph Paper',
+    'Notebook Doodle',
+    'Holographic Foil',
+    'Watercolor Wash',
+    'Gold Leaf',
+  ];
+
+  // ── Challenges ─────────────────────────────────────────────────────────────
+  /// Daily: 3 challenges refreshed at midnight.
+  static const int dailyChallengeCount = 3;
+
+  /// Weekly: 3 challenges refreshed each Monday.
+  static const int weeklyChallengeCount = 3;
 }

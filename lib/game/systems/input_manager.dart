@@ -405,10 +405,17 @@ class InputManager extends Component {
       _snapRechargeProgress = 0.0;
       return;
     }
+    // Stunt Fold recharges twice as fast (Task 7).
+    double multiplier = 1.0;
+    try {
+      if (game.plane.planeType == PlaneType.stuntFold) {
+        multiplier = GameConfig.stuntSnapRechargeMultiplier;
+      }
+    } catch (_) {}
     // Recharge based on scroll progress (px → approximate meters via /10 internally,
     // but we keep original faster feel: px per second / rechargeMeters).
     // Use effective scroll distance this frame.
-    _snapRechargeProgress += game.scrollSpeed * dt * _snapRechargePerMeter;
+    _snapRechargeProgress += game.scrollSpeed * dt * _snapRechargePerMeter * multiplier;
     if (_snapRechargeProgress >= 1.0) {
       _snapCharges = (_snapCharges + 1).clamp(0, GameConfig.snapMaxCharges);
       _snapRechargeProgress = 0.0;

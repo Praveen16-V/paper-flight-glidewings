@@ -9,11 +9,15 @@ import '../paper_flight_game.dart';
 /// Owns all score calculation and pushes updates to [gameSessionProvider].
 ///
 /// Score formula (per GDD §6, extended for risk-reward design):
-///   distance_score   = distanceMeters × scorePerMeter
+///   distance_score   = distanceMeters × scorePerMeter × planeBonus
 ///   coin_score       = Σ coin awards (combo multiplier at time of pickup)
-///   near_miss_bonus  = Σ tiered near-miss awards (25 / 50 / 100 by tier)
+///   near_miss_bonus  = Σ tiered near-miss awards (25 / 50 / 100 by tier × planeBonus)
 ///   streak_bonus     = Σ clean-flight glide & thermal-surf payouts
 ///   total            = sum of all above
+///
+/// Plane bonuses (Task 7):
+///   Dart  +15% distance score
+///   Stunt +50% near-miss score
 ///
 /// Combo model — Combo Decay Gauge (replaces instant reset):
 ///   The combo is a fractional gauge measured in notches (0..comboMax).
@@ -75,8 +79,14 @@ class ScoringSystem extends Component {
           .toDouble();
     }
 
-    // Distance-based score accumulates continuously.
-    final distScore = (game.distanceMeters * GameConfig.scorePerMeter).toInt();
+    // Distance-based score accumulates continuously — Dart gets +15%.
+    var distScore = (game.distanceMeters * GameConfig.scorePerMeter).toInt();
+    try {
+      if (game.plane.planeType == PlaneType.dart) {
+        distScore = (distScore * GameConfig.dartDistanceBonusMultiplier).toInt();
+      }
+    } catch (_) {}
+
     _score = distScore +
         _coinScoreAccumulated +
         _nearMissScoreAccumulated +
@@ -128,7 +138,13 @@ class ScoringSystem extends Component {
   }) {
     _nearMissesThisRun++;
     game.ref.read(gameSessionProvider.notifier).addNearMiss();
-    final points = tier.points;
+    var points = tier.points;
+    // Stunt Fold: +50% near-miss score
+    try {
+      if (game.plane.planeType == PlaneType.stuntFold) {
+        points = (points * GameConfig.stuntNearMissMultiplier).toInt();
+      }
+    } catch (_) {}
     _nearMissScoreAccumulated += points;
     final spawnPos = position ?? game.plane.position.clone();
     spawnNearMissFeedback(game, spawnPos, tier, points);

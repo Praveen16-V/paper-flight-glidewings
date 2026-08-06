@@ -32,13 +32,25 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
       isFirstSession: fields[11] as bool? ?? true,
       lastDailyLoginMs: (fields[12] as num?)?.toInt() ?? 0,
       dailyLoginStreak: (fields[13] as num?)?.toInt() ?? 0,
+      unlockedSkinIndices: (fields[14] as List?)?.cast<int>() ?? [0],
+      equippedSkinIndex: (fields[15] as num?)?.toInt() ?? 0,
+      lastDailyChallengeMs: (fields[16] as num?)?.toInt() ?? 0,
+      dailyChallengeIds: (fields[17] as List?)?.cast<int>() ?? [],
+      dailyChallengeProgress: (fields[18] as List?)?.cast<int>() ?? [],
+      dailyChallengeCompleted: (fields[19] as List?)?.cast<bool>() ?? [],
+      dailyChallengeClaimed: (fields[20] as List?)?.cast<bool>() ?? [],
+      lastWeeklyChallengeMs: (fields[21] as num?)?.toInt() ?? 0,
+      weeklyChallengeIds: (fields[22] as List?)?.cast<int>() ?? [],
+      weeklyChallengeProgress: (fields[23] as List?)?.cast<int>() ?? [],
+      weeklyChallengeCompleted: (fields[24] as List?)?.cast<bool>() ?? [],
+      weeklyChallengeClaimed: (fields[25] as List?)?.cast<bool>() ?? [],
     );
   }
 
   @override
   void write(BinaryWriter writer, SaveData obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(26)
       ..writeByte(0)
       ..write(obj.coins)
       ..writeByte(1)
@@ -66,7 +78,31 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
       ..writeByte(12)
       ..write(obj.lastDailyLoginMs)
       ..writeByte(13)
-      ..write(obj.dailyLoginStreak);
+      ..write(obj.dailyLoginStreak)
+      ..writeByte(14)
+      ..write(obj.unlockedSkinIndices)
+      ..writeByte(15)
+      ..write(obj.equippedSkinIndex)
+      ..writeByte(16)
+      ..write(obj.lastDailyChallengeMs)
+      ..writeByte(17)
+      ..write(obj.dailyChallengeIds)
+      ..writeByte(18)
+      ..write(obj.dailyChallengeProgress)
+      ..writeByte(19)
+      ..write(obj.dailyChallengeCompleted)
+      ..writeByte(20)
+      ..write(obj.dailyChallengeClaimed)
+      ..writeByte(21)
+      ..write(obj.lastWeeklyChallengeMs)
+      ..writeByte(22)
+      ..write(obj.weeklyChallengeIds)
+      ..writeByte(23)
+      ..write(obj.weeklyChallengeProgress)
+      ..writeByte(24)
+      ..write(obj.weeklyChallengeCompleted)
+      ..writeByte(25)
+      ..write(obj.weeklyChallengeClaimed);
   }
 
   @override
