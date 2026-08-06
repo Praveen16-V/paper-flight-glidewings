@@ -331,4 +331,26 @@ abstract class GameConfig {
   // ── UI Animation ─────────────────────────────────────────────────────────
   static const Duration screenTransition = Duration(milliseconds: 300);
   static const Duration crashSlowMoFreeze = Duration(milliseconds: 120);
+
+  // ── Juice / Game Feel (Task 6) ────────────────────────────────────────────
+  /// Camera begins pulling back once world scroll speed passes this (px/s).
+  static const double highSpeedCameraThreshold = 350.0;
+
+  /// Camera zoom factor at max speed (1.0 = default framing, <1 pulls back).
+  static const double highSpeedZoomOut = 0.95;
+
+  /// Camera bank angle (radians) at full lateral speed (~1.7° each way).
+  static const double cameraBankMax = 0.03;
+
+  /// Minimum seconds between synthesized paper-crease flutter plays.
+  static const double creaseInterval = 0.28;
+
+  /// Lateral speed (px/s) above which a tight turn triggers a crease flutter.
+  static const double creaseTightTurnSpeed = 90.0;
+
+  /// Coin-combo chime volume (0..1), multiplied by the SFX volume setting.
+  static const double coinChimeVolume = 0.55;
+
+  /// Paper-crease volume (0..1), multiplied by the SFX volume setting.
+  static const double paperCreaseVolume = 0.5;
 }
