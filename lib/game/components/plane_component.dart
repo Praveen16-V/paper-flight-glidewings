@@ -4,7 +4,6 @@ import 'dart:ui';
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flame/effects.dart';
-import 'package:flutter/material.dart' show Colors;
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
@@ -51,11 +50,9 @@ class PlaneComponent extends PositionComponent
   double _bankAngle = 0.0;    // visual roll for X movement
   double _pitchAngle = 0.0;   // visual pitch for Y movement
 
-  // ── Sprite (placeholder rectangle until real assets load) ─────────────────
-  // In a real build, use SpriteAnimationComponent loaded from assets.
-  // For MVP scaffold, we render a coloured rectangle as a stand-in.
-  late final RectangleComponent _body;
-  late final RectangleComponent _wing;
+  /// Wing-fold amount [0 = fully spread (gliding), 1 = folded up (holding)].
+  /// Smoothly lerped each frame toward the current hold state.
+  double _wingFold = 0.0;
 
   // ── Hitbox ────────────────────────────────────────────────────────────────
 
@@ -82,7 +79,6 @@ class PlaneComponent extends PositionComponent
 
   @override
   void render(Canvas canvas) {
-    // Paper-plane silhouette drawn with primitives (asset placeholder).
     final paint = Paint()
       ..color = const Color(0xFFF5A623) // accent gold
       ..style = PaintingStyle.fill;
@@ -93,25 +89,75 @@ class PlaneComponent extends PositionComponent
     final w = size.x;
     final h = size.y;
 
-    // Shadow offset
+    // Rotate canvas so that the nose (originally pointing +X in local space)
+    // now points up (-Y in screen space). We rotate around the component
+    // centre, which Flame places at (w/2, h/2) since anchor = Anchor.center.
     canvas.save();
-    canvas.translate(2, 3);
-    _drawPlaneShape(canvas, shadowPaint, w, h);
+    canvas.translate(w / 2, h / 2);
+    canvas.rotate(-pi / 2);
+    canvas.translate(-w / 2, -h / 2);
+
+    // Shadow (offset slightly down-right before the same rotation).
+    canvas.save();
+    canvas.translate(1.5, 2.5);
+    _drawPlaneShape(canvas, shadowPaint, w, h, _wingFold);
     canvas.restore();
 
-    _drawPlaneShape(canvas, paint, w, h);
+    _drawPlaneShape(canvas, paint, w, h, _wingFold);
+
+    // Draw a subtle crease line to separate upper/lower wing faces.
+    final creasePaint = Paint()
+      ..color = const Color(0x55000000)
+      ..strokeWidth = 0.8
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(
+      Offset(w * 0.3, h / 2),
+      Offset(w, h / 2),
+      creasePaint,
+    );
+
+    canvas.restore(); // undo the -π/2 rotation
     super.render(canvas);
   }
 
-  void _drawPlaneShape(Canvas canvas, Paint paint, double w, double h) {
-    // Simple dart silhouette path (nose right, tail left in local space).
-    final path = Path()
-      ..moveTo(w, h / 2)      // nose tip
-      ..lineTo(0, 0)           // top wing tip
-      ..lineTo(w * 0.3, h / 2) // body indent
-      ..lineTo(0, h)           // bottom wing tip
+  /// Draws the paper-plane dart shape.
+  ///
+  /// Local-space orientation: nose tip at (w, h/2), tail at left edge.
+  /// [wingFold] in [0, 1]:
+  ///   0 → wings fully spread (horizontal, gliding)
+  ///   1 → wings folded upward (holding for lift), giving a swept look.
+  void _drawPlaneShape(Canvas canvas, Paint paint, double w, double h, double wingFold) {
+    // Wing-fold offsets: tips move upward (toward y=h/2) as fold increases.
+    final spreadY = h * 0.08;                         // extra droop when gliding
+    final topWingY = (h * 0.15) * (1.0 - wingFold)   // top tip sweeps inward
+                   - spreadY * (1.0 - wingFold);
+    final botWingY = h - (h * 0.15) * (1.0 - wingFold) // bottom tip sweeps inward
+                   + spreadY * (1.0 - wingFold);
+
+    // Body centre line (nose → tail)
+    final bodyPath = Path()
+      ..moveTo(w, h / 2)           // nose tip
+      ..lineTo(w * 0.3, h / 2)     // body mid-indent
+      ..lineTo(0, h / 2)           // tail centre
       ..close();
-    canvas.drawPath(path, paint);
+
+    // Upper wing triangle
+    final upperWing = Path()
+      ..moveTo(w, h / 2)           // nose
+      ..lineTo(w * 0.3, h / 2)     // body indent
+      ..lineTo(0, topWingY)         // upper wing tip (moves with fold)
+      ..close();
+
+    // Lower wing triangle
+    final lowerWing = Path()
+      ..moveTo(w, h / 2)           // nose
+      ..lineTo(w * 0.3, h / 2)     // body indent
+      ..lineTo(0, botWingY)         // lower wing tip (moves with fold)
+      ..close();
+
+    canvas.drawPath(upperWing, paint);
+    canvas.drawPath(lowerWing, paint);
+    canvas.drawPath(bodyPath, paint);
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
@@ -191,6 +237,13 @@ class PlaneComponent extends PositionComponent
     }
 
     // ── Visual Rotation ───────────────────────────────────────────────────────
+    // Wing fold: smoothly sweep wings in (1.0) when holding, spread (0.0) on release.
+    _wingFold = MathUtils.lerp(
+      _wingFold,
+      input.isHolding ? 1.0 : 0.0,
+      0.14,
+    );
+
     _pitchAngle = MathUtils.lerp(
       _pitchAngle,
       MathUtils.remap(_velocityY, -GameConfig.liftForce, GameConfig.maxFallSpeed, -0.35, 0.45),
@@ -226,6 +279,7 @@ class PlaneComponent extends PositionComponent
     _velocityY = 0;
     _pitchAngle = 0;
     _bankAngle = 0;
+    _wingFold = 0;
     angle = 0;
     position = Vector2(
       GameConfig.designWidth * GameConfig.planeStartX,
@@ -240,6 +294,7 @@ class PlaneComponent extends PositionComponent
     _isAlive = true;
     _velocityY = 0;
     _velocityX = 0;
+    _wingFold = 0;
     position.y = GameConfig.designHeight * 0.5;
     // Brief invincibility flash.
     add(

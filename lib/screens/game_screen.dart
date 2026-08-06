@@ -54,11 +54,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       body: Stack(
         children: [
           // ── Flame game canvas ──────────────────────────────────────────
-          GameWidget(
-            game: _game,
-            backgroundBuilder: (_) => Container(color: AppColors.background),
-            loadingBuilder: (_) => const Center(
-              child: CircularProgressIndicator(color: AppColors.accent),
+          Positioned.fill(
+            child: GameWidget(
+              game: _game,
+              backgroundBuilder: (_) => Container(color: AppColors.background),
+              loadingBuilder: (_) => const Center(
+                child: CircularProgressIndicator(color: AppColors.accent),
+              ),
             ),
           ),
 
