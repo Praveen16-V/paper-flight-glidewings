@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flame/collisions.dart';
@@ -10,6 +10,7 @@ import '../../../core/enums/game_enums.dart';
 import '../../../core/utils/math_utils.dart';
 import '../../../providers/game_session_provider.dart';
 import '../../paper_flight_game.dart';
+import '../effects/coin_feedback.dart';
 import '../plane_component.dart';
 
 /// A single coin collectible. Pooled and recycled by [CollectibleSpawner].
@@ -101,8 +102,11 @@ class CoinComponent extends CircleComponent
     _collected = true;
     _active = false;
 
-    // Award score via scoring system.
-    gameRef.scoringSystem.onCoinCollected();
+    // Award score via scoring system (returns points earned, combo-scaled).
+    final points = gameRef.scoringSystem.onCoinCollected();
+
+    // Spawn a satisfying pickup effect: sparkle burst + floating "+points".
+    spawnCoinFeedback(gameRef, position, points);
 
     // Satisfying pop + float-up animation before recycle.
     add(ScaleEffect.by(
