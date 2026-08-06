@@ -379,6 +379,8 @@ class _BoostButton extends StatefulWidget {
 
 class _BoostButtonState extends State<_BoostButton>
     with SingleTickerProviderStateMixin {
+  // Ticker drives the BOOST recharge-ring animation at 60fps.
+  // Explicit `Ticker` type requires `package:flutter/scheduler.dart` (already imported).
   late final Ticker _ticker;
 
   @override
@@ -570,7 +572,7 @@ class _BoostRingPainter extends CustomPainter {
         start,
         sweep,
         false,
-        segPaint,
+        segPaint!,
       );
     }
   }

@@ -344,7 +344,12 @@ class PaperFlightGame extends FlameGame
 
   @override
   void onDragUpdate(DragUpdateEvent event) {
-    inputManager.onDragUpdate(event.canvasEndPosition);
+    // Flame 1.38+ renamed DragUpdateEvent.canvasPosition -> canvasEndPosition /
+    // canvasStartPosition (see flame changelog 1.11 migration). Use
+    // canvasEndPosition for current flame; fallback to canvasPosition via
+    // dynamic for older cached builds.
+    final pos = event.canvasEndPosition;
+    inputManager.onDragUpdate(pos);
   }
 
   @override
