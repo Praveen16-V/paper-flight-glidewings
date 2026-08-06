@@ -67,8 +67,8 @@ class CoinComponent extends CircleComponent
 
     // Magnet pull — if magnet power-up active, accelerate toward plane.
     final session = gameRef.ref.read(gameSessionProvider);
+    final plane = gameRef.plane;
     if (session.activePowerUps.contains(PowerUpType.magnet)) {
-      final plane = gameRef.plane;
       final dist = MathUtils.distance(
         position.x, position.y,
         plane.position.x, plane.position.y,
@@ -76,6 +76,17 @@ class CoinComponent extends CircleComponent
       if (dist < GameConfig.coinMagnetRadius) {
         final dir = (plane.position - position).normalized();
         position += dir * (GameConfig.coinMagnetPullSpeed * dt);
+      }
+    } else if (plane.planeType == PlaneType.glider) {
+      // Glider Fold: built-in weak coin attraction (Task 7)
+      final dist = MathUtils.distance(
+        position.x, position.y,
+        plane.position.x, plane.position.y,
+      );
+      if (dist < GameConfig.gliderCoinAttractRadius) {
+        final dir = (plane.position - position).normalized();
+        // Slightly eased — weak pull, not magnet snap
+        position += dir * (GameConfig.gliderCoinAttractSpeed * dt);
       }
     }
 

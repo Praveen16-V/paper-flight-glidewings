@@ -1,6 +1,10 @@
+import 'dart:math';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/enums/game_enums.dart';
 import '../models/save_data.dart';
+import '../models/challenge_definitions.dart';
 import '../services/persistence_service.dart';
 
 /// Notifier that owns the canonical SaveData state.
@@ -8,7 +12,11 @@ import '../services/persistence_service.dart';
 class SaveDataNotifier extends Notifier<SaveData> {
   @override
   SaveData build() {
-    return PersistenceService.instance.loadSave();
+    final save = PersistenceService.instance.loadSave();
+    // Lazily ensure challenges are initialized; defer writing until needed
+    // but synchronously expose generated placeholders if empty.
+    Future.microtask(() => _ensureChallengesInitialized());
+    return save;
   }
 
   // ── Currency ────────────────────────────────────────────────────────────
@@ -73,15 +81,18 @@ class SaveDataNotifier extends Notifier<SaveData> {
     return newHighScore;
   }
 
-  // ── Unlocks ──────────────────────────────────────────────────────────────
+  // ── Plane Unlocks ───────────────────────────────────────────────────────
 
   bool isPlaneUnlocked(int planeIndex) =>
       state.unlockedPlaneIndices.contains(planeIndex);
 
-  Future<bool> unlockPlane(int planeIndex, int cost) async {
-    if (!isPlaneUnlocked(planeIndex) && state.coins >= cost) {
+  Future<bool> unlockPlane(int planeIndex, int cost, {int gemCost = 0}) async {
+    if (!isPlaneUnlocked(planeIndex) &&
+        state.coins >= cost &&
+        state.gems >= gemCost) {
       state = await PersistenceService.instance.updateSave((s) {
         s.coins -= cost;
+        s.gems -= gemCost;
         if (!s.unlockedPlaneIndices.contains(planeIndex)) {
           s.unlockedPlaneIndices.add(planeIndex);
         }
@@ -96,6 +107,36 @@ class SaveDataNotifier extends Notifier<SaveData> {
     if (!isPlaneUnlocked(planeIndex)) return;
     state = await PersistenceService.instance.updateSave((s) {
       s.equippedPlaneIndex = planeIndex;
+      return s;
+    });
+  }
+
+  // ── Skin Unlocks ─────────────────────────────────────────────────────────
+
+  bool isSkinUnlocked(int skinIndex) =>
+      state.unlockedSkinIndices.contains(skinIndex);
+
+  Future<bool> unlockSkin(int skinIndex, int coinCost, int gemCost) async {
+    if (!isSkinUnlocked(skinIndex) &&
+        state.coins >= coinCost &&
+        state.gems >= gemCost) {
+      state = await PersistenceService.instance.updateSave((s) {
+        s.coins -= coinCost;
+        s.gems -= gemCost;
+        if (!s.unlockedSkinIndices.contains(skinIndex)) {
+          s.unlockedSkinIndices.add(skinIndex);
+        }
+        return s;
+      });
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> equipSkin(int skinIndex) async {
+    if (!isSkinUnlocked(skinIndex)) return;
+    state = await PersistenceService.instance.updateSave((s) {
+      s.equippedSkinIndex = skinIndex;
       return s;
     });
   }
@@ -146,6 +187,313 @@ class SaveDataNotifier extends Notifier<SaveData> {
     // Escalating rewards over 7-day cycle
     const rewards = [50, 75, 100, 100, 150, 200, 300];
     return rewards[(day - 1).clamp(0, 6)];
+  }
+
+  // ── Challenges ───────────────────────────────────────────────────────────
+
+  Future<void> _ensureChallengesInitialized() async {
+    final now = DateTime.now();
+    bool needsWrite = false;
+    final current = state;
+
+    // Daily check: if no daily or last daily is not today
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+    if (current.dailyChallengeIds.isEmpty ||
+        current.lastDailyChallengeMs == 0 ||
+        DateTime.fromMillisecondsSinceEpoch(current.lastDailyChallengeMs)
+                .difference(todayMidnight)
+                .inDays !=
+            0) {
+      // Need to roll daily
+      final seed = todayMidnight.millisecondsSinceEpoch;
+      final ids = _pickDailyIds(seed);
+      state = await PersistenceService.instance.updateSave((s) {
+        s.lastDailyChallengeMs = todayMidnight.millisecondsSinceEpoch;
+        s.dailyChallengeIds = ids;
+        s.dailyChallengeProgress = List.filled(ids.length, 0);
+        s.dailyChallengeCompleted = List.filled(ids.length, false);
+        s.dailyChallengeClaimed = List.filled(ids.length, false);
+        return s;
+      });
+      needsWrite = true;
+    }
+
+    // Weekly check: Monday midnight
+    final monday = _mondayMidnight(now);
+    if (current.weeklyChallengeIds.isEmpty ||
+        current.lastWeeklyChallengeMs == 0 ||
+        DateTime.fromMillisecondsSinceEpoch(current.lastWeeklyChallengeMs)
+                .difference(monday)
+                .inDays !=
+            0) {
+      final seed = monday.millisecondsSinceEpoch;
+      final ids = _pickWeeklyIds(seed);
+      state = await PersistenceService.instance.updateSave((s) {
+        s.lastWeeklyChallengeMs = monday.millisecondsSinceEpoch;
+        s.weeklyChallengeIds = ids;
+        s.weeklyChallengeProgress = List.filled(ids.length, 0);
+        s.weeklyChallengeCompleted = List.filled(ids.length, false);
+        s.weeklyChallengeClaimed = List.filled(ids.length, false);
+        return s;
+      });
+      needsWrite = true;
+    }
+
+    if (!needsWrite && (current.dailyChallengeIds.isEmpty || current.weeklyChallengeIds.isEmpty)) {
+      // Fallback force init
+      await _forceInitChallenges();
+    }
+  }
+
+  Future<void> _forceInitChallenges() async {
+    final now = DateTime.now();
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+    final monday = _mondayMidnight(now);
+    state = await PersistenceService.instance.updateSave((s) {
+      if (s.dailyChallengeIds.isEmpty) {
+        s.lastDailyChallengeMs = todayMidnight.millisecondsSinceEpoch;
+        s.dailyChallengeIds = _pickDailyIds(todayMidnight.millisecondsSinceEpoch);
+        s.dailyChallengeProgress = List.filled(s.dailyChallengeIds.length, 0);
+        s.dailyChallengeCompleted = List.filled(s.dailyChallengeIds.length, false);
+        s.dailyChallengeClaimed = List.filled(s.dailyChallengeIds.length, false);
+      }
+      if (s.weeklyChallengeIds.isEmpty) {
+        s.lastWeeklyChallengeMs = monday.millisecondsSinceEpoch;
+        s.weeklyChallengeIds = _pickWeeklyIds(monday.millisecondsSinceEpoch);
+        s.weeklyChallengeProgress = List.filled(s.weeklyChallengeIds.length, 0);
+        s.weeklyChallengeCompleted = List.filled(s.weeklyChallengeIds.length, false);
+        s.weeklyChallengeClaimed = List.filled(s.weeklyChallengeIds.length, false);
+      }
+      return s;
+    });
+  }
+
+  DateTime _mondayMidnight(DateTime now) {
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+    final weekday = now.weekday; // 1 Mon
+    return todayMidnight.subtract(Duration(days: weekday - 1));
+  }
+
+  List<int> _pickDailyIds(int seed) {
+    final rnd = Random(seed);
+    final pool = List<int>.generate(ChallengePool.daily.length, (i) => ChallengePool.daily[i].id);
+    pool.shuffle(rnd);
+    // Always include the 3 showcase challenges 0,1,2 for first days? Otherwise random
+    // For deterministic showcase, keep first 3 if seed mod 7 ==0 etc. Simplify: random 3.
+    final picked = pool.take(3).toList();
+    // Ensure showcase trio appears at least 50% of time for demo purposes
+    // If none of 0,1,2 present and rnd.nextDouble()<0.5, inject one
+    if (!picked.any((id) => id <= 2) && rnd.nextDouble() < 0.5) {
+      picked[0] = rnd.nextInt(3); // replace first with 0-2
+    }
+    return picked;
+  }
+
+  List<int> _pickWeeklyIds(int seed) {
+    final rnd = Random(seed);
+    final pool = List<int>.generate(ChallengePool.weekly.length, (i) => ChallengePool.weekly[i].id);
+    pool.shuffle(rnd);
+    return pool.take(3).toList();
+  }
+
+  /// Force refresh check (call on app resume or screen open).
+  Future<void> refreshChallengesIfNeeded() async {
+    await _ensureChallengesInitialized();
+    // Also verify we have progress arrays matching ids
+    if (state.dailyChallengeIds.length != state.dailyChallengeProgress.length) {
+      state = await PersistenceService.instance.updateSave((s) {
+        s.dailyChallengeProgress = List.filled(s.dailyChallengeIds.length, 0);
+        s.dailyChallengeCompleted = List.filled(s.dailyChallengeIds.length, false);
+        s.dailyChallengeClaimed = List.filled(s.dailyChallengeIds.length, false);
+        return s;
+      });
+    }
+    if (state.weeklyChallengeIds.length != state.weeklyChallengeProgress.length) {
+      state = await PersistenceService.instance.updateSave((s) {
+        s.weeklyChallengeProgress = List.filled(s.weeklyChallengeIds.length, 0);
+        s.weeklyChallengeCompleted = List.filled(s.weeklyChallengeIds.length, false);
+        s.weeklyChallengeClaimed = List.filled(s.weeklyChallengeIds.length, false);
+        return s;
+      });
+    }
+  }
+
+  /// Record run stats into challenges. Call at end of each run.
+  Future<void> updateChallengesForRun({
+    required int thermalsEntered,
+    required int maxCombo,
+    required Biome biomeForMaxCombo,
+    required int maxComboInStorm,
+    required int buildingGapsPassed,
+    required bool usedPowerUp,
+    required int coinsCollected,
+    required int nearMisses,
+    required double distanceMeters,
+    required int powerUpsUsed,
+  }) async {
+    await refreshChallengesIfNeeded();
+
+    bool changed = false;
+    state = await PersistenceService.instance.updateSave((s) {
+      void apply(List<int> ids, List<int> prog, List<bool> comp) {
+        for (int i = 0; i < ids.length; i++) {
+          final def = ChallengePool.byId(ids[i]);
+          if (def == null) continue;
+          if (comp[i]) continue; // already completed
+          int newVal = prog[i];
+          bool markComplete = false;
+
+          switch (def.type) {
+            case ChallengeType.rideThermalsSingleRun:
+              // best single-run value
+              newVal = thermalsEntered > newVal ? thermalsEntered : newVal;
+              if (newVal >= def.target) markComplete = true;
+              break;
+            case ChallengeType.rideThermalsTotal:
+              newVal += thermalsEntered;
+              if (newVal >= def.target) markComplete = true;
+              break;
+            case ChallengeType.coinComboInBiome:
+              // Check if this run hit target in required biome (or any if biome==null)
+              bool hit = false;
+              if (def.biome != null) {
+                // Storm-specific tracking uses dedicated storm max
+                if (def.biome == Biome.storm) {
+                  if (maxComboInStorm >= def.target) hit = true;
+                } else {
+                  if (biomeForMaxCombo == def.biome && maxCombo >= def.target) hit = true;
+                }
+              } else {
+                if (maxCombo >= def.target) hit = true;
+              }
+              if (hit) {
+                newVal = def.target;
+                markComplete = true;
+              } else {
+                // keep best — for storm use storm-specific, else overall
+                final relevant = (def.biome == Biome.storm) ? maxComboInStorm : maxCombo;
+                if (relevant > newVal) newVal = relevant;
+                if (def.biome == null && newVal >= def.target) markComplete = true;
+              }
+              break;
+            case ChallengeType.skyscraperGapsNoPowerUp:
+              if (!usedPowerUp) {
+                newVal = buildingGapsPassed > newVal ? buildingGapsPassed : newVal;
+                if (newVal >= def.target) markComplete = true;
+              }
+              break;
+            case ChallengeType.collectCoinsSingleRun:
+              newVal = coinsCollected > newVal ? coinsCollected : newVal;
+              if (newVal >= def.target) markComplete = true;
+              break;
+            case ChallengeType.collectCoinsTotal:
+              newVal += coinsCollected;
+              if (newVal >= def.target) markComplete = true;
+              break;
+            case ChallengeType.nearMissesSingleRun:
+              newVal = nearMisses > newVal ? nearMisses : newVal;
+              if (newVal >= def.target) markComplete = true;
+              break;
+            case ChallengeType.nearMissesTotal:
+              newVal += nearMisses;
+              if (newVal >= def.target) markComplete = true;
+              break;
+            case ChallengeType.travelDistanceSingleRun:
+              final d = distanceMeters.toInt();
+              newVal = d > newVal ? d : newVal;
+              if (newVal >= def.target) markComplete = true;
+              break;
+            case ChallengeType.travelDistanceTotal:
+              newVal += distanceMeters.toInt();
+              if (newVal >= def.target) markComplete = true;
+              break;
+            case ChallengeType.surviveRuns:
+              newVal += 1;
+              if (newVal >= def.target) markComplete = true;
+              break;
+            case ChallengeType.usePowerUps:
+              newVal += powerUpsUsed;
+              if (newVal >= def.target) markComplete = true;
+              break;
+            case ChallengeType.buildingGapsTotal:
+              newVal += buildingGapsPassed;
+              if (newVal >= def.target) markComplete = true;
+              break;
+          }
+
+          // Clamp
+          if (newVal > def.target) newVal = def.target;
+          if (newVal != prog[i]) {
+            prog[i] = newVal;
+            changed = true;
+          }
+          if (markComplete && !comp[i]) {
+            comp[i] = true;
+            changed = true;
+          }
+        }
+      }
+
+      apply(s.dailyChallengeIds, s.dailyChallengeProgress, s.dailyChallengeCompleted);
+      apply(s.weeklyChallengeIds, s.weeklyChallengeProgress, s.weeklyChallengeCompleted);
+
+      return s;
+    });
+  }
+
+  /// Claim reward for a completed challenge. Returns coins/gems awarded or 0 if not claimable.
+  Future<(int coins, int gems)> claimChallengeReward({
+    required ChallengePeriod period,
+    required int index,
+  }) async {
+    final save = state;
+    final ids = period == ChallengePeriod.daily ? save.dailyChallengeIds : save.weeklyChallengeIds;
+    final completed = period == ChallengePeriod.daily ? save.dailyChallengeCompleted : save.weeklyChallengeCompleted;
+    final claimed = period == ChallengePeriod.daily ? save.dailyChallengeClaimed : save.weeklyChallengeClaimed;
+
+    if (index < 0 || index >= ids.length) return (0, 0);
+    if (!completed[index]) return (0, 0);
+    if (claimed[index]) return (0, 0);
+
+    final def = ChallengePool.byId(ids[index]);
+    if (def == null) return (0, 0);
+
+    state = await PersistenceService.instance.updateSave((s) {
+      if (period == ChallengePeriod.daily) {
+        s.dailyChallengeClaimed[index] = true;
+        s.coins += def.rewardCoins;
+        s.gems += def.rewardGems;
+      } else {
+        s.weeklyChallengeClaimed[index] = true;
+        s.coins += def.rewardCoins;
+        s.gems += def.rewardGems;
+      }
+      return s;
+    });
+
+    return (def.rewardCoins, def.rewardGems);
+  }
+
+  /// Quick helper to get reward for claim all.
+  Future<int> claimAllCompleted() async {
+    int totalCoins = 0;
+    int totalGems = 0;
+    final save = state;
+    for (int i = 0; i < save.dailyChallengeIds.length; i++) {
+      if (save.dailyChallengeCompleted[i] && !save.dailyChallengeClaimed[i]) {
+        final res = await claimChallengeReward(period: ChallengePeriod.daily, index: i);
+        totalCoins += res.$1;
+        totalGems += res.$2;
+      }
+    }
+    for (int i = 0; i < save.weeklyChallengeIds.length; i++) {
+      if (save.weeklyChallengeCompleted[i] && !save.weeklyChallengeClaimed[i]) {
+        final res = await claimChallengeReward(period: ChallengePeriod.weekly, index: i);
+        totalCoins += res.$1;
+        totalGems += res.$2;
+      }
+    }
+    return totalCoins + totalGems * 100;
   }
 }
 

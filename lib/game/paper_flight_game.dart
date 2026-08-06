@@ -19,6 +19,7 @@ import 'components/background/parallax_background.dart';
 import 'components/effects/coin_feedback.dart';
 import 'components/effects/atmosphere_component.dart';
 import 'components/joystick_component.dart';
+import 'components/obstacles/obstacle_component.dart';
 import 'components/plane_component.dart';
 import 'components/touch_zones_overlay.dart';
 import 'systems/input_manager.dart';
@@ -99,6 +100,20 @@ class PaperFlightGame extends FlameGame
   /// pause/resume cycles on top of each other (or of the crash freeze).
   bool _deathDefyingFreezeActive = false;
 
+  // ── Challenge Run Tracking (Task 7) ───────────────────────────────────────
+
+  int _thermalsEnteredThisRun = 0;
+  bool _wasInThermal = false;
+  int _maxComboThisRun = 0;
+  Biome _biomeAtMaxCombo = Biome.city;
+  int _maxComboInStormThisRun = 0;
+  int _buildingGapsPassedThisRun = 0;
+  bool _powerUpUsedThisRun = false;
+  int _powerUpsUsedThisRun = 0;
+
+  // Crane free brush-off charges remaining this run.
+  int _craneChargesRemaining = 0;
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
@@ -144,9 +159,12 @@ class PaperFlightGame extends FlameGame
 
     // Plane — added last so it renders on top of obstacles (z-order by add).
     final save = ref.read(saveDataProvider);
+    final planeType = PlaneType.values[save.equippedPlaneIndex.clamp(0, PlaneType.values.length - 1)];
+    final skin = PaperSkin.values[save.equippedSkinIndex.clamp(0, PaperSkin.values.length - 1)];
     plane = PlaneComponent(
       game: this,
-      planeType: PlaneType.values[save.equippedPlaneIndex],
+      planeType: planeType,
+      paperSkin: skin,
     );
     world.add(plane);
 
@@ -189,6 +207,14 @@ class PaperFlightGame extends FlameGame
       }
       inputManager.updateGesturePowerUp(settings.flickToUsePowerUp);
       _syncOnScreenControlsVisibility(settings);
+      // Sync plane skin/type if changed from hangar mid-session
+      try {
+        final save = ref.read(saveDataProvider);
+        final pType = PlaneType.values[save.equippedPlaneIndex.clamp(0, PlaneType.values.length - 1)];
+        final pSkin = PaperSkin.values[save.equippedSkinIndex.clamp(0, PaperSkin.values.length - 1)];
+        if (pType != plane.planeType) plane.syncHitboxForPlaneType(pType);
+        if (pSkin != plane.paperSkin) plane.syncSkin(pSkin);
+      } catch (_) {}
     } catch (_) {}
 
     final session = ref.read(gameSessionProvider);
@@ -209,8 +235,7 @@ class PaperFlightGame extends FlameGame
     }
 
     // Generic gesture trigger: flick-up / double-tap fires the equipped
-    // plane's signature power-up (Dart: BOOST, Glider: Magnet, Stunt Fold:
-    // Ghost) instead of always hard-wiring to the snap burst.
+    // plane's signature power-up (Dart/Crane: BOOST, Glider: Magnet, Stunt: Ghost, Stealth: SlowMo)
     if (inputManager.consumeGestureAction()) {
       _handleGesturePowerUp();
     }
@@ -242,12 +267,57 @@ class PaperFlightGame extends FlameGame
       }
     }
 
+    // ── Challenge tracking (Task 7) ────────────────────────────────────────
+    _trackChallengeProgress();
+
     // Push distance to provider for HUD (throttled — every 5 frames approx).
     if ((_distanceMeters * 10).toInt() % 5 == 0) {
       ref
           .read(gameSessionProvider.notifier)
           .updateDistance(_distanceMeters);
     }
+  }
+
+  void _trackChallengeProgress() {
+    // Thermals entered: count rising edge of isInThermal
+    final inThermal = plane.isInThermal;
+    if (inThermal && !_wasInThermal) {
+      _thermalsEnteredThisRun++;
+    }
+    _wasInThermal = inThermal;
+
+    // Max combo and biome at which it was achieved
+    final combo = scoringSystem.comboCount;
+    if (combo > _maxComboThisRun) {
+      _maxComboThisRun = combo;
+      _biomeAtMaxCombo = biomeManager.currentBiome;
+    }
+    // Storm-specific max for the Storm combo challenge
+    if (biomeManager.currentBiome == Biome.storm && combo > _maxComboInStormThisRun) {
+      _maxComboInStormThisRun = combo;
+    }
+
+    // Building gaps: detect when plane threads a building gap
+    try {
+      for (final obs in obstacleSpawner.activeObstacles) {
+        if (obs.type != ObstacleType.building) continue;
+        if (obs.challengeGapCounted) continue;
+        final building = obs as BuildingObstacle;
+        final centerY = obs.position.y + obs.size.y * 0.5;
+        final planeY = plane.position.y;
+        if ((centerY - planeY).abs() < 18) {
+          final planeX = plane.position.x;
+          if (planeX >= building.gapLeft && planeX <= building.gapRight) {
+            _buildingGapsPassedThisRun++;
+            obs.challengeGapCounted = true;
+          } else if (centerY > planeY + 28) {
+            obs.challengeGapCounted = true;
+          }
+        } else if (obs.position.y > planeY + 80) {
+          obs.challengeGapCounted = true;
+        }
+      }
+    } catch (_) {}
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -276,6 +346,17 @@ class PaperFlightGame extends FlameGame
     _phase = GamePhase.playing;
     _isReviving = false;
 
+    // Reset challenge tracking
+    _thermalsEnteredThisRun = 0;
+    _wasInThermal = false;
+    _maxComboThisRun = 0;
+    _biomeAtMaxCombo = biomeManager.currentBiome;
+    _maxComboInStormThisRun = 0;
+    _buildingGapsPassedThisRun = 0;
+    _powerUpUsedThisRun = false;
+    _powerUpsUsedThisRun = 0;
+    _craneChargesRemaining = (plane.planeType == PlaneType.crane) ? GameConfig.craneBranchCharges : 0;
+
     // Resync control scheme at run start (ensures calibration is fresh).
     try {
       final settings = ref.read(settingsProvider);
@@ -283,6 +364,13 @@ class PaperFlightGame extends FlameGame
       inputManager.updateSensitivity(settings.tiltSensitivity);
       inputManager.updateGesturePowerUp(settings.flickToUsePowerUp);
       inputManager.calibrateTilt();
+      // Re-sync plane type/skin at run start in case hangar changed it
+      final save = ref.read(saveDataProvider);
+      final pType = PlaneType.values[save.equippedPlaneIndex.clamp(0, PlaneType.values.length - 1)];
+      final pSkin = PaperSkin.values[save.equippedSkinIndex.clamp(0, PaperSkin.values.length - 1)];
+      plane.syncHitboxForPlaneType(pType);
+      plane.syncSkin(pSkin);
+      _craneChargesRemaining = (pType == PlaneType.crane) ? GameConfig.craneBranchCharges : 0;
     } catch (_) {}
     inputManager.reset();
 
@@ -299,8 +387,8 @@ class PaperFlightGame extends FlameGame
     ref.read(gameSessionProvider.notifier).startRun();
   }
 
-  /// Called by PlaneComponent when it hits an obstacle.
-  void onPlaneCrash() {
+  /// Called by PlaneComponent when it hits an obstacle or falls off-screen.
+  void onPlaneCrash({ObstacleType? obstacleType, ObstacleComponent? obstacle}) {
     if (_phase != GamePhase.playing) return;
 
     final session = ref.read(gameSessionProvider);
@@ -308,6 +396,22 @@ class PaperFlightGame extends FlameGame
     // Ghost: the plane phases straight through every obstacle.
     if (session.activePowerUps.contains(PowerUpType.ghost)) {
       plane.playGhostPhaseAnimation();
+      return;
+    }
+
+    // Origami Crane: free brush-off against tree branches (organic)
+    if (obstacleType != null &&
+        obstacleType.isOrganic &&
+        plane.planeType == PlaneType.crane &&
+        _craneChargesRemaining > 0) {
+      _craneChargesRemaining--;
+      plane.playBranchBrushAnimation();
+      gameFeelSystem.onShieldBreak();
+      // Remove or recycle the obstacle so it doesn't immediately re-collide
+      // We mark its near-miss as awarded and recycle it via spawner knowledge.
+      // Simplest: let it continue but add brief ghost immunity via shield hit?
+      // We give a tiny scale pulse and keep flying.
+      scoringSystem.onObstacleHit(); // slight combo penalty but not crash
       return;
     }
 
@@ -405,6 +509,10 @@ class PaperFlightGame extends FlameGame
   /// ([PowerUpComponent]) and gesture-triggered plane power-ups so both paths
   /// behave identically.
   void applyPowerUp(PowerUpType type) {
+    // Track for challenge "without power-up" and "use power-ups"
+    _powerUpUsedThisRun = true;
+    _powerUpsUsedThisRun++;
+
     final notifier = ref.read(gameSessionProvider.notifier);
     switch (type) {
       case PowerUpType.shield:
@@ -445,19 +553,19 @@ class PaperFlightGame extends FlameGame
   /// double-tap gesture.
   ///
   /// The gesture is generic — each plane activates its own action:
-  ///   • Paper Dart    → BOOST paper-snap burst (charge-based)
+  ///   • Paper Dart / Crane → BOOST paper-snap burst (charge-based)
   ///   • Glider Fold   → Magnet (coin pull)
   ///   • Stunt Fold    → Ghost (phase through obstacles)
+  ///   • Stealth Jet   → SlowMo
   /// Respects the "flick to use power-up" setting.
   void _handleGesturePowerUp() {
     final settings = ref.read(settingsProvider);
     if (!settings.flickToUsePowerUp) return;
 
     final save = ref.read(saveDataProvider);
-    final planeType = PlaneType.values[save.equippedPlaneIndex];
+    final planeType = PlaneType.values[save.equippedPlaneIndex.clamp(0, PlaneType.values.length - 1)];
 
-    // Dart's signature action is the charge-based paper-snap burst — route
-    // through the same path as the BOOST button.
+    // Dart/Crane's signature action is the charge-based paper-snap burst
     if (planeType.usesBoostAsSignatureAction) {
       inputManager.requestSnapFromButton();
       return;
@@ -486,6 +594,22 @@ class PaperFlightGame extends FlameGame
       coinsEarned: session.coinsThisRun,
       nearMisses: session.nearMissesThisRun,
     );
+
+    // Update challenges with run stats
+    try {
+      await notifier.updateChallengesForRun(
+        thermalsEntered: _thermalsEnteredThisRun,
+        maxCombo: _maxComboThisRun,
+        biomeForMaxCombo: _biomeAtMaxCombo,
+        maxComboInStorm: _maxComboInStormThisRun,
+        buildingGapsPassed: _buildingGapsPassedThisRun,
+        usedPowerUp: _powerUpUsedThisRun,
+        coinsCollected: session.coinsThisRun,
+        nearMisses: session.nearMissesThisRun,
+        distanceMeters: _distanceMeters,
+        powerUpsUsed: _powerUpsUsedThisRun,
+      );
+    } catch (_) {}
 
     final result = RunResult(
       score: session.score,

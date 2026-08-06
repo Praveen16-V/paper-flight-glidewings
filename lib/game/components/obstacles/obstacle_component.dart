@@ -47,6 +47,9 @@ abstract class ObstacleComponent extends PositionComponent
   /// Elapsed time since this obstacle was activated.
   double animTime = 0.0;
 
+  /// Task 7: whether this building's gap has been counted for the challenge.
+  bool challengeGapCounted = false;
+
   /// Whether to display an off-screen hazard telegraph indicator when above viewport.
   bool get hasTelegraph => true;
 
@@ -70,6 +73,7 @@ abstract class ObstacleComponent extends PositionComponent
     _nearMissAwarded = false;
     _minNearMissClearance = double.infinity;
     animTime = 0.0;
+    challengeGapCounted = false;
     onRecycle = recycleCallback;
     this.safeCorridorX = safeCorridorX;
     onActivate(scrollSpeed);
@@ -143,7 +147,7 @@ abstract class ObstacleComponent extends PositionComponent
       // from this obstacle after a shield absorb, a ghost phase-through,
       // or a post-revive separation.
       _nearMissAwarded = true;
-      game.onPlaneCrash();
+      game.onPlaneCrash(obstacleType: type, obstacle: this);
     }
   }
 
@@ -552,6 +556,11 @@ class BuildingObstacle extends ObstacleComponent {
   double _leftWidth = 0;
   double _gapWidth = 115;
   int _style = 0; // 0 = standard modern, 1 = water tower rooftop, 2 = antenna spire
+
+  /// Exposed for challenge tracking — skyscraper gap bounds.
+  double get gapLeft => _leftWidth;
+  double get gapRight => _leftWidth + _gapWidth;
+  double get gapWidth => _gapWidth;
 
   @override
   Color get telegraphColor => const Color(0xFFE53935);
