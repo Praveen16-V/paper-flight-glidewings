@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flame/components.dart';
 import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/painting.dart';
@@ -88,19 +89,18 @@ void spawnStreakFeedback(
   );
 }
 
-// Lazily-created pool shared by all near-miss stings. A pool (rather than
-// FlameAudio.play) is required because stings are pitch-shifted per tier via
-// the playback-rate parameter, which the shared one-shot player cannot set.
-AudioPool? _nearMissStingPool;
-
+// Near-miss stings are pitch-shifted per tier via playback-rate. audioplayers
+// 6.x removed `prefix` from AudioPool and `pool.play(rate:)` — we use a
+// short-lived AudioPlayer to support per-playback rate.
 Future<void> _playNearMissSting(double rate) async {
   try {
-    final pool = _nearMissStingPool ??= await AudioPool.create(
-      source: 'near_miss.mp3',
-      prefix: 'assets/audio/',
-      maxPlayers: 3,
-    );
-    pool.play(volume: 0.9, rate: rate);
+    final player = AudioPlayer();
+    await player.setPlaybackRate(rate);
+    await player.play(AssetSource('audio/near_miss.mp3'), volume: 0.9);
+    // Auto-dispose after playback completes to avoid leaking players.
+    player.onPlayerComplete.listen((_) async {
+      await player.dispose();
+    });
   } catch (_) {
     // Audio playback safely ignored if asset is silent or unsupported in test.
   }
