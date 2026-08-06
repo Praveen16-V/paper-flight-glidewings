@@ -9,6 +9,10 @@ import '../../paper_flight_game.dart';
 /// Subtle vertical lane tint / streak indicators so players can read wind
 /// columns as they approach (GDD §4 — wind is a systemic mechanic).
 class WindLaneOverlay extends Component with HasGameRef<PaperFlightGame> {
+  WindLaneOverlay() {
+    priority = -50;
+  }
+
   @override
   void render(Canvas canvas) {
     if (gameRef.phase != GamePhase.playing &&
@@ -26,7 +30,8 @@ class WindLaneOverlay extends Component with HasGameRef<PaperFlightGame> {
       final intensity = intensities[i];
       if (type == WindType.calm && intensity < 0.15) continue;
 
-      final color = _colorFor(type).withOpacity(0.04 + intensity * 0.10);
+      final color =
+          _colorFor(type).withValues(alpha: (0.04 + intensity * 0.10).clamp(0.0, 1.0));
       final paint = Paint()..color = color;
       canvas.drawRect(
         Rect.fromLTWH(i * laneW, 0, laneW, h),
@@ -36,7 +41,7 @@ class WindLaneOverlay extends Component with HasGameRef<PaperFlightGame> {
       // Direction chevrons for lateral wind.
       if (type == WindType.leftPush || type == WindType.rightPush) {
         final chevron = Paint()
-          ..color = color.withOpacity(0.35)
+          ..color = color.withValues(alpha: 0.35)
           ..strokeWidth = 1.5
           ..style = PaintingStyle.stroke;
         final cx = i * laneW + laneW / 2;

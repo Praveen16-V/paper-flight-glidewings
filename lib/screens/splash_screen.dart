@@ -150,7 +150,7 @@ class PlanePainter extends CustomPainter {
 
     // Highlight fold line
     final foldPaint = Paint()
-      ..color = const Color(0xFFFFFFFF).withOpacity(0.3)
+      ..color = const Color(0xFFFFFFFF).withValues(alpha: 0.3)
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
     canvas.drawLine(

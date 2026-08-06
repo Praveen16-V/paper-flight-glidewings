@@ -35,6 +35,7 @@ class PlaneComponent extends PositionComponent
   }) : super(
           size: Vector2(48, 32),
           anchor: Anchor.center,
+          priority: 100,
         );
 
   final PaperFlightGame game;

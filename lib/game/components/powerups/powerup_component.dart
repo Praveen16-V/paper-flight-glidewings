@@ -150,13 +150,13 @@ class PowerUpComponent extends PositionComponent
     final bgColor = _bgColorForType(type);
     final iconColor = const Color(0xFFF7F9FC);
 
-    // Glowing background circle
+    // Glowing background circle — avoid MaskFilter.blur on Impeller.
     final glowPaint = Paint()
-      ..color = bgColor.withOpacity(0.25 + glow * 0.25)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+      ..color = bgColor.withValues(alpha: 0.25 + glow * 0.25);
+    // draw glow as larger circle without blur
     canvas.drawCircle(
       Offset(size.x / 2, size.y / 2),
-      size.x / 2 + 4,
+      size.x / 2 + 6 + glow * 2,
       glowPaint,
     );
 

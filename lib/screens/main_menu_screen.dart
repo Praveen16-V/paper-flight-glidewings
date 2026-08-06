@@ -210,7 +210,7 @@ class _PlayButtonState extends State<_PlayButton>
             borderRadius: BorderRadius.circular(32),
             boxShadow: [
               BoxShadow(
-                color: AppColors.accent.withOpacity(0.45),
+                color: AppColors.accent.withValues(alpha: 0.45),
                 blurRadius: 20,
                 offset: const Offset(0, 6),
               ),

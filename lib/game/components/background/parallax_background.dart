@@ -17,6 +17,11 @@ import '../../paper_flight_game.dart';
 /// Each layer tiles vertically — when the tile scrolls past the bottom it
 /// wraps back to the top to create seamless looping.
 class ParallaxBackground extends Component with HasGameRef<PaperFlightGame> {
+  ParallaxBackground() {
+    // Draw first, behind everything else.
+    priority = -100;
+  }
+
   final List<_BgLayer> _layers = [];
 
   // Current biome colours — transitions smoothly on biome change.
@@ -30,22 +35,23 @@ class ParallaxBackground extends Component with HasGameRef<PaperFlightGame> {
 
   @override
   Future<void> onLoad() async {
+    await super.onLoad();
     _layers.addAll([
       _BgLayer(speedFraction: 0.15, yOffset: 0),
       _BgLayer(speedFraction: 0.35, yOffset: 0),
       _BgLayer(speedFraction: 0.70, yOffset: 0),
     ]);
     transitionToBiome(Biome.backyard);
-    await super.onLoad();
+    // Immediately set sky to target so first frame is not black/mismatched.
+    _skyTop = _targetTop;
+    _skyBottom = _targetBottom;
+    _blend = 1.0;
   }
 
   @override
   void update(double dt) {
-    if (gameRef.phase != GamePhase.playing &&
-        gameRef.phase != GamePhase.paused) {
-      // Still animate slowly on menus if ever shown; otherwise idle.
-    }
-
+    // Always scroll, even if not yet playing, so the background is alive
+    // during the brief window between GameWidget mount and startRun().
     final scrollSpeed = gameRef.effectiveScrollSpeed > 0
         ? gameRef.effectiveScrollSpeed
         : gameRef.scrollSpeed;
@@ -54,6 +60,10 @@ class ParallaxBackground extends Component with HasGameRef<PaperFlightGame> {
       layer.yOffset += scrollSpeed * layer.speedFraction * dt;
       if (layer.yOffset >= GameConfig.designHeight) {
         layer.yOffset -= GameConfig.designHeight;
+      }
+      // Also handle negative offset safety.
+      if (layer.yOffset < 0) {
+        layer.yOffset += GameConfig.designHeight;
       }
     }
 
@@ -89,6 +99,12 @@ class ParallaxBackground extends Component with HasGameRef<PaperFlightGame> {
         _targetTop = const Color(0xFF1A0033);
         _targetBottom = const Color(0xFF0D001A);
     }
+    // If first time, snap immediately.
+    if (_layers.isEmpty) {
+      _skyTop = _targetTop;
+      _skyBottom = _targetBottom;
+      _blend = 1.0;
+    }
   }
 
   @override
@@ -96,14 +112,25 @@ class ParallaxBackground extends Component with HasGameRef<PaperFlightGame> {
     final w = GameConfig.designWidth;
     final h = GameConfig.designHeight;
 
-    // Gradient sky background.
-    final gradientPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [_skyTop, _skyBottom],
-      ).createShader(Rect.fromLTWH(0, 0, w, h));
-    canvas.drawRect(Rect.fromLTWH(0, 0, w, h), gradientPaint);
+    // Solid fill first — guarantees we never have a transparent/black frame
+    // even if gradient shader fails on Impeller/Vulkan.
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, w, h),
+      Paint()..color = _skyBottom,
+    );
+
+    // Gradient sky background — try shader, fall back to solid if it fails.
+    try {
+      final gradientPaint = Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [_skyTop, _skyBottom],
+        ).createShader(Rect.fromLTWH(0, 0, w, h));
+      canvas.drawRect(Rect.fromLTWH(0, 0, w, h), gradientPaint);
+    } catch (_) {
+      // shader creation can throw on some Impeller + Vulkan devices — solid already drawn
+    }
 
     // Draw each parallax layer (two tiles for seamless wrap).
     for (int i = 0; i < _layers.length; i++) {
@@ -160,12 +187,14 @@ class ParallaxBackground extends Component with HasGameRef<PaperFlightGame> {
       canvas.drawCircle(Offset(x, dy), 2, starPaint);
     }
 
-    // Soft sun/moon glow depending on biome.
+    // Soft sun/moon glow depending on biome — avoid MaskFilter.blur on
+    // Android Impeller which can blank the canvas on some GPUs.
     if (_biome == Biome.backyard) {
-      final sunPaint = Paint()
-        ..color = const Color(0x44FFF59D)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 30);
+      final sunPaint = Paint()..color = const Color(0x44FFF59D);
       canvas.drawCircle(Offset(300, 100 + yOffset * 0.1), 40, sunPaint);
+      // inner solid core
+      final corePaint = Paint()..color = const Color(0x88FFF176);
+      canvas.drawCircle(Offset(300, 100 + yOffset * 0.1), 22, corePaint);
     }
   }
 

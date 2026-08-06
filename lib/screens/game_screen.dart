@@ -79,7 +79,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         ref.watch(settingsProvider.select((s) => s.controlScheme));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.skyDay,
       body: Stack(
         children: [
           // ── Flame game canvas ──────────────────────────────────────────
@@ -88,26 +88,34 @@ class _GameScreenState extends ConsumerState<GameScreen> {
               game: _game,
               // Keep a real sky behind the renderer while Android creates the
               // SurfaceView. This prevents a blank/black flash on slow devices.
-              backgroundBuilder: (_) => const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [AppColors.accentAlt, AppColors.skyDay],
+              // Using an opaque sky color ensures a black-screen bug is obviously
+              // from Flame failing to render, not from transparent backdrop.
+              backgroundBuilder: (_) => Container(
+                color: const Color(0xFF87CEEB),
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0xFF4FC3F7), Color(0xFF81D4FA)],
+                    ),
                   ),
                 ),
               ),
-              loadingBuilder: (_) => const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(color: AppColors.accent),
-                    SizedBox(height: 12),
-                    Text(
-                      'Preparing your flight…',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                    ),
-                  ],
+              loadingBuilder: (_) => Container(
+                color: const Color(0xFF87CEEB),
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: AppColors.accent),
+                      SizedBox(height: 12),
+                      Text(
+                        'Preparing your flight…',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -190,14 +198,14 @@ class _TouchZoneGuides extends StatelessWidget {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      Colors.white.withOpacity(0.04),
+                      Colors.white.withValues(alpha: 0.04),
                       Colors.transparent,
                     ],
                   ),
                 ),
                 child: Icon(
                   Icons.chevron_left,
-                  color: Colors.white.withOpacity(0.25),
+                  color: Colors.white.withValues(alpha: 0.25),
                   size: 28,
                 ),
               ),
@@ -210,13 +218,13 @@ class _TouchZoneGuides extends StatelessWidget {
                   gradient: LinearGradient(
                     colors: [
                       Colors.transparent,
-                      Colors.white.withOpacity(0.04),
+                      Colors.white.withValues(alpha: 0.04),
                     ],
                   ),
                 ),
                 child: Icon(
                   Icons.chevron_right,
-                  color: Colors.white.withOpacity(0.25),
+                  color: Colors.white.withValues(alpha: 0.25),
                   size: 28,
                 ),
               ),

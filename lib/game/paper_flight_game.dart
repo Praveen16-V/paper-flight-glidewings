@@ -35,7 +35,13 @@ import 'systems/biome_manager.dart';
 ///   - Progress = [_distanceMeters], driven by scrollSpeed × elapsed time.
 class PaperFlightGame extends FlameGame
     with HasCollisionDetection, TapCallbacks, DragCallbacks {
-  PaperFlightGame({required this.ref});
+  PaperFlightGame({required this.ref})
+      : super(
+          camera: CameraComponent.withFixedResolution(
+            width: GameConfig.designWidth,
+            height: GameConfig.designHeight,
+          ),
+        );
 
   /// Riverpod ref — lets game systems push state to providers without
   /// needing a BuildContext.
@@ -79,23 +85,26 @@ class PaperFlightGame extends FlameGame
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
-  // This is the colour painted before the world has produced its first frame.
-  // Keep it deliberately light: a dark clear colour made a loading/camera
-  // failure indistinguishable from a black gameplay screen on Android.
-  Color backgroundColor() => const Color(0xFF4FC3F7);
+  // Light sky blue so a canvas init failure is obvious (not mistaken for API black).
+  Color backgroundColor() => const Color(0xFF87CEEB);
 
   @override
   Future<void> onLoad() async {
-    // Configure the camera before Flame mounts its game tree, then let Flame
-    // mount the world/camera before adding gameplay components.  In particular,
-    // adding world children before the CameraComponent is mounted can leave an
-    // empty viewport on some Android/Impeller devices.
-    camera = CameraComponent.withFixedResolution(
-      width: GameConfig.designWidth,
-      height: GameConfig.designHeight,
-      world: world,
-    )..viewfinder.anchor = Anchor.topLeft;
+    // Follow the codelab pattern: super.onLoad mounts world + camera first,
+    // then we configure the viewfinder and add gameplay components.
+    // Mounting order issues on Android/Impeller previously left the viewport
+    // zero-sized resulting in a black gameplay area.
     await super.onLoad();
+    camera.viewfinder.anchor = Anchor.topLeft;
+    camera.viewfinder.position = Vector2.zero();
+    // Ensure the camera has a valid size even when the first frames report
+    // zero size (seen in logs: FlutterRenderer Width is zero).
+    // FixedResolution viewport handles letterboxing after size is known.
+    // Logging helps diagnose black-screen on device.
+    // ignore: avoid_print
+    print(
+        'PaperFlightGame onLoad: size=$size camera viewport=${camera.viewport.size} viewfinder anchor=${camera.viewfinder.anchor}');
+  }
 
     // Background parallax layers (farthest first).
     background = ParallaxBackground();

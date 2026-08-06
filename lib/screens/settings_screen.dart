@@ -177,7 +177,7 @@ class _SwitchRow extends StatelessWidget {
           activeColor: AppColors.accent,
           trackColor: WidgetStateProperty.resolveWith((states) =>
               states.contains(WidgetState.selected)
-                  ? AppColors.accent.withOpacity(0.4)
+                  ? AppColors.accent.withValues(alpha: 0.4)
                   : AppColors.divider),
         ),
       ],
@@ -229,7 +229,7 @@ class _SliderRow extends StatelessWidget {
               activeTrackColor: AppColors.accent,
               inactiveTrackColor: AppColors.divider,
               thumbColor: AppColors.accent,
-              overlayColor: AppColors.accent.withOpacity(0.2),
+              overlayColor: AppColors.accent.withValues(alpha: 0.2),
             ),
             child: Slider(
               value: value.clamp(min, max),

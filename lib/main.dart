@@ -43,23 +43,29 @@ Future<void> main() async {
 
         // Firebase — stub options until flutterfire configure is run.
         // Fail soft so local/dev builds still launch.
+        // Hot restart preserves the native default Firebase app, so Dart's
+        // Firebase.apps may be empty while native already has DEFAULT.
+        // The canonical fix is try-init and swallow duplicate-app.
         try {
-          // Hot restart can preserve the native default Firebase app.  Do not
-          // initialise it a second time: that emits a duplicate-app exception
-          // and obscures actual game-start failures in logcat.
-          if (Firebase.apps.isEmpty) {
-            await Firebase.initializeApp(
-              options: DefaultFirebaseOptions.currentPlatform,
-            );
+          await Firebase.initializeApp(
+            options: DefaultFirebaseOptions.currentPlatform,
+          );
+        } catch (e) {
+          final msg = e.toString();
+          if (msg.contains('duplicate-app') ||
+              msg.contains('already exists')) {
+            // Expected on hot restart — treat as ready.
+            debugPrint('Firebase already initialized (hot restart).');
+          } else {
+            debugPrint('Firebase init skipped: $e');
           }
-          _firebaseReady = Firebase.apps.isNotEmpty;
-          if (_firebaseReady) {
+        }
+        _firebaseReady = Firebase.apps.isNotEmpty;
+        if (_firebaseReady) {
+          try {
             FlutterError.onError =
                 FirebaseCrashlytics.instance.recordFlutterFatalError;
-          }
-        } catch (e, st) {
-          debugPrint('Firebase init skipped: $e');
-          debugPrintStack(stackTrace: st);
+          } catch (_) {}
         }
 
         // AdMob + IAP — Android/iOS only, fail soft.

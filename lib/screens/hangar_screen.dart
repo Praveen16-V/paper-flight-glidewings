@@ -112,7 +112,7 @@ class _PlaneCard extends StatelessWidget {
         boxShadow: equipped
             ? [
                 BoxShadow(
-                  color: AppColors.accent.withOpacity(0.25),
+                  color: AppColors.accent.withValues(alpha: 0.25),
                   blurRadius: 16,
                   offset: const Offset(0, 4),
                 )
@@ -238,7 +238,7 @@ class _PlaneMiniPainter extends CustomPainter {
 
     // Wing fold line
     final foldPaint = Paint()
-      ..color = Colors.white.withOpacity(0.25)
+      ..color = Colors.white.withValues(alpha: 0.25)
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
     canvas.drawLine(
@@ -324,7 +324,7 @@ class _ActionChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: AppColors.accentAlt.withOpacity(0.15),
+            color: AppColors.accentAlt.withValues(alpha: 0.15),
             border: Border.all(color: AppColors.accentAlt),
             borderRadius: BorderRadius.circular(12),
           ),
@@ -348,7 +348,7 @@ class _ActionChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           decoration: BoxDecoration(
-            color: AppColors.coinGold.withOpacity(0.12),
+            color: AppColors.coinGold.withValues(alpha: 0.12),
             border: Border.all(color: AppColors.coinGold),
             borderRadius: BorderRadius.circular(12),
           ),

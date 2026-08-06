@@ -101,7 +101,7 @@ class HudOverlay extends ConsumerWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.shieldBlue.withOpacity(0.85),
+                  color: AppColors.shieldBlue.withValues(alpha: 0.85),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: const Row(
