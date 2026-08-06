@@ -516,7 +516,7 @@ class PlaneComponent extends PositionComponent
     // Gold leaf / holographic pick up a little highlight only when not shadow
     if (!isShadow && (paperSkin == PaperSkin.goldLeaf || paperSkin == PaperSkin.holographicFoil)) {
       final hl = Paint()
-        ..color = Colors.white.withOpacity(0.18)
+        ..color = const Color(0x2EFFFFFF) // Colors.white @ 18% opacity
         ..style = PaintingStyle.stroke
         ..strokeWidth = 0.9;
       canvas.drawPath(upperWing, hl);
