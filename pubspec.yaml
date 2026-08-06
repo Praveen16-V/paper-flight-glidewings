@@ -1,0 +1,103 @@
+name: paper_flight
+description: A paper plane rides gusts of wind through an ever-changing sky — one tap, infinite falls.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Game engine
+  flame: ^1.18.0
+  flame_audio: ^2.1.1
+
+  # State management
+  flutter_riverpod: ^2.5.1
+  # riverpod_annotation is only needed if using @riverpod code generation.
+  # All providers in this project are hand-written (Notifier/NotifierProvider),
+  # so the annotation package is not required.
+
+  # Sensors (tilt input)
+  sensors_plus: ^7.0.0
+
+  # Persistence
+  shared_preferences: ^2.3.2
+  hive_flutter: ^1.1.0
+
+  # Ads
+  google_mobile_ads: ^9.0.0
+
+  # IAP
+  in_app_purchase: ^3.2.0
+
+  # Analytics / Crashlytics
+  firebase_core: ^4.0.0
+  firebase_analytics: ^12.0.0
+  firebase_crashlytics: ^5.0.0
+
+  # Leaderboards / achievements
+  games_services: ^5.0.0
+
+  # Utilities
+  collection: ^1.18.0
+  uuid: ^4.4.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  # build_runner + hive_generator are only needed if you want to regenerate
+  # the Hive TypeAdapter from annotations. The hand-written save_data.g.dart
+  # already covers the MVP model — uncomment these if you add new Hive types.
+  #
+  # hive_generator: ^2.0.1
+  # build_runner: ^2.4.12
+  #
+  # riverpod_generator is only needed for @riverpod annotation-based providers.
+  # All providers here are hand-written, so it is not required and conflicts
+  # with hive_generator's analyzer version constraint.
+  #
+  # riverpod_generator: ^2.4.3
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    # Planes
+    - assets/images/planes/dart.png
+    - assets/images/planes/glider.png
+    - assets/images/planes/stunt_fold.png
+    # Obstacles
+    - assets/images/obstacles/power_line.png
+    - assets/images/obstacles/building.png
+    - assets/images/obstacles/tree_branch.png
+    - assets/images/obstacles/bird.png
+    - assets/images/obstacles/drone.png
+    # Collectibles
+    - assets/images/collectibles/coin.png
+    - assets/images/collectibles/gem.png
+    # Power-ups
+    - assets/images/powerups/shield.png
+    - assets/images/powerups/magnet.png
+    - assets/images/powerups/turbo.png
+    - assets/images/powerups/slowmo.png
+    - assets/images/powerups/second_wind.png
+    # Backgrounds — city rooftops biome (MVP)
+    - assets/images/backgrounds/city_sky_far.png
+    - assets/images/backgrounds/city_mid.png
+    - assets/images/backgrounds/city_near.png
+    # UI
+    - assets/images/ui/logo.png
+    - assets/images/ui/coin_icon.png
+    - assets/images/ui/gem_icon.png
+    - assets/images/ui/shield_icon.png
+    # Audio
+    - assets/audio/wind_loop.mp3
+    - assets/audio/coin_collect.mp3
+    - assets/audio/crash.mp3
+    - assets/audio/powerup_pickup.mp3
+    - assets/audio/near_miss.mp3
+    - assets/audio/bgm_city.mp3
