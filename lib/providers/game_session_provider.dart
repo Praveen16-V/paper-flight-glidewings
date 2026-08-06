@@ -3,6 +3,30 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/enums/game_enums.dart';
 import '../models/run_result.dart';
 
+/// Snapshot of run progress at the moment of a crash — used to restore
+/// after a rewarded-ad revive (new FlameGame instance).
+class RunSnapshot {
+  const RunSnapshot({
+    required this.score,
+    required this.distanceMeters,
+    required this.coinsThisRun,
+    required this.nearMissesThisRun,
+    required this.comboCount,
+    required this.comboMultiplier,
+    required this.currentBiome,
+    required this.scrollSpeed,
+  });
+
+  final int score;
+  final double distanceMeters;
+  final int coinsThisRun;
+  final int nearMissesThisRun;
+  final int comboCount;
+  final double comboMultiplier;
+  final Biome currentBiome;
+  final double scrollSpeed;
+}
+
 /// Ephemeral state for an active or just-completed game session.
 /// Lives in Riverpod so the HUD overlay and game-over screen can react to it.
 /// Reset on each new run — not persisted to Hive.
@@ -15,11 +39,12 @@ class GameSessionState {
     this.nearMissesThisRun = 0,
     this.comboCount = 0,
     this.comboMultiplier = 1.0,
-    this.currentBiome = Biome.city,
+    this.currentBiome = Biome.backyard,
     this.activePowerUps = const {},
     this.shieldActive = false,
     this.lastRunResult,
-    this.canRevive = true, // one free revive attempt per run
+    this.canRevive = true,
+    this.crashSnapshot,
   });
 
   final GamePhase phase;
@@ -34,6 +59,7 @@ class GameSessionState {
   final bool shieldActive;
   final RunResult? lastRunResult;
   final bool canRevive;
+  final RunSnapshot? crashSnapshot;
 
   GameSessionState copyWith({
     GamePhase? phase,
@@ -48,6 +74,9 @@ class GameSessionState {
     bool? shieldActive,
     RunResult? lastRunResult,
     bool? canRevive,
+    RunSnapshot? crashSnapshot,
+    bool clearCrashSnapshot = false,
+    bool clearLastRunResult = false,
   }) {
     return GameSessionState(
       phase: phase ?? this.phase,
@@ -60,8 +89,12 @@ class GameSessionState {
       currentBiome: currentBiome ?? this.currentBiome,
       activePowerUps: activePowerUps ?? this.activePowerUps,
       shieldActive: shieldActive ?? this.shieldActive,
-      lastRunResult: lastRunResult ?? this.lastRunResult,
+      lastRunResult:
+          clearLastRunResult ? null : (lastRunResult ?? this.lastRunResult),
       canRevive: canRevive ?? this.canRevive,
+      crashSnapshot: clearCrashSnapshot
+          ? null
+          : (crashSnapshot ?? this.crashSnapshot),
     );
   }
 }
@@ -72,6 +105,23 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
 
   void startRun() {
     state = const GameSessionState(phase: GamePhase.playing, canRevive: true);
+  }
+
+  /// Restore a run after revive — keeps progress, marks revive used.
+  void restoreFromSnapshot(RunSnapshot snap) {
+    state = GameSessionState(
+      phase: GamePhase.playing,
+      score: snap.score,
+      distanceMeters: snap.distanceMeters,
+      coinsThisRun: snap.coinsThisRun,
+      nearMissesThisRun: snap.nearMissesThisRun,
+      comboCount: snap.comboCount,
+      comboMultiplier: snap.comboMultiplier,
+      currentBiome: snap.currentBiome,
+      canRevive: false,
+      shieldActive: true,
+      activePowerUps: {PowerUpType.shield},
+    );
   }
 
   void updateScore(int score) {
@@ -120,6 +170,10 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
     state = state.copyWith(activePowerUps: updated, shieldActive: false);
   }
 
+  void saveCrashSnapshot(RunSnapshot snapshot) {
+    state = state.copyWith(crashSnapshot: snapshot);
+  }
+
   void triggerGameOver(RunResult result) {
     state = state.copyWith(
       phase: GamePhase.gameOver,
@@ -131,7 +185,9 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
     state = state.copyWith(
       phase: GamePhase.playing,
       canRevive: false,
-      shieldActive: false,
+      shieldActive: true,
+      activePowerUps: {PowerUpType.shield},
+      clearLastRunResult: true,
     );
   }
 

@@ -1,7 +1,6 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flame/components.dart';
-import 'package:flutter/services.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
 import '../../core/constants/game_config.dart';
@@ -12,7 +11,7 @@ import '../paper_flight_game.dart';
 /// Owns all player input and exposes clean, filtered values each frame.
 ///
 /// Supports two control schemes:
-///   [ControlScheme.tilt]       — accelerometer/gyro X axis → horizontal
+///   [ControlScheme.tilt]       — accelerometer X axis → horizontal
 ///   [ControlScheme.touchZones] — left half / right half touch → horizontal
 ///
 /// Vertical: hold anywhere = lift, release = glide (bool).
@@ -42,11 +41,14 @@ class InputManager extends Component {
 
   int get snapCharges => _snapCharges;
 
+  /// Current control scheme (cached from settings).
+  ControlScheme get controlScheme => _controlScheme;
+
   // ── State ─────────────────────────────────────────────────────────────────
 
   bool _isHolding = false;
-  double _rawTilt = 0.0;        // raw accelerometer X (g units)
-  double _filteredTilt = 0.0;   // smoothed, sensitivity-scaled, [-1,1]
+  double _rawTilt = 0.0;
+  double _filteredTilt = 0.0;
   int _snapCharges = 2;
   bool _snapAvailable = false;
   double _snapRechargeProgress = 0.0;
@@ -65,6 +67,24 @@ class InputManager extends Component {
 
   StreamSubscription<AccelerometerEvent>? _accelSub;
 
+  double _sensitivity = GameConfig.defaultTiltSensitivity;
+  ControlScheme _controlScheme = ControlScheme.tilt;
+
+  /// Current tilt sensitivity — read by PlaneComponent each frame.
+  double get currentSensitivity => _sensitivity;
+
+  void updateSensitivity(double value) {
+    _sensitivity = value.clamp(0.3, 2.0);
+  }
+
+  void updateControlScheme(ControlScheme scheme) {
+    _controlScheme = scheme;
+    // Clear residual tilt when switching schemes.
+    _filteredTilt = 0.0;
+    _touchLeft = false;
+    _touchRight = false;
+  }
+
   @override
   Future<void> onLoad() async {
     _startSensorStream();
@@ -79,8 +99,6 @@ class InputManager extends Component {
 
   @override
   void update(double dt) {
-    // Sensitivity is cached in _sensitivity and updated via updateSensitivity().
-    // No per-frame provider read needed.
     _updateHorizontalFromScheme();
     _tickSnapRecharge(dt);
   }
@@ -101,6 +119,14 @@ class InputManager extends Component {
   void onDragStart(Vector2 position) {
     _isHolding = true;
     _handleTouchZone(position, true);
+  }
+
+  void onDragUpdate(Vector2 position) {
+    if (_controlScheme == ControlScheme.touchZones) {
+      // Track finger as it crosses the midline.
+      _touchLeft = position.x < GameConfig.designWidth / 2;
+      _touchRight = !_touchLeft;
+    }
   }
 
   void onDragEnd() {
@@ -128,32 +154,25 @@ class InputManager extends Component {
 
   // ── Sensor Stream ─────────────────────────────────────────────────────────
 
-  double _sensitivity = GameConfig.defaultTiltSensitivity;
-
-  /// Current tilt sensitivity — read by PlaneComponent each frame.
-  double get currentSensitivity => _sensitivity;
-
-  void updateSensitivity(double value) {
-    _sensitivity = value.clamp(0.3, 2.0);
-  }
-
   void _startSensorStream() {
-    _accelSub = accelerometerEventStream(
-      samplingPeriod: SensorInterval.gameInterval,
-    ).listen((event) {
-      // Accelerometer X: positive = tilted right (screen right = positive Y
-      // in Android coords when portrait). We negate to match screen space.
-      _rawTilt = -event.x;
-    }, onError: (_) {
-      // Sensor unavailable — fall back to touch zones gracefully.
+    try {
+      _accelSub = accelerometerEventStream(
+        samplingPeriod: SensorInterval.gameInterval,
+      ).listen((event) {
+        // Accelerometer X: when phone is portrait, tilting right produces
+        // positive X in device coords. Negate so right-tilt → positive screen X.
+        _rawTilt = -event.x;
+      }, onError: (_) {
+        // Sensor unavailable — fall back to touch zones gracefully.
+        _rawTilt = 0.0;
+      });
+    } catch (_) {
       _rawTilt = 0.0;
-    });
+    }
   }
 
   void _updateHorizontalFromScheme() {
-    final scheme = _currentControlScheme();
-
-    if (scheme == ControlScheme.touchZones) {
+    if (_controlScheme == ControlScheme.touchZones) {
       if (_touchLeft) {
         _filteredTilt = MathUtils.lowPass(_filteredTilt, -1.0, 0.15);
       } else if (_touchRight) {
@@ -171,8 +190,8 @@ class InputManager extends Component {
     }
 
     final adjusted = (_rawTilt - _tiltBaseline) * _sensitivity;
-    // Clamp to [-1, 1] dead-zone aware.
-    final deadZone = 0.08;
+    // Dead-zone so resting posture doesn't drift.
+    const deadZone = 0.08;
     final clamped = adjusted.clamp(-1.0, 1.0);
     final deadzoned = clamped.abs() < deadZone ? 0.0 : clamped;
 
@@ -183,20 +202,15 @@ class InputManager extends Component {
     );
   }
 
-  ControlScheme _currentControlScheme() {
-    // Read from settings — cached, not per-frame Riverpod read.
-    // In a full build, cache invalidation happens via a ChangeNotifier or
-    // direct method call from SettingsNotifier. For MVP, default to tilt.
-    return ControlScheme.tilt;
-  }
-
   void _handleTouchZone(Vector2 position, bool active) {
-    if (_currentControlScheme() != ControlScheme.touchZones) return;
+    if (_controlScheme != ControlScheme.touchZones) return;
     final midX = GameConfig.designWidth / 2;
     if (position.x < midX) {
       _touchLeft = active;
+      if (active) _touchRight = false;
     } else {
       _touchRight = active;
+      if (active) _touchLeft = false;
     }
   }
 
@@ -215,7 +229,9 @@ class InputManager extends Component {
 
   void _tickSnapRecharge(double dt) {
     if (_snapCharges >= 2) return;
-    _snapRechargeProgress += game.scrollSpeed * dt * _snapRechargePerMeter;
+    // Recharge based on distance covered (scrollSpeed × dt / 10 ≈ meters).
+    final metersThisFrame = game.scrollSpeed * dt / 10.0;
+    _snapRechargeProgress += metersThisFrame * _snapRechargePerMeter;
     if (_snapRechargeProgress >= 1.0) {
       _snapCharges = (_snapCharges + 1).clamp(0, 2);
       _snapRechargeProgress = 0.0;

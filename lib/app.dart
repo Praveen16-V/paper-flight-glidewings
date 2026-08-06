@@ -90,7 +90,10 @@ class PaperFlightApp extends ConsumerWidget {
       case AppRoutes.mainMenu:
         return _fade(const MainMenuScreen());
       case AppRoutes.game:
-        return _fade(const GameScreen());
+        final gameArgs = settings.arguments is GameScreenArgs
+            ? settings.arguments as GameScreenArgs
+            : const GameScreenArgs();
+        return _fade(GameScreen(args: gameArgs));
       case AppRoutes.gameOver:
         final args = settings.arguments as GameOverArgs?;
         return _slide(GameOverScreen(args: args ?? const GameOverArgs()));

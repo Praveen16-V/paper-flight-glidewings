@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flame/collisions.dart';
@@ -14,7 +14,7 @@ import '../plane_component.dart';
 
 /// A single power-up pickup. Pooled and recycled by [PowerUpSpawner].
 class PowerUpComponent extends PositionComponent
-    with HasGameRef<PaperFlightGame>, CollisionCallbacks {
+    with HasGameRef<PaperFlightGame>, CollisionCallbacks, HasPaint {
   PowerUpComponent({required this.type})
       : super(
           size: Vector2(36, 36),
@@ -29,19 +29,22 @@ class PowerUpComponent extends PositionComponent
   double _bobPhase = 0;
   double _glowPulse = 0;
 
+  bool get isActive => _active;
+
   void activate({
     required Vector2 spawnPosition,
     void Function(PowerUpComponent)? recycleCallback,
   }) {
-    position = spawnPosition;
+    position = spawnPosition.clone();
     _bobPhase = MathUtils.randomRange(0, math.pi * 2);
     _glowPulse = 0;
     _active = true;
     _collected = false;
     onRecycle = recycleCallback;
-    // Reset visibility by removing any pending opacity effects.
-    children.whereType<OpacityEffect>().toList().forEach(remove);
+    opacity = 1.0;
+    scale = Vector2.all(1.0);
 
+    children.whereType<Effect>().toList().forEach(remove);
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(RectangleHitbox(size: size * 0.85, position: size * 0.075));
   }
@@ -51,17 +54,16 @@ class PowerUpComponent extends PositionComponent
     _collected = false;
     onRecycle = null;
     removeAll(children.whereType<ShapeHitbox>().toList());
+    children.whereType<Effect>().toList().forEach(remove);
   }
 
   @override
   void update(double dt) {
     if (!_active || _collected) return;
 
-    position.y += gameRef.scrollSpeed * dt;
+    position.y += game.effectiveScrollSpeed * dt;
     _bobPhase += dt * 2.5;
     _glowPulse += dt * 4.0;
-
-    // Subtle hover
     position.y += math.sin(_bobPhase) * 0.35;
 
     if (position.y > GameConfig.powerUpRecycleY) {
@@ -99,7 +101,7 @@ class PowerUpComponent extends PositionComponent
   }
 
   void _applyEffect() {
-    final notifier = gameRef.ref.read(gameSessionProvider.notifier);
+    final notifier = game.ref.read(gameSessionProvider.notifier);
 
     switch (type) {
       case PowerUpType.shield:
@@ -108,23 +110,35 @@ class PowerUpComponent extends PositionComponent
         notifier.activatePowerUp(PowerUpType.magnet);
         Future.delayed(
           Duration(milliseconds: (GameConfig.magnetDuration * 1000).toInt()),
-          () => notifier.deactivatePowerUp(PowerUpType.magnet),
+          () {
+            if (game.phase == GamePhase.playing) {
+              notifier.deactivatePowerUp(PowerUpType.magnet);
+            }
+          },
         );
       case PowerUpType.turboGust:
         notifier.activatePowerUp(PowerUpType.turboGust);
         Future.delayed(
           Duration(milliseconds: (GameConfig.turboDuration * 1000).toInt()),
-          () => notifier.deactivatePowerUp(PowerUpType.turboGust),
+          () {
+            if (game.phase == GamePhase.playing) {
+              notifier.deactivatePowerUp(PowerUpType.turboGust);
+            }
+          },
         );
       case PowerUpType.slowMo:
         notifier.activatePowerUp(PowerUpType.slowMo);
-        gameRef.applySlowMo(GameConfig.slowMoDuration);
+        game.applySlowMo(GameConfig.slowMoDuration);
       case PowerUpType.secondWind:
-        // Second Wind: instant revive-like effect — restores to mid-screen.
-        gameRef.plane.revive();
+        // Mid-air safety net: bounce plane to mid-screen + brief shield.
+        game.plane.revive();
+        notifier.activatePowerUp(PowerUpType.shield);
         notifier.activatePowerUp(PowerUpType.secondWind);
-        Future.delayed(const Duration(milliseconds: 200),
-            () => notifier.deactivatePowerUp(PowerUpType.secondWind));
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (game.isMounted) {
+            notifier.deactivatePowerUp(PowerUpType.secondWind);
+          }
+        });
     }
   }
 
@@ -132,9 +146,9 @@ class PowerUpComponent extends PositionComponent
 
   @override
   void render(Canvas canvas) {
-    final glow = (math.sin(_glowPulse) * 0.5 + 0.5); // 0–1
+    final glow = (math.sin(_glowPulse) * 0.5 + 0.5);
     final bgColor = _bgColorForType(type);
-    final iconColor = _iconColorForType(type);
+    final iconColor = const Color(0xFFF7F9FC);
 
     // Glowing background circle
     final glowPaint = Paint()
@@ -156,7 +170,6 @@ class PowerUpComponent extends PositionComponent
       bgPaint,
     );
 
-    // Icon
     _drawIcon(canvas, iconColor);
   }
 
@@ -169,7 +182,6 @@ class PowerUpComponent extends PositionComponent
 
     switch (type) {
       case PowerUpType.shield:
-        // Shield shape
         final path = Path()
           ..moveTo(cx, cy - 10)
           ..lineTo(cx + 8, cy - 6)
@@ -194,7 +206,6 @@ class PowerUpComponent extends PositionComponent
         canvas.drawRect(Rect.fromLTWH(cx - 8, cy - 2, 4, 8), paint);
         canvas.drawRect(Rect.fromLTWH(cx + 4, cy - 2, 4, 8), paint);
       case PowerUpType.turboGust:
-        // Lightning bolt
         final path = Path()
           ..moveTo(cx + 3, cy - 10)
           ..lineTo(cx - 2, cy - 1)
@@ -205,7 +216,6 @@ class PowerUpComponent extends PositionComponent
           ..close();
         canvas.drawPath(path, paint);
       case PowerUpType.slowMo:
-        // Clock / hourglass
         final circlePaint = Paint()
           ..color = color
           ..style = PaintingStyle.stroke
@@ -214,7 +224,6 @@ class PowerUpComponent extends PositionComponent
         canvas.drawLine(Offset(cx, cy), Offset(cx + 5, cy - 4), circlePaint);
         canvas.drawLine(Offset(cx, cy - 8), Offset(cx, cy - 5), paint);
       case PowerUpType.secondWind:
-        // Wind swirl
         final swirls = Paint()
           ..color = color
           ..style = PaintingStyle.stroke
@@ -248,9 +257,5 @@ class PowerUpComponent extends PositionComponent
       case PowerUpType.secondWind:
         return const Color(0xFF1B5E20);
     }
-  }
-
-  static Color _iconColorForType(PowerUpType type) {
-    return const Color(0xFFF7F9FC);
   }
 }

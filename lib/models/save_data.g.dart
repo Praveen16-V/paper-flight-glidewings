@@ -1,5 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
-// Run `flutter pub run build_runner build` to regenerate.
+// Hand-maintained Hive TypeAdapter for SaveData (MVP).
+// Run `flutter pub run build_runner build` to regenerate if you add fields.
 
 part of 'save_data.dart';
 
@@ -32,13 +33,14 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
       isFirstSession: fields[11] as bool? ?? true,
       lastDailyLoginMs: (fields[12] as num?)?.toInt() ?? 0,
       dailyLoginStreak: (fields[13] as num?)?.toInt() ?? 0,
+      pendingStartShield: fields[14] as bool? ?? false,
     );
   }
 
   @override
   void write(BinaryWriter writer, SaveData obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(15)
       ..writeByte(0)
       ..write(obj.coins)
       ..writeByte(1)
@@ -66,7 +68,9 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
       ..writeByte(12)
       ..write(obj.lastDailyLoginMs)
       ..writeByte(13)
-      ..write(obj.dailyLoginStreak);
+      ..write(obj.dailyLoginStreak)
+      ..writeByte(14)
+      ..write(obj.pendingStartShield);
   }
 
   @override

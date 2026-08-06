@@ -1,13 +1,15 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
 import '../core/enums/game_enums.dart';
 import '../models/run_result.dart';
+import '../providers/game_session_provider.dart';
 import '../providers/save_data_provider.dart';
 import '../services/ad_service.dart';
 import '../services/analytics_service.dart';
+import 'game_screen.dart';
 
 /// Args passed via route.
 class GameOverArgs {
@@ -17,7 +19,7 @@ class GameOverArgs {
 
 /// Results screen shown after every run.
 ///
-/// Flow:
+/// Flow (GDD §10 / §11):
 ///   1. Maybe show interstitial (respects honeymoon + frequency cap).
 ///   2. Display score, distance, coins, near-misses.
 ///   3. New-high-score celebration if applicable.
@@ -40,7 +42,7 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
   late Animation<Offset> _slideIn;
 
   bool _doubleCoinsUsed = false;
-  bool _interstitialDone = false;
+  bool _reviveUsed = false;
   RunResult? _result;
 
   @override
@@ -67,11 +69,24 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
     super.dispose();
   }
 
+  bool _runRecorded = false;
+
   Future<void> _runPostGameFlow() async {
+    // Don't permanently record yet if the player can still revive —
+    // recording happens on Retry / Menu / after double-coins / when revive
+    // is unavailable.
+    final canStillRevive = ref.read(gameSessionProvider).canRevive &&
+        ref.read(gameSessionProvider).crashSnapshot != null &&
+        !(_result?.wasRevived ?? false);
+
+    if (!canStillRevive) {
+      await _recordRunIfNeeded();
+    }
+
     final save = ref.read(saveDataProvider);
 
-    // Log analytics.
-    if (_result != null) {
+    // Log analytics (preview — final record may still be pending).
+    if (_result != null && !canStillRevive) {
       await AnalyticsService.instance.logRunCompleted(
         score: _result!.score,
         distanceMeters: _result!.distanceMeters,
@@ -85,26 +100,45 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
       }
     }
 
-    // Maybe show interstitial.
-    await AdService.instance.maybeShowInterstitial(
-      totalRuns: save.totalRuns,
-      runsSinceLastInterstitial: save.runsSinceLastInterstitial,
-      adsRemoved: save.adsRemoved,
-      onComplete: () {
-        if (mounted) {
-          setState(() => _interstitialDone = true);
-          ref.read(saveDataProvider.notifier).resetInterstitialCounter();
-        }
-      },
-    );
+    // Interstitial only after the run is "committed" (no revive pending).
+    if (!canStillRevive) {
+      await AdService.instance.maybeShowInterstitial(
+        totalRuns: save.totalRuns,
+        runsSinceLastInterstitial: save.runsSinceLastInterstitial,
+        adsRemoved: save.adsRemoved,
+        onComplete: () {
+          if (mounted) {
+            ref.read(saveDataProvider.notifier).resetInterstitialCounter();
+          }
+        },
+      );
+    }
 
-    _anim.forward();
+    if (mounted) _anim.forward();
+  }
+
+  Future<void> _recordRunIfNeeded() async {
+    if (_runRecorded || _result == null) return;
+    _runRecorded = true;
+    final isNew = await ref.read(saveDataProvider.notifier).recordRunResult(
+          score: _result!.score,
+          distanceMeters: _result!.distanceMeters,
+          coinsEarned: _result!.coinsCollected,
+          nearMisses: _result!.nearMisses,
+        );
+    if (isNew && mounted) {
+      setState(() {
+        _result = _result!.copyWith(isNewHighScore: true);
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final save = ref.watch(saveDataProvider);
     final result = _result;
+    final sessionCanRevive =
+        ref.watch(gameSessionProvider.select((s) => s.canRevive));
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -119,7 +153,6 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
                 children: [
                   const SizedBox(height: 32),
 
-                  // ── Header ────────────────────────────────────────────────
                   _Header(
                     isNewHighScore: result?.isNewHighScore ?? false,
                     biome: result?.finalBiome ?? Biome.city,
@@ -127,12 +160,10 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
 
                   const SizedBox(height: 28),
 
-                  // ── Stats card ────────────────────────────────────────────
                   if (result != null) _StatsCard(result: result),
 
                   const SizedBox(height: 28),
 
-                  // ── High score comparison ─────────────────────────────────
                   _HighScoreRow(
                     thisScore: result?.score ?? 0,
                     bestScore: save.highScore,
@@ -140,11 +171,13 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
 
                   const Spacer(),
 
-                  // ── Action buttons ────────────────────────────────────────
                   _ActionButtons(
                     result: result,
                     adsRemoved: save.adsRemoved,
                     doubleCoinsUsed: _doubleCoinsUsed,
+                    canRevive: !_reviveUsed &&
+                        sessionCanRevive &&
+                        !(result?.wasRevived ?? false),
                     onRevive: _onRevive,
                     onDoubleCoins: _onDoubleCoins,
                     onRetry: _onRetry,
@@ -164,32 +197,47 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
   // ── Actions ───────────────────────────────────────────────────────────────
 
   void _onRevive() {
+    if (_reviveUsed) return;
+    final snap = ref.read(gameSessionProvider).crashSnapshot;
+    if (snap == null) return;
+
+    final adsRemoved = ref.read(saveDataProvider).adsRemoved;
+
+    void doRevive() {
+      if (!mounted) return;
+      setState(() => _reviveUsed = true);
+      // Run is NOT recorded yet — continues via snapshot. Final crash records.
+      Navigator.of(context).pushReplacementNamed(
+        AppRoutes.game,
+        arguments: const GameScreenArgs(revive: true),
+      );
+    }
+
+    // Players who bought Remove Ads get a free revive (goodwill).
+    if (adsRemoved) {
+      doRevive();
+      return;
+    }
+
     AdService.instance.showRewarded(
       placement: AdPlacement.revive,
-      onRewarded: () {
-        if (mounted) {
-          Navigator.of(context).pushReplacementNamed(AppRoutes.game);
-          // The game screen creates a new PaperFlightGame; revive is handled
-          // by checking canRevive flag in gameSessionProvider on re-entry.
-          // In a full build: pass a revive flag through the route args so the
-          // GameScreen calls game.revive() instead of game.startRun().
-        }
-      },
-      onDismissed: () {
-        // Player closed ad without watching — do nothing.
-      },
+      onRewarded: doRevive,
+      onDismissed: () {},
     );
   }
 
   void _onDoubleCoins() {
-    if (_doubleCoinsUsed) return;
+    if (_doubleCoinsUsed || _result == null) return;
     AdService.instance.showRewarded(
       placement: AdPlacement.doubleCoins,
       onRewarded: () async {
         if (mounted && _result != null) {
-          setState(() => _doubleCoinsUsed = true);
-          // Award the extra coins (the original coins were already saved in
-          // recordRunResult; we add the bonus on top).
+          // Commit the run first so base coins exist, then double.
+          await _recordRunIfNeeded();
+          setState(() {
+            _doubleCoinsUsed = true;
+            _result = _result!.copyWith(doubleCoinsApplied: true);
+          });
           await ref
               .read(saveDataProvider.notifier)
               .addCoins(_result!.coinsCollected);
@@ -199,12 +247,19 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
     );
   }
 
-  void _onRetry() {
+  Future<void> _onRetry() async {
     AnalyticsService.instance.logEvent('retry_tapped');
-    Navigator.of(context).pushReplacementNamed(AppRoutes.game);
+    await _recordRunIfNeeded();
+    if (!mounted) return;
+    Navigator.of(context).pushReplacementNamed(
+      AppRoutes.game,
+      arguments: const GameScreenArgs(),
+    );
   }
 
-  void _onMenu() {
+  Future<void> _onMenu() async {
+    await _recordRunIfNeeded();
+    if (!mounted) return;
     Navigator.of(context).pushReplacementNamed(AppRoutes.mainMenu);
   }
 }
@@ -221,10 +276,9 @@ class _Header extends StatelessWidget {
     return Column(
       children: [
         Text(
-          isNewHighScore ? '🏆 NEW BEST!' : 'CRASHED',
+          isNewHighScore ? 'NEW BEST!' : 'CRASHED',
           style: TextStyle(
-            color:
-                isNewHighScore ? AppColors.warning : AppColors.danger,
+            color: isNewHighScore ? AppColors.warning : AppColors.danger,
             fontSize: isNewHighScore ? 30 : 26,
             fontWeight: FontWeight.w900,
             letterSpacing: 3,
@@ -273,7 +327,7 @@ class _StatsCard extends StatelessWidget {
           _StatRow(
             label: 'Coins',
             value: result.doubleCoinsApplied
-                ? '${result.coinsCollected * 2} (×2!)'
+                ? '${result.coinsCollected * 2} (x2!)'
                 : '${result.coinsCollected}',
             valueColor:
                 result.doubleCoinsApplied ? AppColors.coinGold : null,
@@ -287,7 +341,7 @@ class _StatsCard extends StatelessWidget {
             const SizedBox(height: 8),
             const _StatRow(
               label: 'Revived',
-              value: '✓',
+              value: 'Yes',
               valueColor: AppColors.success,
             ),
           ],
@@ -330,8 +384,7 @@ class _StatRow extends StatelessWidget {
         Text(
           value,
           style: TextStyle(
-            color: valueColor ??
-                (highlight ? AppColors.textLight : AppColors.textLight),
+            color: valueColor ?? AppColors.textLight,
             fontSize: highlight ? 28 : 16,
             fontWeight: highlight ? FontWeight.w900 : FontWeight.w600,
           ),
@@ -369,6 +422,7 @@ class _ActionButtons extends StatelessWidget {
     required this.result,
     required this.adsRemoved,
     required this.doubleCoinsUsed,
+    required this.canRevive,
     required this.onRevive,
     required this.onDoubleCoins,
     required this.onRetry,
@@ -378,22 +432,21 @@ class _ActionButtons extends StatelessWidget {
   final RunResult? result;
   final bool adsRemoved;
   final bool doubleCoinsUsed;
+  final bool canRevive;
   final VoidCallback onRevive;
   final VoidCallback onDoubleCoins;
-  final VoidCallback onRetry;
-  final VoidCallback onMenu;
-
-  bool get _canRevive =>
-      result != null && !result!.wasRevived && !adsRemoved;
+  final Future<void> Function() onRetry;
+  final Future<void> Function() onMenu;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Revive row — shown if not already revived and ads available.
-        if (_canRevive) ...[
+        // Revive — always available once if not already used (even with ads removed,
+        // players who bought remove-ads still get the revive UX via a free grant).
+        if (canRevive) ...[
           _AdButton(
-            label: 'Watch Ad → Revive',
+            label: adsRemoved ? 'Revive' : 'Watch Ad → Revive',
             icon: Icons.play_circle_outline,
             color: AppColors.success,
             onTap: onRevive,
@@ -401,15 +454,13 @@ class _ActionButtons extends StatelessWidget {
           const SizedBox(height: 10),
         ],
 
-        // Double coins — shown once per run.
+        // Double coins — rewarded only when ads present.
         if (!doubleCoinsUsed && !adsRemoved) ...[
           _AdButton(
-            label: doubleCoinsUsed
-                ? '2× Coins — Claimed!'
-                : 'Watch Ad → 2× Coins',
+            label: 'Watch Ad → 2× Coins',
             icon: Icons.monetization_on_outlined,
             color: AppColors.coinGold,
-            onTap: doubleCoinsUsed ? null : onDoubleCoins,
+            onTap: onDoubleCoins,
           ),
           const SizedBox(height: 16),
         ],
@@ -513,9 +564,8 @@ class _PrimaryButton extends StatelessWidget {
               : null,
           color: isPrimary ? null : AppColors.surface,
           borderRadius: BorderRadius.circular(14),
-          border: isPrimary
-              ? null
-              : Border.all(color: AppColors.divider),
+          border:
+              isPrimary ? null : Border.all(color: AppColors.divider),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,

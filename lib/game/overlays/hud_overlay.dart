@@ -1,10 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/enums/game_enums.dart';
 import '../../providers/game_session_provider.dart';
-import '../../providers/save_data_provider.dart';
 import '../paper_flight_game.dart';
 
 /// Flutter widget HUD drawn on top of the Flame canvas via GameWidget overlays.
@@ -20,22 +19,27 @@ class HudOverlay extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(gameSessionProvider);
 
+    // Hide HUD when not actively playing/paused.
+    if (session.phase != GamePhase.playing &&
+        session.phase != GamePhase.paused) {
+      return const SizedBox.shrink();
+    }
+
     return SafeArea(
       child: Stack(
         children: [
-          // ── Top bar: score + coins ──────────────────────────────────────
+          // ── Top bar: score + coins + pause ──────────────────────────────
           Positioned(
             top: 12,
             left: 16,
             right: 16,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _ScoreDisplay(
-                  score: session.score,
-                  isNew: session.lastRunResult?.isNewHighScore ?? false,
-                ),
+                _ScoreDisplay(score: session.score),
+                const Spacer(),
                 _CoinDisplay(coins: session.coinsThisRun),
+                const SizedBox(width: 10),
+                _PauseButton(game: game),
               ],
             ),
           ),
@@ -71,14 +75,14 @@ class HudOverlay extends ConsumerWidget {
             child: _PowerUpBar(activePowerUps: session.activePowerUps),
           ),
 
-          // ── Pause button ───────────────────────────────────────────────
+          // ── Snap charges (bottom-right) ────────────────────────────────
           Positioned(
-            top: 12,
+            bottom: 100,
             right: 16,
-            child: _PauseButton(game: game),
+            child: _SnapCharges(charges: game.inputManager.snapCharges),
           ),
 
-          // ── Biome label (fades in on transition) ───────────────────────
+          // ── Biome label ────────────────────────────────────────────────
           Positioned(
             bottom: 48,
             left: 0,
@@ -87,6 +91,37 @@ class HudOverlay extends ConsumerWidget {
               child: _BiomeLabel(biome: session.currentBiome),
             ),
           ),
+
+          // ── Shield indicator ───────────────────────────────────────────
+          if (session.shieldActive)
+            Positioned(
+              top: 100,
+              right: 16,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.shieldBlue.withOpacity(0.85),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.shield, color: Colors.white, size: 14),
+                    SizedBox(width: 4),
+                    Text(
+                      'SHIELD',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -96,9 +131,8 @@ class HudOverlay extends ConsumerWidget {
 // ── Sub-widgets ───────────────────────────────────────────────────────────────
 
 class _ScoreDisplay extends StatelessWidget {
-  const _ScoreDisplay({required this.score, required this.isNew});
+  const _ScoreDisplay({required this.score});
   final int score;
-  final bool isNew;
 
   @override
   Widget build(BuildContext context) {
@@ -108,21 +142,14 @@ class _ScoreDisplay extends StatelessWidget {
         color: AppColors.hudBackground,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (isNew)
-            const Text('★ ', style: TextStyle(color: AppColors.warning, fontSize: 14)),
-          Text(
-            _formatScore(score),
-            style: const TextStyle(
-              color: AppColors.textLight,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-            ),
-          ),
-        ],
+      child: Text(
+        _formatScore(score),
+        style: const TextStyle(
+          color: AppColors.textLight,
+          fontSize: 22,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.5,
+        ),
       ),
     );
   }
@@ -209,7 +236,7 @@ class _ComboDisplay extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
-          '×${multiplier.toStringAsFixed(1)}  $count COMBO',
+          'x${multiplier.toStringAsFixed(1)}  $count COMBO',
           style: const TextStyle(
             color: Colors.white,
             fontSize: 12,
@@ -258,10 +285,7 @@ class _PowerUpIcon extends StatelessWidget {
         border: Border.all(color: Colors.white24, width: 1),
       ),
       child: Center(
-        child: Text(
-          _emojiForType(type),
-          style: const TextStyle(fontSize: 18),
-        ),
+        child: Icon(_iconForType(type), color: Colors.white, size: 18),
       ),
     );
   }
@@ -281,19 +305,43 @@ class _PowerUpIcon extends StatelessWidget {
     }
   }
 
-  String _emojiForType(PowerUpType type) {
+  IconData _iconForType(PowerUpType type) {
     switch (type) {
       case PowerUpType.shield:
-        return '🛡';
+        return Icons.shield;
       case PowerUpType.magnet:
-        return '🧲';
+        return Icons.bubble_chart;
       case PowerUpType.turboGust:
-        return '⚡';
+        return Icons.bolt;
       case PowerUpType.slowMo:
-        return '🌀';
+        return Icons.slow_motion_video;
       case PowerUpType.secondWind:
-        return '💨';
+        return Icons.air;
     }
+  }
+}
+
+class _SnapCharges extends StatelessWidget {
+  const _SnapCharges({required this.charges});
+  final int charges;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(2, (i) {
+        final filled = i < charges;
+        return Container(
+          margin: const EdgeInsets.only(left: 4),
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: filled ? AppColors.accent : Colors.white24,
+            shape: BoxShape.circle,
+          ),
+        );
+      }),
+    );
   }
 }
 

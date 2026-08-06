@@ -1,4 +1,4 @@
-﻿import 'package:flame/components.dart';
+import 'package:flame/components.dart';
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
@@ -22,6 +22,7 @@ class CollectibleSpawner extends Component {
   final List<CoinComponent> _active = [];
 
   double _spawnTimer = 0;
+  double _gracePeriod = 0.8;
 
   @override
   Future<void> onLoad() async {
@@ -32,6 +33,12 @@ class CollectibleSpawner extends Component {
   @override
   void update(double dt) {
     if (game.phase != GamePhase.playing) return;
+
+    if (_gracePeriod > 0) {
+      _gracePeriod -= dt;
+      return;
+    }
+
     _spawnTimer += dt;
     if (_spawnTimer >= GameConfig.coinBaseSpawnInterval) {
       _spawnTimer = 0;
@@ -41,6 +48,7 @@ class CollectibleSpawner extends Component {
 
   void reset() {
     _spawnTimer = 0;
+    _gracePeriod = 0.8;
     for (final c in List.of(_active)) {
       _recycleCoin(c);
     }
@@ -93,12 +101,15 @@ class CollectibleSpawner extends Component {
     final count = MathUtils.randomInt(6, 9);
     final radius = MathUtils.randomRange(50, 90);
     for (int i = 0; i < count; i++) {
-      final angle = (i / (count - 1)) * 3.14159;
-      final x = centerX + radius * MathUtils.lerp(-1, 1, i / (count - 1));
-      final y = GameConfig.coinSpawnY - radius * 0.5 * (1 - (angle - 1.5708).abs() / 1.5708);
+      final t = count <= 1 ? 0.5 : i / (count - 1);
+      final x = centerX + radius * MathUtils.lerp(-1, 1, t);
+      final y = GameConfig.coinSpawnY - radius * mathSinArc(t);
       _spawnCoinAt(Vector2(x, y));
     }
   }
+
+  /// Simple arc height 0→1→0.
+  double mathSinArc(double t) => 1.0 - (2 * t - 1).abs();
 
   void _spawnCoinAt(Vector2 pos) {
     final coin = _coinPool.acquire();
@@ -110,7 +121,9 @@ class CollectibleSpawner extends Component {
   void _recycleCoin(CoinComponent coin) {
     _active.remove(coin);
     coin.deactivate();
-    if (coin.parent != null) game.world.remove(coin);
+    if (coin.parent != null) {
+      coin.removeFromParent();
+    }
     _coinPool.release(coin);
   }
 }

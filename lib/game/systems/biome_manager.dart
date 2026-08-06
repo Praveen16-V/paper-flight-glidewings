@@ -1,4 +1,4 @@
-﻿import 'package:flame/components.dart';
+import 'package:flame/components.dart';
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
@@ -7,12 +7,15 @@ import '../paper_flight_game.dart';
 
 /// Tracks which biome the player is currently in based on distance traveled.
 /// Notifies game systems when a biome transition occurs.
+///
+/// MVP starts in Backyard Morning (tutorial-safe) then progresses through
+/// City Rooftops and beyond (GDD §4).
 class BiomeManager extends Component {
   BiomeManager({required this.game});
 
   final PaperFlightGame game;
 
-  Biome _currentBiome = Biome.city; // MVP starts in city
+  Biome _currentBiome = Biome.backyard;
   Biome get currentBiome => _currentBiome;
 
   final List<void Function(Biome from, Biome to)> _listeners = [];
@@ -23,20 +26,28 @@ class BiomeManager extends Component {
 
   @override
   void update(double dt) {
+    if (game.phase != GamePhase.playing) return;
+
     final dist = game.distanceMeters;
     final newBiome = _biomeForDistance(dist);
     if (newBiome != _currentBiome) {
       final old = _currentBiome;
       _currentBiome = newBiome;
       game.ref.read(gameSessionProvider.notifier).updateBiome(newBiome);
-      for (final cb in _listeners) {
+      for (final cb in List.of(_listeners)) {
         cb(old, newBiome);
       }
     }
   }
 
   void reset() {
-    _currentBiome = Biome.city;
+    _currentBiome = Biome.backyard;
+    game.ref.read(gameSessionProvider.notifier).updateBiome(Biome.backyard);
+  }
+
+  void restore(Biome biome) {
+    _currentBiome = biome;
+    game.ref.read(gameSessionProvider.notifier).updateBiome(biome);
   }
 
   static Biome _biomeForDistance(double meters) {
@@ -53,10 +64,11 @@ class BiomeManager extends Component {
   double obstacleWeight(ObstacleType type) {
     switch (_currentBiome) {
       case Biome.backyard:
+        // Tutorial-safe: mostly branches + occasional birds.
         return const {
           ObstacleType.treeBranch: 1.0,
-          ObstacleType.bird: 0.5,
-          ObstacleType.powerLine: 0.3,
+          ObstacleType.bird: 0.4,
+          ObstacleType.powerLine: 0.15,
           ObstacleType.building: 0.0,
           ObstacleType.drone: 0.0,
         }[type]!;
@@ -94,12 +106,30 @@ class BiomeManager extends Component {
         }[type]!;
       case Biome.atmosphere:
         return const {
-          ObstacleType.drone: 1.0,
-          ObstacleType.bird: 0.8,
-          ObstacleType.powerLine: 0.4,
-          ObstacleType.building: 0.2,
-          ObstacleType.treeBranch: 0.1,
+          ObstacleType.drone: 1.2,
+          ObstacleType.bird: 1.0,
+          ObstacleType.powerLine: 0.5,
+          ObstacleType.building: 0.3,
+          ObstacleType.treeBranch: 0.2,
         }[type]!;
+    }
+  }
+
+  /// Wind intensity multiplier by biome (storm = stronger gusts).
+  double get windIntensityMultiplier {
+    switch (_currentBiome) {
+      case Biome.backyard:
+        return 0.4;
+      case Biome.city:
+        return 0.8;
+      case Biome.storm:
+        return 1.5;
+      case Biome.mountain:
+        return 1.1;
+      case Biome.night:
+        return 0.9;
+      case Biome.atmosphere:
+        return 1.3;
     }
   }
 }
