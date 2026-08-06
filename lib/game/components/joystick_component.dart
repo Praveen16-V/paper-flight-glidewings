@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
-import 'package:flame/components.dart';
+import 'package:flame/components.dart' hide JoystickComponent;
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
