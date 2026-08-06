@@ -67,6 +67,10 @@ class PlaneComponent extends PositionComponent
   double _oscillationPhase = 0.0;   // radians, ticks every frame
   double _oscillationStrength = 0.0; // [0,1], ramps up after release
 
+  // Ceiling stall state.
+  double _ceilingStallTimer = 0.0; // seconds remaining in stall dip
+  bool _ceilingWasInSoftZone = false;
+
   // ── Visual State ───────────────────────────────────────────────────────────
 
   bool _isAlive = true;
@@ -170,6 +174,9 @@ class PlaneComponent extends PositionComponent
     if (_magnetActive) _drawMagnetAura(canvas, w, h);
     if (_coinRushActive) _drawCoinRushGlow(canvas, w, h);
     if (_shieldActive) _drawShieldBubble(canvas, w, h);
+
+    // Snap charge ring — always visible during playing phase.
+    _drawSnapChargeRing(canvas, w, h);
   }
 
   /// Shimmering cyan ghost outline + small drift wisps while phasing.
@@ -215,6 +222,92 @@ class PlaneComponent extends PositionComponent
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
     final r = w * 0.8;
     canvas.drawCircle(Offset(w / 2, h / 2), r + 4, glowPaint);
+  }
+
+  /// Charge ring around the plane showing 2 snap charges and recharge progress.
+  void _drawSnapChargeRing(Canvas canvas, double w, double h) {
+    // Only show during active run; faint when full, pulsing when recharging.
+    if (game.phase != GamePhase.playing && game.phase != GamePhase.paused) return;
+
+    final input = game.inputManager;
+    final charges = input.snapCharges;
+    final progress = input.snapRechargeFraction; // 0..1 for next charge
+    final center = Offset(w / 2, h / 2);
+    final radius = GameConfig.snapRingRadius;
+    final stroke = GameConfig.snapRingStrokeWidth;
+
+    // Background faint circle
+    final bgPaint = Paint()
+      ..color = const Color(0x22FFFFFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawCircle(center, radius, bgPaint);
+
+    const gap = GameConfig.snapRingGapRadians;
+    final totalArc = (2 * pi - gap * GameConfig.snapMaxCharges) / GameConfig.snapMaxCharges;
+
+    for (int i = 0; i < GameConfig.snapMaxCharges; i++) {
+      final start = -pi / 2 + i * (totalArc + gap);
+      double sweep = totalArc;
+      bool isFilled = i < charges;
+      double fillFraction = 1.0;
+      Paint segPaint;
+
+      if (isFilled) {
+        // Available charge — solid accent.
+        segPaint = Paint()
+          ..color = const Color(0xFFF5A623).withOpacity(0.95)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke
+          ..strokeCap = StrokeCap.round;
+      } else if (i == charges && charges < GameConfig.snapMaxCharges) {
+        // Next charge is recharging — draw partial arc based on progress.
+        fillFraction = progress.clamp(0.0, 1.0);
+        if (fillFraction <= 0.01) continue;
+        sweep = totalArc * fillFraction;
+        final pulse = 0.45 + 0.25 * sin(_ghostFlickerPhase * 0.9);
+        segPaint = Paint()
+          ..color = const Color(0xFFF5A623).withOpacity(pulse)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke
+          ..strokeCap = StrokeCap.round;
+      } else {
+        // Locked charge — dim.
+        segPaint = Paint()
+          ..color = const Color(0x33FFFFFF)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke * 0.85
+          ..strokeCap = StrokeCap.round;
+      }
+
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        start,
+        sweep,
+        false,
+        segPaint,
+      );
+    }
+
+    // (charges==0 case still draws background + partial sweep above; no extra dot needed)
+
+    // Flash the ring briefly when a snap was just used — scale via phase.
+    if (_snapFlashTimer > 0) {
+      final f = (_snapFlashTimer / 0.2).clamp(0.0, 1.0);
+      final flashPaint = Paint()
+        ..color = const Color(0xFFF5A623).withOpacity(0.5 * f)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke + 2.5 * f
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+      canvas.drawCircle(center, radius + 2, flashPaint);
+    }
+  }
+
+  double _snapFlashTimer = 0.0;
+
+  void _triggerSnapFlash() {
+    _snapFlashTimer = 0.22;
   }
 
   /// Pulsing blue shield bubble protecting the plane from one hit.
@@ -295,6 +388,14 @@ class PlaneComponent extends PositionComponent
     _magnetActive = session.activePowerUps.contains(PowerUpType.magnet);
     _coinRushActive = session.activePowerUps.contains(PowerUpType.coinRush);
     if (_ghostActive) _ghostFlickerPhase += dt * 20.0;
+    // Tick visual timers.
+    if (_ghostActive || _magnetActive || _coinRushActive) {
+      if (!_ghostActive) _ghostFlickerPhase += dt * 8.0;
+    } else {
+      _ghostFlickerPhase += dt * 6.0; // still tick for snap ring pulse
+    }
+    if (_snapFlashTimer > 0) _snapFlashTimer = (_snapFlashTimer - dt).clamp(0.0, 10.0);
+    if (_ceilingStallTimer > 0) _ceilingStallTimer = (_ceilingStallTimer - dt).clamp(0.0, 10.0);
 
     // ── Vertical Physics ─────────────────────────────────────────────────────
 
@@ -366,10 +467,12 @@ class PlaneComponent extends PositionComponent
       _velocityY += oscContrib * dt;
     }
 
-    // Paper-snap burst: strong upward kick (double-tap power).
+    // Paper-snap burst: strong upward kick (double-tap / flick / button).
     if (input.consumeSnap()) {
-      _velocityY = GameConfig.liftSnapKick * 1.8;
+      _velocityY = GameConfig.snapBurstVelocity;
       _glideArcActive = false;
+      _triggerSnapFlash();
+      _playSnapBurstEffect();
     }
 
     // Thermal lift bonus from wind lane.
@@ -382,7 +485,7 @@ class PlaneComponent extends PositionComponent
 
     // Clamp velocity range.
     _velocityY = _velocityY.clamp(
-      GameConfig.liftSnapKick * 1.8, // max upward speed matches snap burst
+      GameConfig.snapBurstVelocity, // max upward speed matches snap burst
       GameConfig.maxFallSpeed * fallMult,
     );
 
@@ -393,8 +496,11 @@ class PlaneComponent extends PositionComponent
         : 1.0;
 
     final turnMult = planeType.turnSpeedMultiplier;
+    final baseSpeed = input.currentScheme == ControlScheme.drag
+        ? GameConfig.dragMaxSteerSpeed
+        : GameConfig.maxTiltSpeed;
     final targetVX = input.horizontalInput *
-        GameConfig.maxTiltSpeed *
+        baseSpeed *
         turnMult *
         controlMult *
         sensitivity;
@@ -415,6 +521,9 @@ class PlaneComponent extends PositionComponent
       GameConfig.designWidth - GameConfig.horizontalEdgeMargin,
     );
 
+    // ── Soft Altitude Ceiling (aerodynamic resistance + stall) ───────────────
+    _handleCeiling(dt);
+
     // ── Fail State ────────────────────────────────────────────────────────────
 
     if (position.y > GameConfig.designHeight + size.y) {
@@ -434,6 +543,82 @@ class PlaneComponent extends PositionComponent
     // ── Edge Tracking ─────────────────────────────────────────────────────────
 
     _wasHolding = isHolding;
+  }
+
+  // ── Soft Ceiling Handling ───────────────────────────────────────────────────
+
+  void _handleCeiling(double dt) {
+    if (position.y >= GameConfig.ceilingSoftY) {
+      _ceilingWasInSoftZone = false;
+      return;
+    }
+
+    // Inside soft zone: progressive aerodynamic resistance while moving upward.
+    if (_velocityY < 0) {
+      if (position.y <= GameConfig.ceilingY) {
+        // Hard ceiling hit — clamp and stall dip.
+        position.y = GameConfig.ceilingY;
+        if (!_ceilingWasInSoftZone) {
+          _velocityY = GameConfig.ceilingStallPush; // push down
+        } else {
+          _velocityY = (_velocityY * 0.15 + GameConfig.ceilingStallPush * 0.6)
+              .clamp(-20.0, GameConfig.ceilingStallPush);
+        }
+        _ceilingStallTimer = GameConfig.ceilingDipDuration;
+        _ceilingWasInSoftZone = true;
+        // Damp oscillation to emphasize stall.
+        _oscillationStrength *= 0.4;
+        // Visual puff could be spawned here (reuse scale effect).
+        _playCeilingStallEffect();
+      } else {
+        // Soft resistance: lerp upward velocity toward mild downward drift.
+        final t = (GameConfig.ceilingSoftY - position.y) /
+            (GameConfig.ceilingSoftY - GameConfig.ceilingY); // 0..1
+        final damping = GameConfig.ceilingResistanceDamping * t;
+        _velocityY = MathUtils.lerp(
+          _velocityY,
+          GameConfig.ceilingStallPush * 0.12 * t,
+          (damping * dt * 60).clamp(0.0, 0.85),
+        );
+        // Also gently push position down if very close to ceiling.
+        position.y += GameConfig.ceilingStallPush * t * dt * 0.18;
+        position.y = position.y.clamp(GameConfig.ceilingY, double.infinity);
+        if (t > 0.7 && _ceilingStallTimer <= 0) {
+          _ceilingStallTimer = GameConfig.ceilingDipDuration * 0.35;
+        }
+      }
+    } else {
+      // Already falling — allow exit but keep clamp.
+      if (position.y < GameConfig.ceilingY) {
+        position.y = GameConfig.ceilingY;
+      }
+    }
+  }
+
+  void _playCeilingStallEffect() {
+    children.whereType<ScaleEffect>().toList().forEach(remove);
+    add(
+      ScaleEffect.by(
+        Vector2(1.08, 0.92),
+        EffectController(
+          duration: GameConfig.ceilingDipDuration / 2,
+          reverseDuration: GameConfig.ceilingDipDuration / 2,
+          curve: Curves.easeOut,
+          reverseCurve: Curves.easeIn,
+        ),
+      ),
+    );
+  }
+
+  void _playSnapBurstEffect() {
+    // Quick scale pop + flash already handled via _triggerSnapFlash.
+    children.whereType<ScaleEffect>().toList().forEach(remove);
+    add(
+      ScaleEffect.by(
+        Vector2.all(1.18),
+        EffectController(duration: 0.07, reverseDuration: 0.07),
+      ),
+    );
   }
 
   // ── Rotation Update (Task 3) ──────────────────────────────────────────────
@@ -462,6 +647,12 @@ class PlaneComponent extends PositionComponent
     // coasting upward — the most characteristic paper-plane moment.
     if (_glideArcActive && _velocityY < 0) {
       pitchTarget += GameConfig.glideNoseUpBias;
+    }
+
+    // Ceiling stall dip: gentle nose-down while stalling at ceiling.
+    if (_ceilingStallTimer > 0) {
+      final t = _ceilingStallTimer / GameConfig.ceilingDipDuration;
+      pitchTarget += GameConfig.ceilingDipAngle * t;
     }
 
     _pitchAngle = MathUtils.lerp(_pitchAngle, pitchTarget, pitchLerpT);
@@ -533,6 +724,9 @@ class PlaneComponent extends PositionComponent
     _glideArcActive = false;
     _oscillationPhase = 0;
     _oscillationStrength = 0;
+    _ceilingStallTimer = 0.0;
+    _ceilingWasInSoftZone = false;
+    _snapFlashTimer = 0.0;
     _shieldActive = false;
     _ghostActive = false;
     _magnetActive = false;
@@ -558,6 +752,9 @@ class PlaneComponent extends PositionComponent
     _glideArcActive = false;
     _oscillationPhase = 0;
     _oscillationStrength = 0;
+    _ceilingStallTimer = 0.0;
+    _ceilingWasInSoftZone = false;
+    _snapFlashTimer = 0.0;
     position.y = GameConfig.designHeight * 0.5;
 
     _trail.clear();

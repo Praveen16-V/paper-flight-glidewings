@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../providers/game_session_provider.dart';
-import '../../providers/save_data_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../paper_flight_game.dart';
 
 /// Flutter widget HUD drawn on top of the Flame canvas via GameWidget overlays.
@@ -19,6 +20,7 @@ class HudOverlay extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(gameSessionProvider);
+    final settings = ref.watch(settingsProvider);
 
     return SafeArea(
       child: Stack(
@@ -27,7 +29,7 @@ class HudOverlay extends ConsumerWidget {
           Positioned(
             top: 12,
             left: 16,
-            right: 16,
+            right: 72,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -77,6 +79,40 @@ class HudOverlay extends ConsumerWidget {
             right: 16,
             child: _PauseButton(game: game),
           ),
+
+          // ── BOOST button (bottom-right) — dedicated snap burst zone ────
+          Positioned(
+            bottom: 18,
+            right: 16,
+            child: _BoostButton(game: game),
+          ),
+
+          // ── Drag hint (subtle, only for drag scheme, first 3s of run) ─
+          if (settings.controlScheme == ControlScheme.drag &&
+              session.phase == GamePhase.playing)
+            Positioned(
+              bottom: 92,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0x99000000),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'DRAG TO STEER  •  HOLD TO CLIMB  •  FLICK UP OR TAP BOOST',
+                    style: TextStyle(
+                      color: Color(0xBBFFFFFF),
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
           // ── Biome label (fades in on transition) ───────────────────────
           Positioned(
@@ -326,6 +362,221 @@ class _PauseButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Dedicated emergency BOOST button with charge-ring indicator.
+///
+/// Tapping fires one snap charge if available. Shows 2 charge dots
+/// and a circular progress sweep for the recharging charge.
+class _BoostButton extends StatefulWidget {
+  const _BoostButton({required this.game});
+  final PaperFlightGame game;
+
+  @override
+  State<_BoostButton> createState() => _BoostButtonState();
+}
+
+class _BoostButtonState extends State<_BoostButton>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker((_) {
+      if (mounted) setState(() {});
+    })
+      ..start();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final charges = widget.game.inputManager.snapCharges;
+    final progress = widget.game.inputManager.snapRechargeFraction;
+    final hasCharges = charges > 0;
+    final isPlaying = widget.game.phase == GamePhase.playing;
+
+    return Opacity(
+      opacity: isPlaying ? 1.0 : 0.35,
+      child: GestureDetector(
+        onTap: isPlaying
+            ? () {
+                final fired = widget.game.triggerSnapBoost();
+                if (fired && mounted) {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                }
+              }
+            : null,
+        child: SizedBox(
+          width: 72,
+          height: 80,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Charge ring behind button
+              SizedBox(
+                width: 64,
+                height: 64,
+                child: CustomPaint(
+                  painter: _BoostRingPainter(
+                    charges: charges,
+                    maxCharges: GameConfig.snapMaxCharges,
+                    progress: progress,
+                  ),
+                ),
+              ),
+              // Main circular button
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: hasCharges ? const Color(0xFFF5A623) : const Color(0xFF3A4D7A),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: hasCharges ? Colors.white.withOpacity(0.9) : Colors.white24,
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    if (hasCharges)
+                      BoxShadow(
+                        color: const Color(0xFFF5A623).withOpacity(0.45),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                      ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.rocket_launch_rounded,
+                      color: hasCharges ? Colors.white : const Color(0xFF8A9BB8),
+                      size: 22,
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      hasCharges ? 'BOOST' : 'WAIT',
+                      style: TextStyle(
+                        color: hasCharges ? Colors.white : const Color(0xFF8A9BB8),
+                        fontSize: 7.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Charge dots
+              Positioned(
+                bottom: 0,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(GameConfig.snapMaxCharges, (i) {
+                    final filled = i < charges;
+                    // Next charge is recharging partially
+                    final isRecharging = i == charges && !filled && progress > 0.02;
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: filled
+                            ? const Color(0xFFF5A623)
+                            : isRecharging
+                                ? const Color(0xFFF5A623).withOpacity(0.35 + 0.4 * progress)
+                                : Colors.white24,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white24, width: 0.8),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BoostRingPainter extends CustomPainter {
+  _BoostRingPainter({
+    required this.charges,
+    required this.maxCharges,
+    required this.progress,
+  });
+
+  final int charges;
+  final int maxCharges;
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 4;
+    const gap = 0.22;
+    final totalArc = (2 * 3.1415926535 - gap * maxCharges) / maxCharges;
+
+    // Background track
+    final bgPaint = Paint()
+      ..color = const Color(0x22FFFFFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.5
+      ..strokeCap = StrokeCap.round;
+    canvas.drawCircle(center, radius, bgPaint);
+
+    for (int i = 0; i < maxCharges; i++) {
+      final start = -3.1415926535 / 2 + i * (totalArc + gap);
+      double sweep = totalArc;
+      Paint segPaint;
+      bool draw = true;
+
+      if (i < charges) {
+        segPaint = Paint()
+          ..color = const Color(0xFFF5A623)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3.5
+          ..strokeCap = StrokeCap.round;
+      } else if (i == charges && charges < maxCharges) {
+        if (progress <= 0.01) {
+          draw = false;
+        } else {
+          sweep = totalArc * progress.clamp(0.0, 1.0);
+          segPaint = Paint()
+            ..color = const Color(0xFFF5A623).withOpacity(0.5 + 0.35 * progress)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 3.5
+            ..strokeCap = StrokeCap.round;
+        }
+      } else {
+        segPaint = Paint()
+          ..color = const Color(0x33FFFFFF)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5
+          ..strokeCap = StrokeCap.round;
+      }
+
+      if (!draw) continue;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        start,
+        sweep,
+        false,
+        segPaint!,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BoostRingPainter oldDelegate) =>
+      oldDelegate.charges != charges || oldDelegate.progress != progress;
 }
 
 class _BiomeLabel extends StatelessWidget {

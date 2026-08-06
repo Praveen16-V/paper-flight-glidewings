@@ -230,6 +230,54 @@ abstract class GameConfig {
   static const double biomeNightEnd = 4000.0;
   // Edge of Atmosphere = beyond 4000 m, endgame loop
 
+  // ── Direct Drag Steering ─────────────────────────────────────────────────
+  /// Dead zone (px) around drag start before steering kicks in.
+  static const double dragDeadZone = 8.0;
+
+  /// Smoothing factor for drag horizontal input (low-pass). Higher = snappier.
+  static const double dragSmoothingAlpha = 0.18;
+
+  /// Max horizontal speed when dragging full width (px/s). Slightly higher than
+  /// tilt to make finger steering feel responsive.
+  static const double dragMaxSteerSpeed = 160.0;
+
+  // ── Snap Burst (Paper-Snap) ───────────────────────────────────────────────
+  static const int snapMaxCharges = 2;
+  /// Snap burst velocity (px/s upward, negative).
+  static const double snapBurstVelocity = -252.0; // 1.8 × liftSnapKick
+
+  /// Flick-up gesture thresholds.
+  static const double snapFlickMinDistance = 70.0; // px upward travel
+  static const double snapFlickMaxDurationMs = 220.0; // ms
+  static const double snapFlickMinVelocity = 320.0; // px/s upward
+
+  /// Distance (meters) to recharge one snap charge.
+  static const double snapRechargeMeters = 200.0;
+
+  // ── Snap Charge Ring ─────────────────────────────────────────────────────
+  static const double snapRingRadius = 32.0;
+  static const double snapRingStrokeWidth = 3.0;
+  static const double snapRingGapRadians = 0.22; // gap between segments
+
+  // ── Soft Altitude Ceiling ─────────────────────────────────────────────────
+  /// Hard ceiling Y (px from top). Plane never goes above this.
+  static const double ceilingY = 40.0;
+
+  /// Soft zone start (px from top). Resistance begins fading in here.
+  static const double ceilingSoftY = 64.0;
+
+  /// Velocity damping factor applied per frame while in soft zone and moving up.
+  static const double ceilingResistanceDamping = 0.55;
+
+  /// Downward stall push (px/s) applied briefly on ceiling contact.
+  static const double ceilingStallPush = 85.0;
+
+  /// Duration (s) of the nose-down dip animation after hitting ceiling.
+  static const double ceilingDipDuration = 0.34;
+
+  /// Dip angle (radians) added briefly when stalling at ceiling.
+  static const double ceilingDipAngle = 0.32;
+
   // ── UI Animation ─────────────────────────────────────────────────────────
   static const Duration screenTransition = Duration(milliseconds: 300);
   static const Duration crashSlowMoFreeze = Duration(milliseconds: 120);
