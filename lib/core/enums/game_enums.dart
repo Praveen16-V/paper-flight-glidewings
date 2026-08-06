@@ -1,5 +1,7 @@
 /// All enums for Paper Flight — kept in one file for easy cross-reference.
 
+import '../constants/game_config.dart';
+
 // ── Game State ──────────────────────────────────────────────────────────────
 
 enum GamePhase {
@@ -247,6 +249,68 @@ enum WindType {
   rightPush,
   turbulent,
   thermal, // updraft
+}
+
+// ── Near-Miss Tiers ───────────────────────────────────────────────────────────
+
+/// Progressive risk tiers for near-misses, tightest pass pays the most.
+enum NearMissTier {
+  closeShave,   // within 32px edge clearance — +25
+  hairThin,     // within 18px edge clearance — +50, pitch-shifted sting
+  deathDefying, // within  8px edge clearance — +100, freeze frame + camera pulse
+}
+
+extension NearMissTierInfo on NearMissTier {
+  String get label {
+    switch (this) {
+      case NearMissTier.closeShave:
+        return 'CLOSE SHAVE!';
+      case NearMissTier.hairThin:
+        return 'HAIR-THIN!';
+      case NearMissTier.deathDefying:
+        return 'DEATH DEFYING!';
+    }
+  }
+
+  /// Points awarded for a pass at this tier.
+  int get points {
+    switch (this) {
+      case NearMissTier.closeShave:
+        return GameConfig.nearMissCloseShavePoints;
+      case NearMissTier.hairThin:
+        return GameConfig.nearMissHairThinPoints;
+      case NearMissTier.deathDefying:
+        return GameConfig.nearMissDeathDefyingPoints;
+    }
+  }
+
+  /// Playback rate for the near-miss sting — Hair-Thin pitches up for a
+  /// sharper sting, Death Defying drops low for a heavier hit.
+  double get stingPlaybackRate {
+    switch (this) {
+      case NearMissTier.closeShave:
+        return 1.0;
+      case NearMissTier.hairThin:
+        return 1.35;
+      case NearMissTier.deathDefying:
+        return 0.72;
+    }
+  }
+}
+
+/// Maps an edge clearance (px between hitboxes) to its risk tier.
+/// Returns null when the pass was too wide to score.
+NearMissTier? nearMissTierForClearance(double clearance) {
+  if (clearance <= GameConfig.nearMissDeathDefyingDistance) {
+    return NearMissTier.deathDefying;
+  }
+  if (clearance <= GameConfig.nearMissHairThinDistance) {
+    return NearMissTier.hairThin;
+  }
+  if (clearance <= GameConfig.nearMissCloseShaveDistance) {
+    return NearMissTier.closeShave;
+  }
+  return null;
 }
 
 // ── Control Scheme ────────────────────────────────────────────────────────────

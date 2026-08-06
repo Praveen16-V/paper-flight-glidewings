@@ -315,6 +315,11 @@ class PlaneComponent extends PositionComponent
   double _snapFlashTimer = 0.0;
   bool _wasInThermal = false;
 
+  /// True while the plane's wind lane is a thermal updraft — read by the
+  /// thermal-surf streak tracker.
+  bool _inThermal = false;
+  bool get isInThermal => _inThermal;
+
   void _triggerSnapFlash() {
     _snapFlashTimer = 0.22;
   }
@@ -489,6 +494,7 @@ class PlaneComponent extends PositionComponent
     final laneIndex = wind.laneForNormX(normX);
     final laneWind = wind.windAt(laneIndex);
     final inThermal = laneWind.type == WindType.thermal;
+    _inThermal = inThermal;
     if (inThermal) {
       _velocityY -= laneWind.liftBonus * dt;
       // Reuse the bundled wind bed as a short, rewarding updraft whoosh.
@@ -747,6 +753,7 @@ class PlaneComponent extends PositionComponent
     _ceilingWasInSoftZone = false;
     _snapFlashTimer = 0.0;
     _wasInThermal = false;
+    _inThermal = false;
     _shieldActive = false;
     _ghostActive = false;
     _magnetActive = false;
@@ -813,4 +820,15 @@ class PlaneComponent extends PositionComponent
   }
 
   Vector2 get worldPosition => absolutePosition;
+
+  /// World-space axis-aligned rect of the collision hitbox — used by
+  /// obstacles to compute hitbox-edge clearance for tiered near-misses.
+  Rect get worldAabbRect {
+    final hbSize = size * GameConfig.planeHitboxScale;
+    return Rect.fromCenter(
+      center: position.toOffset(),
+      width: hbSize.x,
+      height: hbSize.y,
+    );
+  }
 }

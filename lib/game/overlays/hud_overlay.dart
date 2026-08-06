@@ -53,7 +53,7 @@ class HudOverlay extends ConsumerWidget {
             ),
           ),
 
-          // ── Combo strip ────────────────────────────────────────────────
+          // ── Combo strip + decay gauge ───────────────────────────────────
           if (session.comboCount >= 3)
             Positioned(
               top: 88,
@@ -63,6 +63,7 @@ class HudOverlay extends ConsumerWidget {
                 child: _ComboDisplay(
                   count: session.comboCount,
                   multiplier: session.comboMultiplier,
+                  gauge: session.comboGauge,
                 ),
               ),
             ),
@@ -228,33 +229,70 @@ class _DistanceDisplay extends StatelessWidget {
 }
 
 class _ComboDisplay extends StatelessWidget {
-  const _ComboDisplay({required this.count, required this.multiplier});
+  const _ComboDisplay({
+    required this.count,
+    required this.multiplier,
+    required this.gauge,
+  });
   final int count;
   final double multiplier;
 
+  /// Combo decay gauge, 0.0–1.0 — drains while no coins are collected.
+  final double gauge;
+
   @override
   Widget build(BuildContext context) {
-    return AnimatedScale(
-      scale: count > 0 ? 1.0 : 0.0,
-      duration: const Duration(milliseconds: 150),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFF6B35), Color(0xFFF5A623)],
+    final gaugeFraction = gauge.clamp(0.0, 1.0).toDouble();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedScale(
+          scale: count > 0 ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 150),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFF6B35), Color(0xFFF5A623)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              '×${multiplier.toStringAsFixed(1)}  $count COMBO',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+              ),
+            ),
           ),
-          borderRadius: BorderRadius.circular(20),
         ),
-        child: Text(
-          '×${multiplier.toStringAsFixed(1)}  $count COMBO',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.5,
+        const SizedBox(height: 3),
+        // Decay gauge — visibly burns down from full; refills one notch
+        // per coin. Shifts hot-orange → red as it empties.
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: Container(
+            width: 110,
+            height: 4,
+            color: const Color(0x33FFFFFF),
+            child: FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: gaugeFraction,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: gaugeFraction > 0.3
+                        ? const [Color(0xFFFF6B35), Color(0xFFF5A623)]
+                        : const [Color(0xFFFF1744), Color(0xFFFF6B35)],
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 }

@@ -178,15 +178,31 @@ abstract class GameConfig {
   static const double coinRecycleY = 920.0;
   static const double coinBaseSpawnInterval = 0.9;
   static const double coinMagnetRadius = 165.0;
-  static const int coinComboResetOnHit = 0; // combo resets to 0 on obstacle hit
   static const double coinSize = 28.0;
 
-  // ── Near-Miss ────────────────────────────────────────────────────────────
-  /// How close to an obstacle (px) counts as a near-miss.
-  static const double nearMissDistance = 32.0;
+  // ── Near-Miss (Tiered Risk Rewards) ──────────────────────────────────────
+  /// Edge-clearance (hitbox-to-hitbox, px) thresholds, from outermost to
+  /// tightest. The tightest tier reached at the point of closest approach is
+  /// the one awarded — a graze is scored only once the plane has committed
+  /// and the two bodies start separating again.
+  static const double nearMissCloseShaveDistance = 32.0;
+  static const double nearMissHairThinDistance = 18.0;
+  static const double nearMissDeathDefyingDistance = 8.0;
 
-  /// Near-miss points awarded per event.
-  static const int nearMissPoints = 25;
+  /// Points per near-miss tier (Close Shave / Hair-Thin / Death Defying).
+  static const int nearMissCloseShavePoints = 25;
+  static const int nearMissHairThinPoints = 50;
+  static const int nearMissDeathDefyingPoints = 100;
+
+  /// Clearance must climb this far (px) back above the recorded minimum
+  /// before the pass is considered settled and the tier pays out.
+  static const double nearMissSettleSlop = 2.0;
+
+  /// Hit-stop freeze-frame triggered by a Death Defying pass.
+  static const Duration deathDefyingFreeze = Duration(milliseconds: 110);
+
+  /// Camera zoom peak for the Death Defying pulse (1.0 = no pulse).
+  static const double deathDefyingCameraZoom = 1.05;
 
   // ── Scoring ──────────────────────────────────────────────────────────────
   /// Score per meter of distance.
@@ -195,6 +211,36 @@ abstract class GameConfig {
   /// Score multiplier per coin in active combo (stacks up to comboMax).
   static const double comboMultiplierStep = 0.1;
   static const int comboMax = 20;
+
+  /// Seconds for a FULL combo gauge ([comboMax] notches) to drain away while
+  /// no coins are collected. Each coin adds exactly one notch back, so only
+  /// continuous line-following can hold a high multiplier — but a brief pause
+  /// merely clips off a few notches instead of wiping the combo.
+  static const double comboDrainDuration = 3.5;
+
+  /// Fraction of the combo gauge kept when an obstacle hit is absorbed by
+  /// the shield — the "half the combo" penalty that replaced the old
+  /// instant reset.
+  static const double comboHitRetentionFraction = 0.5;
+
+  // ── Clean Flight Streaks ─────────────────────────────────────────────────
+  /// Horizontal input magnitude that counts as a committed steering direction
+  /// for over-correction detection (0–1 normalized input).
+  static const double overCorrectionInputThreshold = 0.55;
+
+  /// Input must fall below this magnitude before the steering direction is
+  /// considered "released" (hysteresis, prevents jitter-induced flips).
+  static const double overCorrectionReleaseThreshold = 0.18;
+
+  /// Smooth-glide streak: points paid per streak-second, escalating each
+  /// consecutive second (base × n) up to the escalation cap.
+  static const int cleanFlightBasePoints = 2;
+  static const int cleanFlightMaxEscalation = 8;
+
+  /// Thermal-surf streak: points paid per consecutive second riding a thermal
+  /// lane (base × n) up to the escalation cap.
+  static const int thermalSurfBasePoints = 3;
+  static const int thermalSurfMaxEscalation = 5;
 
   // ── Power-ups ────────────────────────────────────────────────────────────
   static const double powerUpSpawnY = -50.0;
