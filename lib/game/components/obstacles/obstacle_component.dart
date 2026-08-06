@@ -1057,7 +1057,7 @@ class BirdObstacle extends ObstacleComponent {
 
     // 4. Main Fuselage Body
     canvas.drawOval(
-      const Rect.fromCenter(center: Offset(0, 0), width: 10, height: 16),
+      const Rect.fromLTWH(-5, -8, 10, 16),
       bodyPaint,
     );
 
@@ -1172,7 +1172,7 @@ class DroneObstacle extends ObstacleComponent {
 
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        const Rect.fromCenter(center: Offset.zero, width: 18, height: 14),
+        const Rect.fromLTWH(-9, -7, 18, 14),
         const Radius.circular(3),
       ),
       bodyPaint,
