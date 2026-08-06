@@ -1,4 +1,4 @@
-﻿import 'package:flame/components.dart';
+import 'package:flame/components.dart';
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
@@ -26,11 +26,13 @@ class ObstacleSpawner extends Component {
   late final ObjectPool<BirdObstacle> _birdPool;
   late final ObjectPool<DroneObstacle> _dronePool;
 
-  // Active obstacles tracked for near-miss scoring.
+  // Active obstacles tracked for near-miss scoring / revive clear.
   final List<ObstacleComponent> _active = [];
 
   double _spawnTimer = 0;
-  double _lastSpawnY = 0; // prevents clumping
+  double _gracePeriod = 1.5; // seconds of calm at run start
+
+  List<ObstacleComponent> get activeObstacles => List.unmodifiable(_active);
 
   @override
   Future<void> onLoad() async {
@@ -46,6 +48,12 @@ class ObstacleSpawner extends Component {
   void update(double dt) {
     if (game.phase != GamePhase.playing) return;
 
+    // Grace period at start of run so player can settle.
+    if (_gracePeriod > 0) {
+      _gracePeriod -= dt;
+      return;
+    }
+
     _spawnTimer += dt;
 
     final interval = _currentSpawnInterval();
@@ -57,18 +65,26 @@ class ObstacleSpawner extends Component {
 
   void reset() {
     _spawnTimer = 0;
-    _lastSpawnY = 0;
-    // Return all active obstacles to their pools immediately.
+    _gracePeriod = 1.5;
     for (final obs in List.of(_active)) {
       _recycleObstacle(obs);
     }
     _active.clear();
   }
 
+  /// Remove obstacles near the plane (used on revive so player isn't re-killed).
+  void clearNearPlane(double planeY, {double radius = 200}) {
+    final toClear = _active
+        .where((o) => (o.position.y - planeY).abs() < radius)
+        .toList();
+    for (final obs in toClear) {
+      _recycleObstacle(obs);
+    }
+  }
+
   // ── Internals ─────────────────────────────────────────────────────────────
 
   double _currentSpawnInterval() {
-    // Interval shrinks as speed increases — linear interpolation.
     final speedFraction = (game.scrollSpeed - GameConfig.baseScrollSpeed) /
         (GameConfig.maxScrollSpeed - GameConfig.baseScrollSpeed);
     return MathUtils.lerp(
@@ -81,14 +97,14 @@ class ObstacleSpawner extends Component {
   void _spawnObstacle() {
     final biome = game.biomeManager.currentBiome;
     final types = ObstacleType.values;
-    final weights = types
-        .map((t) => game.biomeManager.obstacleWeight(t))
-        .toList();
+    final weights =
+        types.map((t) => game.biomeManager.obstacleWeight(t)).toList();
+
+    // If all weights are 0, skip.
+    if (weights.every((w) => w <= 0)) return;
 
     final chosen = MathUtils.weightedPick(types, weights);
-
-    // Pick a random X, biasing toward upper-third in later biomes.
-    final spawnX = _pickSpawnX(biome);
+    final spawnX = _pickSpawnX(biome, chosen);
 
     final obs = _acquireObstacle(chosen);
     obs.activate(
@@ -101,8 +117,23 @@ class ObstacleSpawner extends Component {
     _active.add(obs);
   }
 
-  double _pickSpawnX(Biome biome) {
-    // Standard random X across screen.
+  double _pickSpawnX(Biome biome, ObstacleType type) {
+    // Full-width obstacles centre themselves in onActivate.
+    if (type == ObstacleType.powerLine || type == ObstacleType.building) {
+      return GameConfig.designWidth / 2;
+    }
+
+    // Later biomes bias hazards toward upper-third reaction pressure —
+    // implemented as X clustering toward centre lanes where wind is strongest.
+    final lateBiome = biome.index >= Biome.storm.index;
+    if (lateBiome && MathUtils.randomRange(0, 1) < 0.4) {
+      // Bias toward centre 50% of screen.
+      return MathUtils.randomRange(
+        GameConfig.designWidth * 0.25,
+        GameConfig.designWidth * 0.75,
+      );
+    }
+
     return MathUtils.randomRange(
       GameConfig.horizontalEdgeMargin + 40,
       GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 40,
@@ -127,7 +158,9 @@ class ObstacleSpawner extends Component {
   void _recycleObstacle(ObstacleComponent obs) {
     _active.remove(obs);
     obs.deactivate();
-    if (obs.parent != null) game.world.remove(obs);
+    if (obs.parent != null) {
+      obs.removeFromParent();
+    }
 
     switch (obs.type) {
       case ObstacleType.powerLine:

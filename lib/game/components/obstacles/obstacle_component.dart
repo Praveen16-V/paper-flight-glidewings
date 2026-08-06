@@ -1,4 +1,5 @@
-﻿import 'dart:ui';
+import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
@@ -28,6 +29,8 @@ abstract class ObstacleComponent extends PositionComponent
   bool _active = false;
   bool _nearMissAwarded = false;
   void Function(ObstacleComponent)? onRecycle;
+
+  bool get isActive => _active;
 
   // ── Activation ─────────────────────────────────────────────────────────────
 
@@ -59,8 +62,9 @@ abstract class ObstacleComponent extends PositionComponent
   void update(double dt) {
     if (!_active) return;
 
-    // Scroll downward with the world.
-    position.y += game.scrollSpeed * dt;
+    // Scroll downward with the world (use effective speed for turbo/slow-mo).
+    final speed = game.effectiveScrollSpeed;
+    position.y += speed * dt;
 
     // Subclass-specific movement (birds patrol, drones track, etc.).
     updateObstacle(dt);
@@ -90,6 +94,7 @@ abstract class ObstacleComponent extends PositionComponent
     super.onCollisionStart(intersectionPoints, other);
     if (!_active) return;
     if (other is PlaneComponent) {
+      if (other.isInvulnerable) return;
       game.onPlaneCrash();
     }
   }
@@ -99,13 +104,29 @@ abstract class ObstacleComponent extends PositionComponent
   void _checkNearMiss() {
     if (_nearMissAwarded) return;
     final plane = game.plane;
+    if (!plane.isMounted) return;
+
+    // Use closest edge distance for multi-hitbox obstacles.
+    final planePos = plane.position;
+    final obsCenter = absoluteCenter;
     final dist = MathUtils.distance(
-      plane.position.x, plane.position.y,
-      position.x, position.y,
+      planePos.x,
+      planePos.y,
+      obsCenter.x,
+      obsCenter.y,
     );
-    // Near-miss: plane passed very close but collision wasn't triggered.
-    if (dist < GameConfig.nearMissDistance + size.x * 0.5 &&
-        dist > GameConfig.nearMissDistance * 0.3) {
+
+    // Near-miss: plane is close horizontally and has roughly passed the obstacle
+    // vertically without colliding.
+    final halfH = size.y * 0.5 + plane.size.y * 0.5;
+    final halfW = size.x * 0.5 + plane.size.x * 0.5;
+    final verticalPassed = (planePos.y - obsCenter.y).abs() < halfH + GameConfig.nearMissDistance;
+    final horizontalClose = (planePos.x - obsCenter.x).abs() < halfW + GameConfig.nearMissDistance;
+
+    if (verticalPassed &&
+        horizontalClose &&
+        dist < GameConfig.nearMissDistance + math.max(size.x, size.y) * 0.5 &&
+        dist > GameConfig.nearMissDistance * 0.25) {
       _nearMissAwarded = true;
       game.scoringSystem.onNearMiss();
     }
@@ -126,6 +147,9 @@ class PowerLineObstacle extends ObstacleComponent {
   @override
   void onActivate(double scrollSpeed) {
     size = Vector2(GameConfig.designWidth, 14);
+    // Anchor is topCenter — position.x is the centre of the full-width line.
+    position.x = GameConfig.designWidth / 2;
+    _gapWidth = MathUtils.randomRange(80, 120);
     _gapX = MathUtils.randomRange(
       GameConfig.horizontalEdgeMargin * 2,
       GameConfig.designWidth - GameConfig.horizontalEdgeMargin * 2 - _gapWidth,
@@ -135,7 +159,7 @@ class PowerLineObstacle extends ObstacleComponent {
 
   void _setupHitboxes() {
     removeAll(children.whereType<ShapeHitbox>().toList());
-    // Left segment hitbox
+    // Left segment hitbox (local coords: origin at top-left of component)
     add(RectangleHitbox(
       size: Vector2(_gapX, 14),
       position: Vector2.zero(),
@@ -167,10 +191,13 @@ class PowerLineObstacle extends ObstacleComponent {
     final rightStart = _gapX + _gapWidth;
     canvas.drawLine(
         Offset(rightStart, h / 2), Offset(w, h / 2), linePaint);
-    // Pole at left edge
+    // Poles
     canvas.drawRect(Rect.fromLTWH(4, 0, 6, h), polePaint);
-    // Pole at right edge
     canvas.drawRect(Rect.fromLTWH(w - 10, 0, 6, h), polePaint);
+    // Insulators at gap edges
+    final insulatorPaint = Paint()..color = const Color(0xFFB0BEC5);
+    canvas.drawCircle(Offset(_gapX, h / 2), 4, insulatorPaint);
+    canvas.drawCircle(Offset(rightStart, h / 2), 4, insulatorPaint);
   }
 }
 
@@ -184,6 +211,7 @@ class BuildingObstacle extends ObstacleComponent {
   @override
   void onActivate(double scrollSpeed) {
     size = Vector2(GameConfig.designWidth, 200);
+    position.x = GameConfig.designWidth / 2;
     _gapWidth = MathUtils.randomRange(95, 140);
     _leftWidth = MathUtils.randomRange(
       40,
@@ -213,6 +241,9 @@ class BuildingObstacle extends ObstacleComponent {
     final windowPaint = Paint()
       ..color = const Color(0xFFFFEB3B)
       ..style = PaintingStyle.fill;
+    final roofPaint = Paint()
+      ..color = const Color(0xFF263238)
+      ..style = PaintingStyle.fill;
 
     final w = size.x;
     final h = size.y;
@@ -220,11 +251,12 @@ class BuildingObstacle extends ObstacleComponent {
 
     // Left building
     canvas.drawRect(Rect.fromLTWH(0, 0, _leftWidth, h), buildingPaint);
+    canvas.drawRect(Rect.fromLTWH(0, 0, _leftWidth, 8), roofPaint);
     // Right building
     canvas.drawRect(
         Rect.fromLTWH(rightStart, 0, w - rightStart, h), buildingPaint);
+    canvas.drawRect(Rect.fromLTWH(rightStart, 0, w - rightStart, 8), roofPaint);
 
-    // Window dots on left building
     _drawWindows(canvas, windowPaint, 0, _leftWidth, h);
     _drawWindows(canvas, windowPaint, rightStart, w - rightStart, h);
   }
@@ -236,8 +268,7 @@ class BuildingObstacle extends ObstacleComponent {
     const colGap = 14.0;
     const rowGap = 12.0;
     for (double x = startX + 8; x < startX + bw - winW - 4; x += colGap) {
-      for (double y = 8.0; y < bh - winH - 4; y += rowGap) {
-        // 60% chance each window is lit
+      for (double y = 12.0; y < bh - winH - 4; y += rowGap) {
         if ((x + y).toInt() % 5 != 0) {
           canvas.drawRect(Rect.fromLTWH(x, y, winW, winH), paint);
         }
@@ -246,7 +277,7 @@ class BuildingObstacle extends ObstacleComponent {
   }
 }
 
-/// Tree branch — hangs from the top or rises from the bottom.
+/// Tree branch — hangs from a side of the screen.
 class TreeBranchObstacle extends ObstacleComponent {
   TreeBranchObstacle() : super(type: ObstacleType.treeBranch);
 
@@ -258,6 +289,7 @@ class TreeBranchObstacle extends ObstacleComponent {
     _fromTop = MathUtils.randomRange(0, 1) > 0.5;
     _branchWidth = MathUtils.randomRange(50, 100);
     size = Vector2(_branchWidth, 24);
+    // Keep spawn X from activator (already set).
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(RectangleHitbox(size: size));
   }
@@ -274,11 +306,9 @@ class TreeBranchObstacle extends ObstacleComponent {
     final w = size.x;
     final h = size.y;
 
-    // Branch stem
     canvas.drawRect(Rect.fromLTWH(w * 0.45, 0, w * 0.1, h), branchPaint);
-    // Foliage cluster
-    canvas.drawOval(Rect.fromLTWH(0, _fromTop ? 0 : h * 0.3, w, h * 0.7),
-        paint);
+    canvas.drawOval(
+        Rect.fromLTWH(0, _fromTop ? 0 : h * 0.3, w, h * 0.7), paint);
   }
 }
 
@@ -290,6 +320,7 @@ class BirdObstacle extends ObstacleComponent {
   double _patrolFreq = 1.5;
   double _patrolPhase = 0;
   double _spawnX = 0;
+  double _wingFlap = 0;
 
   @override
   void onActivate(double scrollSpeed) {
@@ -298,6 +329,7 @@ class BirdObstacle extends ObstacleComponent {
     _patrolAmplitude = MathUtils.randomRange(40, 90);
     _patrolFreq = MathUtils.randomRange(1.0, 2.5);
     _patrolPhase = MathUtils.randomRange(0, 6.28);
+    _wingFlap = 0;
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(RectangleHitbox(size: size * 0.7, position: size * 0.15));
   }
@@ -305,14 +337,12 @@ class BirdObstacle extends ObstacleComponent {
   @override
   void updateObstacle(double dt) {
     _patrolPhase += _patrolFreq * dt;
-    position.x = (_spawnX + _patrolAmplitude * sin(_patrolPhase))
-        .clamp(GameConfig.horizontalEdgeMargin,
-            GameConfig.designWidth - GameConfig.horizontalEdgeMargin);
+    _wingFlap += dt * 12;
+    position.x = (_spawnX + _patrolAmplitude * math.sin(_patrolPhase)).clamp(
+      GameConfig.horizontalEdgeMargin,
+      GameConfig.designWidth - GameConfig.horizontalEdgeMargin,
+    );
   }
-
-  double sin(double x) => (x - x.floor() * 2 > 1)
-      ? -(x.floor().isEven ? 1 : -1) * (x % 1)
-      : (x.floor().isEven ? 1 : -1) * (x % 1);
 
   @override
   void render(Canvas canvas) {
@@ -322,20 +352,21 @@ class BirdObstacle extends ObstacleComponent {
 
     final w = size.x;
     final h = size.y;
+    final flap = math.sin(_wingFlap) * 4;
 
-    // Simple bird silhouette — oval body, two wing arcs
-    canvas.drawOval(Rect.fromLTWH(w * 0.3, h * 0.2, w * 0.4, h * 0.6),
-        bodyPaint);
+    // Body
+    canvas.drawOval(
+        Rect.fromLTWH(w * 0.3, h * 0.2, w * 0.4, h * 0.6), bodyPaint);
     // Left wing
     final path = Path()
       ..moveTo(w * 0.3, h * 0.4)
-      ..quadraticBezierTo(0, 0, 0, h * 0.3)
+      ..quadraticBezierTo(0, flap, 0, h * 0.3 + flap)
       ..lineTo(w * 0.3, h * 0.5);
     canvas.drawPath(path, bodyPaint);
     // Right wing
     final path2 = Path()
       ..moveTo(w * 0.7, h * 0.4)
-      ..quadraticBezierTo(w, 0, w, h * 0.3)
+      ..quadraticBezierTo(w, flap, w, h * 0.3 + flap)
       ..lineTo(w * 0.7, h * 0.5);
     canvas.drawPath(path2, bodyPaint);
   }
@@ -349,6 +380,7 @@ class DroneObstacle extends ObstacleComponent {
   double _trackingDuration = 3.0;
   double _trackingTimer = 0;
   double _velocityX = 0;
+  double _rotorSpin = 0;
 
   @override
   void onActivate(double scrollSpeed) {
@@ -356,23 +388,24 @@ class DroneObstacle extends ObstacleComponent {
     _trackingDuration = MathUtils.randomRange(2.0, 4.0);
     _trackingTimer = 0;
     _velocityX = 0;
+    _rotorSpin = 0;
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(RectangleHitbox(size: size * 0.8, position: size * 0.1));
   }
 
   @override
   void updateObstacle(double dt) {
+    _rotorSpin += dt * 20;
     if (_trackingTimer < _trackingDuration) {
       _trackingTimer += dt;
-      // Track player X
-      final targetX = gameRef.plane.position.x;
+      final targetX = game.plane.position.x;
       final diff = targetX - position.x;
       _velocityX = MathUtils.lerp(_velocityX, diff * 1.5, 0.08);
-      position.x =
-          (position.x + _velocityX * dt).clamp(GameConfig.horizontalEdgeMargin,
-              GameConfig.designWidth - GameConfig.horizontalEdgeMargin);
+      position.x = (position.x + _velocityX * dt).clamp(
+        GameConfig.horizontalEdgeMargin,
+        GameConfig.designWidth - GameConfig.horizontalEdgeMargin,
+      );
     }
-    // After tracking, drone continues straight down at current X.
   }
 
   @override
@@ -383,6 +416,10 @@ class DroneObstacle extends ObstacleComponent {
     final ledPaint = Paint()
       ..color = const Color(0xFFFF1744)
       ..style = PaintingStyle.fill;
+    final armPaint = Paint()
+      ..color = const Color(0xFF546E7A)
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke;
 
     final w = size.x;
     final h = size.y;
@@ -396,14 +433,19 @@ class DroneObstacle extends ObstacleComponent {
       bodyPaint,
     );
     // Arms
-    final armPaint = Paint()
-      ..color = const Color(0xFF546E7A)
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
     canvas.drawLine(Offset(0, 0), Offset(w * 0.3, h * 0.3), armPaint);
     canvas.drawLine(Offset(w, 0), Offset(w * 0.7, h * 0.3), armPaint);
     canvas.drawLine(Offset(0, h), Offset(w * 0.3, h * 0.7), armPaint);
     canvas.drawLine(Offset(w, h), Offset(w * 0.7, h * 0.7), armPaint);
+    // Rotors (spinning ellipses)
+    final rotorPaint = Paint()
+      ..color = const Color(0x88FFFFFF)
+      ..style = PaintingStyle.fill;
+    final rotorW = 6 + math.sin(_rotorSpin) * 2;
+    canvas.drawOval(Rect.fromCenter(center: Offset(2, 2), width: rotorW, height: 3), rotorPaint);
+    canvas.drawOval(Rect.fromCenter(center: Offset(w - 2, 2), width: rotorW, height: 3), rotorPaint);
+    canvas.drawOval(Rect.fromCenter(center: Offset(2, h - 2), width: rotorW, height: 3), rotorPaint);
+    canvas.drawOval(Rect.fromCenter(center: Offset(w - 2, h - 2), width: rotorW, height: 3), rotorPaint);
     // LED
     canvas.drawCircle(Offset(w * 0.5, h * 0.5), 3, ledPaint);
   }

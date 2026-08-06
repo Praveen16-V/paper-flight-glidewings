@@ -116,6 +116,20 @@ class SaveDataNotifier extends Notifier<SaveData> {
     }).then((updated) => state = updated);
   }
 
+  // ── Pre-run shield (shop rewarded ad) ──────────────────────────────────
+
+  Future<void> setPendingStartShield(bool value) async {
+    state = await PersistenceService.instance.updateSave((s) {
+      s.pendingStartShield = value;
+      return s;
+    });
+  }
+
+  Future<void> clearPendingStartShield() async {
+    if (!state.pendingStartShield) return;
+    await setPendingStartShield(false);
+  }
+
   // ── Daily Login ──────────────────────────────────────────────────────────
 
   /// Returns the reward amount (in coins) if a new day has been claimed.

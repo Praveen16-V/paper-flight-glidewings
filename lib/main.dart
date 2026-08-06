@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,33 +31,57 @@ Future<void> main() async {
 
       // Hive persistence
       await Hive.initFlutter();
-      Hive.registerAdapter(SaveDataAdapter());
+      if (!Hive.isAdapterRegistered(0)) {
+        Hive.registerAdapter(SaveDataAdapter());
+      }
       await Hive.openBox<SaveData>('save_data');
       await Hive.openBox('settings');
 
-      // Firebase — uses stub options until flutterfire configure is run.
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
+      // Firebase — stub options until flutterfire configure is run.
+      // Fail soft so local/dev builds still launch.
+      var firebaseReady = false;
+      try {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+        firebaseReady = true;
+        FlutterError.onError =
+            FirebaseCrashlytics.instance.recordFlutterFatalError;
+      } catch (e, st) {
+        debugPrint('Firebase init skipped: $e');
+        debugPrintStack(stackTrace: st);
+      }
 
-      // Crashlytics — forward Flutter framework errors
-      FlutterError.onError =
-          FirebaseCrashlytics.instance.recordFlutterFatalError;
-
-      // AdMob init + pre-load ad inventory
-      await MobileAds.instance.initialize();
-      AdService.instance.preload();
+      // AdMob init + pre-load ad inventory (fail soft on desktop/web).
+      try {
+        await MobileAds.instance.initialize();
+        AdService.instance.preload();
+      } catch (e) {
+        debugPrint('AdMob init skipped: $e');
+      }
 
       // IAP init
-      await IapService.instance.initialize();
+      try {
+        await IapService.instance.initialize();
+      } catch (e) {
+        debugPrint('IAP init skipped: $e');
+      }
 
       // Analytics session start
-      await AnalyticsService.instance.logAppOpen();
+      if (firebaseReady) {
+        try {
+          await AnalyticsService.instance.logAppOpen();
+        } catch (_) {}
+      }
 
       runApp(const ProviderScope(child: PaperFlightApp()));
     },
     (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      debugPrint('Uncaught error: $error');
+      debugPrintStack(stackTrace: stack);
+      try {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      } catch (_) {}
     },
   );
 }

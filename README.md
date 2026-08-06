@@ -1,8 +1,10 @@
-# Paper Flight
+# Paper Flight (Driftpaper)
 
 > A paper plane rides gusts of wind through an ever-changing sky — one tap, infinite falls.
 
 Flutter + Flame endless arcade flyer. Portrait orientation, F2P with ads + IAP.
+
+Full design: see [`GDD.md`](./GDD.md).
 
 ---
 
@@ -16,8 +18,9 @@ flutter pub get
 flutter run
 ```
 
-> **Note:** The project compiles and runs immediately with placeholder assets and
-> test ad unit IDs. No Firebase project or store accounts are needed for local dev.
+> **Note:** The project is designed to launch with placeholder assets and
+> test ad unit IDs. Firebase / AdMob / IAP init fail soft when unconfigured,
+> so local dev does not require store accounts.
 
 ---
 
@@ -94,7 +97,8 @@ lib/
 │   ├── components/
 │   │   ├── plane_component.dart  # 2-axis physics, hitbox, shield/revive anims
 │   │   ├── background/
-│   │   │   └── parallax_background.dart  # 3-layer parallax, biome sky gradients
+│   │   │   ├── parallax_background.dart  # 3-layer parallax, biome sky gradients
+│   │   │   └── wind_lane_overlay.dart    # Lane tint / thermal chevrons
 │   │   ├── obstacles/
 │   │   │   └── obstacle_component.dart   # Base + 5 concrete types (pooled)
 │   │   ├── collectibles/

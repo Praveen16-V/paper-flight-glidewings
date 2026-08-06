@@ -1,4 +1,4 @@
-﻿import 'package:flame/components.dart';
+import 'package:flame/components.dart';
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
@@ -8,7 +8,7 @@ import '../components/powerups/powerup_component.dart';
 import '../paper_flight_game.dart';
 
 /// Spawns power-ups procedurally on a slow timer.
-/// Second Wind is rare (~8% of spawns) to keep it exciting.
+/// Second Wind is rare (~8% of spawns) to keep it exciting (GDD §7).
 class PowerUpSpawner extends Component {
   PowerUpSpawner({required this.game});
 
@@ -18,6 +18,7 @@ class PowerUpSpawner extends Component {
   final List<PowerUpComponent> _active = [];
 
   double _spawnTimer = 0;
+  double _gracePeriod = 5.0; // don't spam power-ups at start
 
   @override
   Future<void> onLoad() async {
@@ -33,6 +34,12 @@ class PowerUpSpawner extends Component {
   @override
   void update(double dt) {
     if (game.phase != GamePhase.playing) return;
+
+    if (_gracePeriod > 0) {
+      _gracePeriod -= dt;
+      return;
+    }
+
     _spawnTimer += dt;
     if (_spawnTimer >= GameConfig.powerUpBaseSpawnInterval) {
       _spawnTimer = 0;
@@ -42,6 +49,7 @@ class PowerUpSpawner extends Component {
 
   void reset() {
     _spawnTimer = 0;
+    _gracePeriod = 5.0;
     for (final p in List.of(_active)) {
       _recycle(p);
     }
@@ -77,7 +85,9 @@ class PowerUpSpawner extends Component {
   void _recycle(PowerUpComponent pu) {
     _active.remove(pu);
     pu.deactivate();
-    if (pu.parent != null) game.world.remove(pu);
+    if (pu.parent != null) {
+      pu.removeFromParent();
+    }
     _pools[pu.type]!.release(pu);
   }
 }

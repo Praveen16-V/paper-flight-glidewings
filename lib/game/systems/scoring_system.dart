@@ -1,4 +1,4 @@
-﻿import 'package:flame/components.dart';
+import 'package:flame/components.dart';
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
@@ -20,8 +20,9 @@ class ScoringSystem extends Component {
   int _score = 0;
   int _coinsThisRun = 0;
   int _nearMissesThisRun = 0;
-  int _comboCount = 0;        // consecutive coins without hitting anything
+  int _comboCount = 0;
   double _comboMultiplier = 1.0;
+  int _coinScoreAccumulated = 0;
 
   int get score => _score;
   int get coinsThisRun => _coinsThisRun;
@@ -29,7 +30,6 @@ class ScoringSystem extends Component {
   int get comboCount => _comboCount;
   double get comboMultiplier => _comboMultiplier;
 
-  // How frequently (in seconds) we push score to provider.
   static const double _pushInterval = 0.1;
   double _pushTimer = 0;
 
@@ -61,19 +61,31 @@ class ScoringSystem extends Component {
     if (_comboCount > GameConfig.comboMax) {
       _comboCount = GameConfig.comboMax;
     }
-    _comboMultiplier =
-        1.0 + (_comboCount * GameConfig.comboMultiplierStep);
+    _comboMultiplier = 1.0 + (_comboCount * GameConfig.comboMultiplierStep);
     _coinsThisRun++;
     final points = (_comboMultiplier * 10).toInt();
     _coinScoreAccumulated += points;
+
+    // Immediate HUD push for snappy feedback.
+    final notifier = game.ref.read(gameSessionProvider.notifier);
+    notifier.updateCoins(_coinsThisRun);
+    notifier.updateCombo(_comboCount, _comboMultiplier);
+    notifier.updateScore(
+      (game.distanceMeters * GameConfig.scorePerMeter).toInt() +
+          _coinScoreAccumulated +
+          _nearMissesThisRun * GameConfig.nearMissPoints,
+    );
+
     return points;
   }
 
-  /// Call when the plane hits an obstacle (and is not shielded).
+  /// Call when the plane hits an obstacle (combo resets; coin tally keeps).
   void onObstacleHit() {
     _comboCount = GameConfig.coinComboResetOnHit;
     _comboMultiplier = 1.0;
-    _coinScoreAccumulated = 0; // doesn't reset accumulated coins, just the future multiplier
+    game.ref
+        .read(gameSessionProvider.notifier)
+        .updateCombo(_comboCount, _comboMultiplier);
   }
 
   /// Call when a near-miss is detected.
@@ -93,7 +105,24 @@ class ScoringSystem extends Component {
     _pushTimer = 0;
   }
 
-  // ── Internal accumulators ──────────────────────────────────────────────────
-
-  int _coinScoreAccumulated = 0;
+  /// Restore scoring state after a revive (new FlameGame instance).
+  void restore({
+    required int coins,
+    required int nearMisses,
+    required int comboCount,
+    required double comboMultiplier,
+    required int coinScoreHint,
+  }) {
+    _coinsThisRun = coins;
+    _nearMissesThisRun = nearMisses;
+    _comboCount = comboCount;
+    _comboMultiplier = comboMultiplier;
+    // Approximate coin score contribution from total score hint.
+    final distScore = (game.distanceMeters * GameConfig.scorePerMeter).toInt();
+    final nearScore = nearMisses * GameConfig.nearMissPoints;
+    _coinScoreAccumulated =
+        (coinScoreHint - distScore - nearScore).clamp(0, coinScoreHint).toInt();
+    _score = coinScoreHint;
+    _pushTimer = 0;
+  }
 }

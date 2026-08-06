@@ -39,7 +39,7 @@ class SaveData extends HiveObject {
   @HiveField(9)
   bool adsRemoved;
 
-  /// Total runs played — used for interstitial honeymoon period.
+  /// Runs since last interstitial was shown — used for frequency cap.
   @HiveField(10)
   int runsSinceLastInterstitial;
 
@@ -54,6 +54,10 @@ class SaveData extends HiveObject {
   /// Current daily login streak count.
   @HiveField(13)
   int dailyLoginStreak;
+
+  /// Pending free shield for next run (from shop rewarded ad).
+  @HiveField(14)
+  bool pendingStartShield;
 
   SaveData({
     this.coins = 0,
@@ -70,7 +74,9 @@ class SaveData extends HiveObject {
     this.isFirstSession = true,
     this.lastDailyLoginMs = 0,
     this.dailyLoginStreak = 0,
-  }) : unlockedPlaneIndices = unlockedPlaneIndices ?? [0]; // dart always unlocked
+    this.pendingStartShield = false,
+  }) : unlockedPlaneIndices =
+            unlockedPlaneIndices ?? [0]; // dart always unlocked
 
   /// Returns a fresh default save for a new installation.
   factory SaveData.fresh() => SaveData();

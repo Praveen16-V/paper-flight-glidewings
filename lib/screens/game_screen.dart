@@ -1,4 +1,4 @@
-﻿import 'package:flame/game.dart';
+import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,16 +9,32 @@ import '../game/paper_flight_game.dart';
 import '../game/overlays/hud_overlay.dart';
 import '../models/run_result.dart';
 import '../providers/game_session_provider.dart';
+import '../providers/save_data_provider.dart';
+import '../providers/settings_provider.dart';
+import '../services/analytics_service.dart';
 import 'game_over_screen.dart';
 
 /// Hosts the Flame GameWidget + Flutter HUD overlay + pause overlay.
 ///
-/// Uses GameWidget.controlled so we own the game lifecycle:
-///   - Create game when screen is first built.
-///   - Call game.startRun() after first frame.
-///   - Listen to gameSessionProvider to navigate to game-over screen.
+/// Route args:
+///   - null / default → fresh run
+///   - [GameScreenArgs.revive] → continue last run via game.revive()
+///   - [GameScreenArgs.withShield] → start with free shield (shop ad reward)
+class GameScreenArgs {
+  const GameScreenArgs({
+    this.revive = false,
+    this.withShield = false,
+  });
+
+  final bool revive;
+  final bool withShield;
+}
+
+/// Hosts the Flame GameWidget + Flutter HUD overlay + pause overlay.
 class GameScreen extends ConsumerStatefulWidget {
-  const GameScreen({super.key});
+  const GameScreen({super.key, this.args});
+
+  final GameScreenArgs? args;
 
   @override
   ConsumerState<GameScreen> createState() => _GameScreenState();
@@ -27,6 +43,7 @@ class GameScreen extends ConsumerStatefulWidget {
 class _GameScreenState extends ConsumerState<GameScreen> {
   late PaperFlightGame _game;
   bool _started = false;
+  bool _navigatingAway = false;
 
   @override
   void initState() {
@@ -44,10 +61,22 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   Widget build(BuildContext context) {
     // Watch for game-over transition.
     ref.listen<GameSessionState>(gameSessionProvider, (prev, next) {
-      if (next.phase == GamePhase.gameOver && next.lastRunResult != null) {
+      if (!_navigatingAway &&
+          next.phase == GamePhase.gameOver &&
+          next.lastRunResult != null) {
         _navigateToGameOver(next.lastRunResult!);
       }
     });
+
+    // Keep input manager in sync if settings change mid-run (e.g. via pause menu).
+    ref.listen(settingsProvider, (prev, next) {
+      if (!_game.isLoaded) return;
+      _game.inputManager.updateSensitivity(next.tiltSensitivity);
+      _game.inputManager.updateControlScheme(next.controlScheme);
+    });
+
+    final controlScheme =
+        ref.watch(settingsProvider.select((s) => s.controlScheme));
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -57,12 +86,17 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           Positioned.fill(
             child: GameWidget(
               game: _game,
-              backgroundBuilder: (_) => Container(color: AppColors.background),
+              backgroundBuilder: (_) =>
+                  Container(color: AppColors.background),
               loadingBuilder: (_) => const Center(
                 child: CircularProgressIndicator(color: AppColors.accent),
               ),
             ),
           ),
+
+          // ── Touch-zone guides (alt control scheme) ─────────────────────
+          if (controlScheme == ControlScheme.touchZones)
+            const _TouchZoneGuides(),
 
           // ── Flutter HUD ────────────────────────────────────────────────
           HudOverlay(game: _game),
@@ -79,17 +113,98 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     super.didChangeDependencies();
     if (!_started) {
       _started = true;
-      // Delay one frame so GameWidget has time to mount the canvas.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _game.startRun();
+        _beginRun();
       });
     }
   }
 
+  Future<void> _beginRun() async {
+    final args = widget.args;
+    final save = ref.read(saveDataProvider);
+    final session = ref.read(gameSessionProvider);
+
+    // Wait until Flame has finished onLoad so systems/plane exist.
+    for (int i = 0; i < 120 && !_game.isLoaded; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 16));
+      if (!mounted) return;
+    }
+
+    if (args?.revive == true && session.crashSnapshot != null) {
+      final snap = session.crashSnapshot!;
+      _game.startRunFromSnapshot(snap);
+    } else {
+      final withShield =
+          (args?.withShield ?? false) || save.pendingStartShield;
+      if (save.pendingStartShield) {
+        ref.read(saveDataProvider.notifier).clearPendingStartShield();
+      }
+      _game.startRun(withShield: withShield);
+      AnalyticsService.instance.logRunStarted();
+    }
+  }
+
   void _navigateToGameOver(RunResult result) {
+    if (_navigatingAway || !mounted) return;
+    _navigatingAway = true;
     Navigator.of(context).pushReplacementNamed(
       AppRoutes.gameOver,
       arguments: GameOverArgs(result: result),
+    );
+  }
+}
+
+/// Subtle left/right zone indicators for touch-zone control scheme.
+class _TouchZoneGuides extends StatelessWidget {
+  const _TouchZoneGuides();
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Row(
+          children: [
+            Expanded(
+              child: Container(
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.only(left: 12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.white.withOpacity(0.04),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+                child: Icon(
+                  Icons.chevron_left,
+                  color: Colors.white.withOpacity(0.25),
+                  size: 28,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      Colors.white.withOpacity(0.04),
+                    ],
+                  ),
+                ),
+                child: Icon(
+                  Icons.chevron_right,
+                  color: Colors.white.withOpacity(0.25),
+                  size: 28,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

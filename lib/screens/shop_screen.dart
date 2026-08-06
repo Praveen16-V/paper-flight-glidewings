@@ -242,9 +242,8 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
   void _showRefillShieldAd() {
     AdService.instance.showRewarded(
       placement: AdPlacement.refillShield,
-      onRewarded: () {
-        // Shield pre-run grant is read by GameScreen on next run start.
-        // For MVP: store a pending shield flag in shared_preferences.
+      onRewarded: () async {
+        await ref.read(saveDataProvider.notifier).setPendingStartShield(true);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Shield ready for your next run!'),
