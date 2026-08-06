@@ -1,4 +1,4 @@
-﻿import 'dart:ui';
+import 'dart:ui';
 
 import 'package:flame/camera.dart';
 import 'package:flame/components.dart';
@@ -84,7 +84,7 @@ class PaperFlightGame extends FlameGame
     camera = CameraComponent.withFixedResolution(
       width: GameConfig.designWidth,
       height: GameConfig.designHeight,
-    );
+    )..viewfinder.anchor = Anchor.topLeft;
 
     // Background parallax layers (farthest first).
     background = ParallaxBackground();
