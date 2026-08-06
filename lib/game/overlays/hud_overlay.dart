@@ -71,7 +71,7 @@ class HudOverlay extends ConsumerWidget {
           Positioned(
             bottom: 100,
             left: 16,
-            child: _PowerUpBar(activePowerUps: session.activePowerUps),
+            child: _PowerUpBar(activePowerUps: session.activePowerUps, remaining: session.powerUpRemaining),
           ),
 
           // ── Pause button ───────────────────────────────────────────────
@@ -260,8 +260,9 @@ class _ComboDisplay extends StatelessWidget {
 }
 
 class _PowerUpBar extends StatelessWidget {
-  const _PowerUpBar({required this.activePowerUps});
+  const _PowerUpBar({required this.activePowerUps, required this.remaining});
   final Set<PowerUpType> activePowerUps;
+  final Map<PowerUpType, double> remaining;
 
   @override
   Widget build(BuildContext context) {
@@ -273,7 +274,7 @@ class _PowerUpBar extends StatelessWidget {
       children: activePowerUps.map((type) {
         return Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: _PowerUpIcon(type: type),
+          child: _PowerUpIcon(type: type, remaining: remaining[type]),
         );
       }).toList(),
     );
@@ -281,12 +282,20 @@ class _PowerUpBar extends StatelessWidget {
 }
 
 class _PowerUpIcon extends StatelessWidget {
-  const _PowerUpIcon({required this.type});
+  const _PowerUpIcon({required this.type, this.remaining});
   final PowerUpType type;
+  final double? remaining;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final warning = remaining != null && remaining! <= 1.5;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: warning ? 1 : 0), duration: const Duration(milliseconds: 280),
+      builder: (context, pulse, child) => CustomPaint(
+        painter: _PowerTimerPainter(progress: remaining == null ? 1 : (remaining! / _duration(type)).clamp(0.0, 1.0), warning: warning, pulse: pulse),
+        child: child,
+      ),
+      child: Container(
       width: 36,
       height: 36,
       decoration: BoxDecoration(
@@ -300,8 +309,10 @@ class _PowerUpIcon extends StatelessWidget {
           style: const TextStyle(fontSize: 18),
         ),
       ),
-    );
+    ));
   }
+
+  double _duration(PowerUpType type) => switch (type) { PowerUpType.magnet => GameConfig.magnetDuration, PowerUpType.ghost => GameConfig.ghostDuration, PowerUpType.slowMo => GameConfig.slowMoDuration, PowerUpType.coinRush => GameConfig.coinRushDuration, _ => 1 };
 
   Color _colorForType(PowerUpType type) {
     switch (type) {
@@ -333,6 +344,8 @@ class _PowerUpIcon extends StatelessWidget {
     }
   }
 }
+
+class _PowerTimerPainter extends CustomPainter { const _PowerTimerPainter({required this.progress, required this.warning, required this.pulse}); final double progress; final bool warning; final double pulse; @override void paint(Canvas c, Size s) { final p=Paint()..color=(warning ? Colors.redAccent : Colors.white).withOpacity(warning ? .65 + pulse*.35 : .85)..style=PaintingStyle.stroke..strokeWidth=2.5..strokeCap=StrokeCap.round; c.drawArc(Rect.fromLTWH(1,1,s.width-2,s.height-2),-1.57,6.283*progress,false,p); } @override bool shouldRepaint(covariant _PowerTimerPainter o)=>o.progress!=progress||o.warning!=warning||o.pulse!=pulse; }
 
 class _PauseButton extends StatelessWidget {
   const _PauseButton({required this.game});

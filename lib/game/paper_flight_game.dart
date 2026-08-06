@@ -174,7 +174,16 @@ class PaperFlightGame extends FlameGame
     } catch (_) {}
 
     if (_phase != GamePhase.playing) {
-      super.update(dt);
+      // Timers drive HUD countdown rings from the same authoritative durations.
+    final active = session.activePowerUps;
+    for (final type in active) {
+      final remaining = session.powerUpRemaining[type];
+      if (remaining != null) {
+        ref.read(gameSessionProvider.notifier).setPowerUpTimer(type, (remaining - scaledDt).clamp(0.0, 999.0).toDouble());
+      }
+    }
+
+    super.update(dt);
       return;
     }
 
@@ -350,6 +359,7 @@ class PaperFlightGame extends FlameGame
         notifier.activatePowerUp(PowerUpType.shield);
       case PowerUpType.magnet:
         notifier.activatePowerUp(PowerUpType.magnet);
+        notifier.setPowerUpTimer(PowerUpType.magnet, GameConfig.magnetDuration);
         Future.delayed(
           Duration(milliseconds: (GameConfig.magnetDuration * 1000).toInt()),
           () => notifier.deactivatePowerUp(PowerUpType.magnet),
@@ -357,16 +367,19 @@ class PaperFlightGame extends FlameGame
       case PowerUpType.ghost:
         // Phase through every obstacle — the big "fly through the wall" moment.
         notifier.activatePowerUp(PowerUpType.ghost);
+        notifier.setPowerUpTimer(PowerUpType.ghost, GameConfig.ghostDuration);
         Future.delayed(
           Duration(milliseconds: (GameConfig.ghostDuration * 1000).toInt()),
           () => notifier.deactivatePowerUp(PowerUpType.ghost),
         );
       case PowerUpType.slowMo:
         notifier.activatePowerUp(PowerUpType.slowMo);
+        notifier.setPowerUpTimer(PowerUpType.slowMo, GameConfig.slowMoDuration);
         applySlowMo(GameConfig.slowMoDuration);
       case PowerUpType.coinRush:
         // 2× coin value for the duration, plus an immediate coin shower.
         notifier.activatePowerUp(PowerUpType.coinRush);
+        notifier.setPowerUpTimer(PowerUpType.coinRush, GameConfig.coinRushDuration);
         beginCoinRush();
         Future.delayed(
           Duration(milliseconds: (GameConfig.coinRushDuration * 1000).toInt()),

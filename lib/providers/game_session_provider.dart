@@ -18,6 +18,7 @@ class GameSessionState {
     this.currentBiome = Biome.city,
     this.activePowerUps = const {},
     this.shieldActive = false,
+    this.powerUpRemaining = const {},
     this.lastRunResult,
     this.canRevive = true, // one free revive attempt per run
   });
@@ -32,6 +33,7 @@ class GameSessionState {
   final Biome currentBiome;
   final Set<PowerUpType> activePowerUps;
   final bool shieldActive;
+  final Map<PowerUpType, double> powerUpRemaining;
   final RunResult? lastRunResult;
   final bool canRevive;
 
@@ -46,6 +48,7 @@ class GameSessionState {
     Biome? currentBiome,
     Set<PowerUpType>? activePowerUps,
     bool? shieldActive,
+    Map<PowerUpType, double>? powerUpRemaining,
     RunResult? lastRunResult,
     bool? canRevive,
   }) {
@@ -60,6 +63,7 @@ class GameSessionState {
       currentBiome: currentBiome ?? this.currentBiome,
       activePowerUps: activePowerUps ?? this.activePowerUps,
       shieldActive: shieldActive ?? this.shieldActive,
+      powerUpRemaining: powerUpRemaining ?? this.powerUpRemaining,
       lastRunResult: lastRunResult ?? this.lastRunResult,
       canRevive: canRevive ?? this.canRevive,
     );
@@ -98,6 +102,11 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
     state = state.copyWith(currentBiome: biome);
   }
 
+  void setPowerUpTimer(PowerUpType type, double seconds) {
+    final timers = Map<PowerUpType, double>.from(state.powerUpRemaining)..[type] = seconds;
+    state = state.copyWith(powerUpRemaining: timers);
+  }
+
   void activatePowerUp(PowerUpType type) {
     final updated = Set<PowerUpType>.from(state.activePowerUps)..add(type);
     state = state.copyWith(
@@ -111,6 +120,7 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
     state = state.copyWith(
       activePowerUps: updated,
       shieldActive: type == PowerUpType.shield ? false : state.shieldActive,
+      powerUpRemaining: Map<PowerUpType, double>.from(state.powerUpRemaining)..remove(type),
     );
   }
 
