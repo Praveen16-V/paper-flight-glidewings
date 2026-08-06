@@ -16,6 +16,7 @@ import '../providers/save_data_provider.dart';
 import '../providers/settings_provider.dart';
 import 'components/background/parallax_background.dart';
 import 'components/effects/coin_feedback.dart';
+import 'components/effects/atmosphere_component.dart';
 import 'components/joystick_component.dart';
 import 'components/plane_component.dart';
 import 'components/touch_zones_overlay.dart';
@@ -73,6 +74,7 @@ class PaperFlightGame extends FlameGame
 
   late final PlaneComponent plane;
   late final ParallaxBackground background;
+  late final AtmosphereComponent atmosphere;
 
   // ── On-screen control visuals (joystick / touch-zone guides) ─────────────
 
@@ -102,6 +104,10 @@ class PaperFlightGame extends FlameGame
     // Background parallax layers (farthest first).
     background = ParallaxBackground();
     world.add(background);
+
+    // Air is a first-class gameplay layer: it renders before hazards and plane.
+    atmosphere = AtmosphereComponent();
+    world.add(atmosphere);
 
     // Core systems (order matters — input before plane, wind before obstacles).
     inputManager = InputManager(game: this);

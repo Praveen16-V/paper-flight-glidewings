@@ -83,11 +83,22 @@ class ObstacleSpawner extends Component {
     // Interval shrinks as speed increases — smooth interpolation.
     final speedFraction = (game.scrollSpeed - GameConfig.baseScrollSpeed) /
         (GameConfig.maxScrollSpeed - GameConfig.baseScrollSpeed);
-    return MathUtils.lerp(
+    final baseInterval = MathUtils.lerp(
       GameConfig.obstacleBaseSpawnInterval,
       GameConfig.obstacleMinSpawnInterval,
       speedFraction.clamp(0.0, 1.0),
     );
+    // Backyard deliberately gives newcomers broad, calm clearances; mountain
+    // passes compress the rhythm into the requested chokepoint feeling.
+    final biomeSpacing = switch (game.biomeManager.currentBiome) {
+      Biome.backyard => 1.32,
+      Biome.city => .96,
+      Biome.storm => .88,
+      Biome.mountain => .78,
+      Biome.night => 1.02,
+      Biome.atmosphere => .90,
+    };
+    return baseInterval * biomeSpacing;
   }
 
   void _spawnObstacle() {
