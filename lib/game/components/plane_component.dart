@@ -17,9 +17,8 @@ import 'plane_trail_component.dart';
 /// Physics model (three states):
 ///
 ///   HOLD (press edge)
-///     → Instant snap kick: _velocityY set to liftSnapKick (<0, upward).
-///     → Each subsequent hold frame: exponential decay toward liftCruiseSpeed
-///       via lerp(t = liftKickDecayRate × dt).
+///     → No instant kick: the current velocity eases toward liftCruiseSpeed
+///       via lerp(t = liftKickDecayRate × dt), so touching down never jolts.
 ///     → Wing squish ScaleEffect plays on the press edge.
 ///
 ///   GLIDE ARC (release edge, while upward momentum remains)

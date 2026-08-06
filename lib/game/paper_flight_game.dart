@@ -132,12 +132,8 @@ class PaperFlightGame extends FlameGame
 
     final scaledDt = dt * _timeScale;
 
-    // Accelerate scroll over time.
-    _scrollSpeed = (_scrollSpeed +
-            GameConfig.scrollAcceleration * scaledDt)
-        .clamp(GameConfig.baseScrollSpeed, GameConfig.maxScrollSpeed);
-
-    // Apply turbo/slow-mo speed overrides.
+    // Apply turbo/slow-mo speed overrides (drives this frame's motion and
+    // the distance it travels).
     final session = ref.read(gameSessionProvider);
     double effectiveSpeed = _scrollSpeed;
     if (session.activePowerUps.contains(PowerUpType.turboGust)) {
@@ -146,8 +142,14 @@ class PaperFlightGame extends FlameGame
       effectiveSpeed *= GameConfig.slowMoPowerUpMultiplier;
     }
 
-    // Accumulate distance (1 px/s = 1 m/s at design scale).
+    // Accumulate distance from this frame's effective speed.
     _distanceMeters += effectiveSpeed * scaledDt / 10.0; // px→meters factor
+
+    // Scroll speed is a pure function of distance reached — the world only
+    // speeds up as the player travels further, ramping in gradually instead
+    // of accelerating by wall-clock time. Power-up overrides are applied next
+    // frame against this updated base.
+    _scrollSpeed = _scrollSpeedForDistance(_distanceMeters);
 
     super.update(dt);
 
@@ -160,6 +162,14 @@ class PaperFlightGame extends FlameGame
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
+
+  /// Scroll speed for a given distance reached, clamped to [min, max].
+  ///
+  /// Because it is a pure function of meters traveled, the ramp-up is identical
+  /// regardless of power-ups or frame rate — distance is the only driver.
+  double _scrollSpeedForDistance(double meters) =>
+      (GameConfig.baseScrollSpeed + GameConfig.scrollSpeedPerMeter * meters)
+          .clamp(GameConfig.baseScrollSpeed, GameConfig.maxScrollSpeed);
 
   void startRun() {
     _scrollSpeed = GameConfig.baseScrollSpeed;

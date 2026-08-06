@@ -7,14 +7,19 @@ abstract class GameConfig {
   static const double designHeight = 844.0;
 
   // ── Scroll / Speed ───────────────────────────────────────────────────────
-  /// Starting world scroll speed in logical px/s (downward).
-  static const double baseScrollSpeed = 220.0;
+  /// Starting world scroll speed in logical px/s (downward). Kept low so the
+  /// world drifts by calmly at the start instead of rushing at the player.
+  static const double baseScrollSpeed = 120.0;
 
   /// Maximum scroll speed cap — prevents unplayable frame windows.
-  static const double maxScrollSpeed = 650.0;
+  static const double maxScrollSpeed = 480.0;
 
-  /// Speed added per second of elapsed run time.
-  static const double scrollAcceleration = 3.5;
+  /// Scroll speed gained (px/s) per meter the player has traveled.
+  ///
+  /// Speed is a pure function of distance reached, not of elapsed time — so the
+  /// world only speeds up as you fly further, ramping in gradually and smoothly.
+  /// (base + 0.16 × meters, clamped to maxScrollSpeed ≈ 2250 m.)
+  static const double scrollSpeedPerMeter = 0.16;
 
   /// Speed multiplier applied during Turbo Gust power-up.
   static const double turboPowerUpMultiplier = 1.6;
@@ -26,24 +31,27 @@ abstract class GameConfig {
   /// Upward screen velocity (px/s) while holding.
   static const double liftForce = 310.0;
 
-  /// Downward gravity force (px/s²). Kept gentle so releasing a hold curves
-  /// into a glide instead of dropping the plane abruptly.
-  static const double gravity = 320.0;
+  /// Downward gravity force (px/s²). A paper plane has almost no weight, so
+  /// gravity is kept very gentle — releasing a hold curves into a long, floaty
+  /// glide instead of dropping the plane abruptly.
+  static const double gravity = 150.0;
 
-  /// Maximum downward fall speed.
-  static const double maxFallSpeed = 500.0;
+  /// Maximum downward fall speed. Low so the plane drifts like paper rather
+  /// than plunging like an aircraft.
+  static const double maxFallSpeed = 250.0;
 
-  /// Horizontal tilt max speed (px/s at full tilt). A modest cap makes a
-  /// full phone tilt feel like a controlled bank rather than a sideways jump.
-  static const double maxTiltSpeed = 175.0;
+  /// Horizontal tilt max speed (px/s at full tilt). A low cap makes a full
+  /// phone tilt feel like a controlled, unhurried bank — not a sideways jump.
+  static const double maxTiltSpeed = 135.0;
 
   /// Low-pass filter coefficient for tilt smoothing (0 = no smoothing, 1 = frozen).
   /// This is deliberately small: sensor samples ease into the steering target.
   static const double tiltLowPassAlpha = 0.10;
 
   /// Per-frame blend used when the plane follows its filtered tilt target.
-  /// Keeping this below the input filter removes sudden lateral direction changes.
-  static const double tiltVelocityResponse = 0.07;
+  /// Kept small (below the input filter) so lateral direction changes ease in
+  /// gradually and the bank never snaps from side to side.
+  static const double tiltVelocityResponse = 0.05;
 
   /// Default tilt sensitivity (1.0 = neutral, range 0.3–2.0 via settings).
   static const double defaultTiltSensitivity = 1.0;
@@ -67,13 +75,15 @@ abstract class GameConfig {
 
   /// Maximum upward velocity (px/s, negative = up) allowed for a snap burst.
   /// Normal holds do not set this directly.
-  static const double liftSnapKick = -185.0;
+  static const double liftSnapKick = -140.0;
 
-  /// Gentle terminal climb speed (px/s, negative = up) while holding.
-  static const double liftCruiseSpeed = -135.0;
+  /// Gentle terminal climb speed (px/s, negative = up) while holding. Deliberately
+  /// mild so a press floats the plane up slowly — like a paper plane catching air.
+  static const double liftCruiseSpeed = -95.0;
 
   /// Rate for easing the current vertical velocity toward the hold target.
-  static const double liftKickDecayRate = 2.4;
+  /// Lowered so the climb begins and ends without any visible jerk on hold.
+  static const double liftKickDecayRate = 1.5;
 
   /// Retained for tuning compatibility. Release now preserves velocity fully,
   /// avoiding the visible speed change that occurred at finger-up.
@@ -81,22 +91,23 @@ abstract class GameConfig {
 
   /// Gravity multiplier during the glide arc phase (lighter than full gravity).
   /// Gives the "coast" feel before the natural dive takes over.
-  static const double glideGravityScale = 0.62;
+  static const double glideGravityScale = 0.55;
 
   /// Gravity multiplier once the glide arc is exhausted (normal fall).
   static const double fullGravityScale = 1.0;
 
   /// Sinusoidal bob amplitude added to vertical velocity (px/s).
   /// Gives the natural undulation of a paper plane riding air.
-  /// ±22 px/s is subtle and perceptible but not distracting.
-  static const double oscillationAmplitude = 22.0;
+  /// ±10 px/s is a gentle, barely-there flutter rather than an active bounce.
+  static const double oscillationAmplitude = 10.0;
 
-  /// Oscillation frequency in cycles per second (Hz).
-  static const double oscillationFrequency = 1.1;
+  /// Oscillation frequency in cycles per second (Hz). Kept slow so the drift
+  /// feels like riding air currents instead of bobbing like a cork.
+  static const double oscillationFrequency = 0.8;
 
   /// Rate at which oscillation ramps up after release (strength units/s).
   /// Prevents a jarring jump to full oscillation immediately on release.
-  static const double oscillationFadeInRate = 2.5;
+  static const double oscillationFadeInRate = 1.5;
 
   /// Nose-up pitch bias (radians) added while glide arc is active and
   /// the plane is still moving upward — gives that "float" moment.
