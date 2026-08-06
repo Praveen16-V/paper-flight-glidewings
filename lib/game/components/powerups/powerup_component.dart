@@ -3,7 +3,6 @@ import 'dart:ui';
 
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
-import 'package:flame/effects.dart';
 
 import '../../../core/constants/game_config.dart';
 import '../../../core/enums/game_enums.dart';
@@ -26,9 +25,13 @@ class PowerUpComponent extends PositionComponent
 
   bool _active = false;
   bool _collected = false;
+  bool _recycleRequested = false;
   void Function(PowerUpComponent)? onRecycle;
   double _bobPhase = 0;
   double _glowPulse = 0;
+  double _pickupAnimationElapsed = 0;
+
+  static const double _pickupAnimationDuration = 0.2;
 
   void activate({
     required Vector2 spawnPosition,
@@ -37,11 +40,12 @@ class PowerUpComponent extends PositionComponent
     position = spawnPosition;
     _bobPhase = MathUtils.randomRange(0, math.pi * 2);
     _glowPulse = 0;
+    _pickupAnimationElapsed = 0;
     _active = true;
     _collected = false;
+    _recycleRequested = false;
+    scale = Vector2.all(1);
     onRecycle = recycleCallback;
-    // Reset visibility by removing any pending opacity effects.
-    children.whereType<OpacityEffect>().toList().forEach(remove);
 
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(RectangleHitbox(size: size * 0.85, position: size * 0.075));
@@ -50,13 +54,28 @@ class PowerUpComponent extends PositionComponent
   void deactivate() {
     _active = false;
     _collected = false;
+    _recycleRequested = false;
+    _pickupAnimationElapsed = 0;
+    scale = Vector2.all(1);
     onRecycle = null;
     removeAll(children.whereType<ShapeHitbox>().toList());
   }
 
   @override
   void update(double dt) {
-    if (!_active || _collected) return;
+    // Do not attach an OpacityEffect here. PowerUpComponent renders itself and
+    // is not a HasPaint component; applying that effect causes a runtime type
+    // error exactly when a power-up is collected, which stops the game loop.
+    if (_collected) {
+      _pickupAnimationElapsed += dt;
+      final progress = (_pickupAnimationElapsed / _pickupAnimationDuration)
+          .clamp(0.0, 1.0)
+          .toDouble();
+      scale = Vector2.all(1.0 + 0.6 * progress);
+      if (progress >= 1.0) _requestRecycle();
+      return;
+    }
+    if (!_active) return;
 
     position.y += gameRef.scrollSpeed * dt;
     _bobPhase += dt * 2.5;
@@ -67,7 +86,7 @@ class PowerUpComponent extends PositionComponent
 
     if (position.y > GameConfig.powerUpRecycleY) {
       _active = false;
-      onRecycle?.call(this);
+      _requestRecycle();
     }
   }
 
@@ -87,16 +106,17 @@ class PowerUpComponent extends PositionComponent
     _collected = true;
     _active = false;
 
+    // The pickup's pop/fade is handled by this component's update/render
+    // methods. Keeping it self-contained avoids applying paint effects to a
+    // custom-rendered PositionComponent.
+    _pickupAnimationElapsed = 0;
     _applyEffect();
+  }
 
-    add(ScaleEffect.by(
-      Vector2.all(1.6),
-      EffectController(duration: 0.1, reverseDuration: 0.08),
-    ));
-    add(OpacityEffect.fadeOut(
-      EffectController(duration: 0.2),
-      onComplete: () => onRecycle?.call(this),
-    ));
+  void _requestRecycle() {
+    if (_recycleRequested) return;
+    _recycleRequested = true;
+    onRecycle?.call(this);
   }
 
   void _applyEffect() {
