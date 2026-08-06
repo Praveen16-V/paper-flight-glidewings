@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_colors.dart';
@@ -535,7 +536,7 @@ class _BoostRingPainter extends CustomPainter {
     for (int i = 0; i < maxCharges; i++) {
       final start = -3.1415926535 / 2 + i * (totalArc + gap);
       double sweep = totalArc;
-      Paint segPaint;
+      Paint? segPaint;
       bool draw = true;
 
       if (i < charges) {
@@ -563,13 +564,13 @@ class _BoostRingPainter extends CustomPainter {
           ..strokeCap = StrokeCap.round;
       }
 
-      if (!draw) continue;
+      if (!draw || segPaint == null) continue;
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         start,
         sweep,
         false,
-        segPaint!,
+        segPaint,
       );
     }
   }

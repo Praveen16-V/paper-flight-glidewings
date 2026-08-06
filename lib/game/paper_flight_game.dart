@@ -344,7 +344,7 @@ class PaperFlightGame extends FlameGame
 
   @override
   void onDragUpdate(DragUpdateEvent event) {
-    inputManager.onDragUpdate(event.canvasPosition);
+    inputManager.onDragUpdate(event.canvasEndPosition);
   }
 
   @override
