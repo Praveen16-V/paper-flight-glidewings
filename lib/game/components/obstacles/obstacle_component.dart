@@ -9,6 +9,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/game_config.dart';
 import '../../../core/enums/game_enums.dart';
 import '../../../core/utils/math_utils.dart';
+import '../../../providers/game_session_provider.dart';
 import '../../paper_flight_game.dart';
 import '../plane_component.dart';
 
@@ -18,8 +19,8 @@ import '../plane_component.dart';
 ///  - Spawns just above the top of the viewport.
 ///  - Translates downward at [game.scrollSpeed] × dt each frame.
 ///  - Detects collision with [PlaneComponent] and calls [game.onPlaneCrash].
-///  - Detects near-miss (plane passes within [GameConfig.nearMissDistance] px)
-///    and awards bonus via [ScoringSystem].
+///  - Tracks tiered near-misses at closest approach (hitbox-edge clearance)
+///    and awards via [ScoringSystem.onNearMiss].
 ///  - Displays an off-screen hazard telegraph beacon at the top edge of the
 ///    viewport when descending from above, giving players fair reaction time.
 ///  - Calls [onRecycle] when it exits the bottom of the viewport so the
@@ -33,6 +34,10 @@ abstract class ObstacleComponent extends PositionComponent
   bool _active = false;
   bool get isActive => _active;
   bool _nearMissAwarded = false;
+
+  /// Tightest hitbox-edge clearance (px) recorded while passing the plane.
+  /// The near-miss tier pays out from this minimum once the pass settles.
+  double _minNearMissClearance = double.infinity;
   void Function(ObstacleComponent)? onRecycle;
 
   /// Corridor chosen by the spawner for this wave. Full-width hazards align
@@ -63,6 +68,7 @@ abstract class ObstacleComponent extends PositionComponent
     position = Vector2(spawnX, earlyWarning ? -260 : GameConfig.obstacleSpawnY);
     _active = true;
     _nearMissAwarded = false;
+    _minNearMissClearance = double.infinity;
     animTime = 0.0;
     onRecycle = recycleCallback;
     this.safeCorridorX = safeCorridorX;
@@ -75,6 +81,7 @@ abstract class ObstacleComponent extends PositionComponent
     onRecycle = null;
     safeCorridorX = null;
     _nearMissAwarded = false;
+    _minNearMissClearance = double.infinity;
     removeAll(children.whereType<ShapeHitbox>().toList());
   }
 
@@ -107,8 +114,8 @@ abstract class ObstacleComponent extends PositionComponent
     // Subclass-specific movement & internal animation updates.
     updateObstacle(dt);
 
-    // Near-miss detection.
-    _checkNearMiss();
+    // Tiered near-miss detection (closest-approach clearance tracking).
+    _trackNearMiss();
 
     // Recycle when below the viewport.
     if (position.y > GameConfig.obstacleRecycleY) {
@@ -132,25 +139,91 @@ abstract class ObstacleComponent extends PositionComponent
     super.onCollisionStart(intersectionPoints, other);
     if (!_active) return;
     if (other is PlaneComponent) {
+      // Direct contact is never a "near" miss — blocks near-miss payouts
+      // from this obstacle after a shield absorb, a ghost phase-through,
+      // or a post-revive separation.
+      _nearMissAwarded = true;
       game.onPlaneCrash();
     }
   }
 
-  // ── Near-Miss ──────────────────────────────────────────────────────────────
+  // ── Tiered Near-Miss (Closest Approach) ────────────────────────────────────
 
-  void _checkNearMiss() {
+  /// Tracks hitbox-edge clearance against the plane every frame and pays the
+  /// tightest tier once the pass settles — i.e. once the bodies start
+  /// separating again, or the obstacle has clearly slipped past. Awarding at
+  /// closest approach (instead of on ring entry) is what allows the tighter
+  /// Hair-Thin and Death Defying tiers to ever trigger.
+  void _trackNearMiss() {
     if (_nearMissAwarded) return;
+    if (game.phase != GamePhase.playing) return;
+
+    // Ghost phasing: no near-miss payouts while intangible — otherwise Ghost
+    // would farm free Death Defying bonuses by flying straight through
+    // every obstacle for its full duration.
+    try {
+      final session = game.ref.read(gameSessionProvider);
+      if (session.activePowerUps.contains(PowerUpType.ghost)) return;
+    } catch (_) {}
+
     final plane = game.plane;
-    final dist = MathUtils.distance(
-      plane.position.x, plane.position.y,
-      position.x, position.y,
-    );
-    // Near-miss: plane passed very close but collision wasn't triggered.
-    if (dist < GameConfig.nearMissDistance + size.x * 0.5 &&
-        dist > GameConfig.nearMissDistance * 0.25) {
-      _nearMissAwarded = true;
-      game.scoringSystem.onNearMiss(position: plane.position);
+
+    // Cheap vertical gate — skip AABB work while far above/below the plane.
+    final myCenterY = position.y + size.y * 0.5;
+    if ((myCenterY - plane.position.y).abs() >
+        GameConfig.designHeight * 0.55) {
+      return;
     }
+
+    final clearance = _clearanceToPlane();
+    if (clearance < _minNearMissClearance) {
+      _minNearMissClearance = clearance;
+    }
+
+    final tier = nearMissTierForClearance(_minNearMissClearance);
+    if (tier != null) {
+      // Award when the pass is settled: clearance is climbing back above the
+      // recorded minimum, or the obstacle's top edge has slipped below the
+      // plane (covers long bodies the player grazes alongside).
+      final settling = clearance >
+          _minNearMissClearance + GameConfig.nearMissSettleSlop;
+      final passedBelow = position.y > plane.position.y + plane.size.y;
+      if (settling || passedBelow) {
+        _nearMissAwarded = true;
+        game.scoringSystem.onNearMiss(
+          position: plane.position.clone(),
+          tier: tier,
+        );
+      }
+    } else if (position.y > plane.position.y + size.y + 60) {
+      // Never came close and fully past — stop tracking to save the AABB work.
+      _nearMissAwarded = true;
+    }
+  }
+
+  /// Smallest gap (px) between the plane's hitbox rect and any of this
+  /// obstacle's hitbox AABBs. Returns 0 while overlapping — but at that
+  /// point the collision system has already fired, and the award only ever
+  /// settles after separation, so an actual crash never pays a bonus.
+  double _clearanceToPlane() {
+    final planeRect = game.plane.worldAabbRect;
+    var best = double.infinity;
+    for (final hitbox in children.whereType<ShapeHitbox>()) {
+      final aabb = hitbox.aabb;
+      final dx = aabb.min.x > planeRect.right
+          ? aabb.min.x - planeRect.right
+          : planeRect.left > aabb.max.x
+              ? planeRect.left - aabb.max.x
+              : 0.0;
+      final dy = aabb.min.y > planeRect.bottom
+          ? aabb.min.y - planeRect.bottom
+          : planeRect.top > aabb.max.y
+              ? planeRect.top - aabb.max.y
+              : 0.0;
+      final gap = math.sqrt(dx * dx + dy * dy);
+      if (gap < best) best = gap;
+    }
+    return best;
   }
 
   // ── Off-screen Telegraph Rendering ─────────────────────────────────────────

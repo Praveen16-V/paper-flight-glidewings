@@ -15,6 +15,7 @@ class GameSessionState {
     this.nearMissesThisRun = 0,
     this.comboCount = 0,
     this.comboMultiplier = 1.0,
+    this.comboGauge = 0.0,
     this.currentBiome = Biome.city,
     this.activePowerUps = const {},
     this.shieldActive = false,
@@ -30,6 +31,11 @@ class GameSessionState {
   final int nearMissesThisRun;
   final int comboCount;
   final double comboMultiplier;
+
+  /// Combo decay gauge, 0.0–1.0 (fraction of a full combo bank). The gauge
+  /// bleeds down over the configured drain duration whenever no coins are
+  /// being collected; each coin restores exactly one notch.
+  final double comboGauge;
   final Biome currentBiome;
   final Set<PowerUpType> activePowerUps;
   final bool shieldActive;
@@ -45,6 +51,7 @@ class GameSessionState {
     int? nearMissesThisRun,
     int? comboCount,
     double? comboMultiplier,
+    double? comboGauge,
     Biome? currentBiome,
     Set<PowerUpType>? activePowerUps,
     bool? shieldActive,
@@ -60,6 +67,7 @@ class GameSessionState {
       nearMissesThisRun: nearMissesThisRun ?? this.nearMissesThisRun,
       comboCount: comboCount ?? this.comboCount,
       comboMultiplier: comboMultiplier ?? this.comboMultiplier,
+      comboGauge: comboGauge ?? this.comboGauge,
       currentBiome: currentBiome ?? this.currentBiome,
       activePowerUps: activePowerUps ?? this.activePowerUps,
       shieldActive: shieldActive ?? this.shieldActive,
@@ -90,8 +98,12 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
     state = state.copyWith(coinsThisRun: count);
   }
 
-  void updateCombo(int count, double multiplier) {
-    state = state.copyWith(comboCount: count, comboMultiplier: multiplier);
+  void updateCombo(int count, double multiplier, [double? gauge]) {
+    state = state.copyWith(
+      comboCount: count,
+      comboMultiplier: multiplier,
+      comboGauge: gauge ?? state.comboGauge,
+    );
   }
 
   void addNearMiss() {

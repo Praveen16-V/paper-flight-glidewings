@@ -148,5 +148,8 @@ Key knobs to adjust during playtesting:
 - `liftForce` / `gravity` — hold/release feel
 - `maxWindForce` — wind challenge level
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
-- `nearMissDistance` — how generous near-miss detection is
+- `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
+- `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts
+- `comboDrainDuration` / `comboHitRetentionFraction` — combo decay gauge pace & shield-hit penalty
+- `cleanFlightBasePoints` / `thermalSurfBasePoints` — Clean Flight streak payouts
 - `interstitialFrequencyCap` — ad cadence (increase to reduce friction)

@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flame/camera.dart';
 import 'package:flame/components.dart' hide JoystickComponent;
+import 'package:flame/effects.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/foundation.dart';
@@ -25,6 +26,7 @@ import 'systems/obstacle_spawner.dart';
 import 'systems/collectible_spawner.dart';
 import 'systems/powerup_spawner.dart';
 import 'systems/scoring_system.dart';
+import 'systems/streak_system.dart';
 import 'systems/wind_system.dart';
 import 'systems/biome_manager.dart';
 
@@ -65,6 +67,7 @@ class PaperFlightGame extends FlameGame
   late final InputManager inputManager;
   late final WindSystem windSystem;
   late final ScoringSystem scoringSystem;
+  late final StreakSystem streakSystem;
   late final BiomeManager biomeManager;
   late final ObstacleSpawner obstacleSpawner;
   late final CollectibleSpawner collectibleSpawner;
@@ -87,6 +90,10 @@ class PaperFlightGame extends FlameGame
   GamePhase get phase => _phase;
 
   bool _isReviving = false;
+
+  /// Guards the Death Defying hit-stop so overlapping awards can't stack
+  /// pause/resume cycles on top of each other (or of the crash freeze).
+  bool _deathDefyingFreezeActive = false;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -113,11 +120,13 @@ class PaperFlightGame extends FlameGame
     inputManager = InputManager(game: this);
     windSystem = WindSystem();
     scoringSystem = ScoringSystem(game: this);
+    streakSystem = StreakSystem();
     biomeManager = BiomeManager(game: this);
 
     world.add(inputManager);
     world.add(windSystem);
     world.add(scoringSystem);
+    world.add(streakSystem);
     world.add(biomeManager);
 
     // Spawners.
@@ -173,17 +182,20 @@ class PaperFlightGame extends FlameGame
       _syncOnScreenControlsVisibility(settings);
     } catch (_) {}
 
+    final session = ref.read(gameSessionProvider);
+    final scaledDt = dt * _timeScale;
+
     if (_phase != GamePhase.playing) {
       // Timers drive HUD countdown rings from the same authoritative durations.
-    final active = session.activePowerUps;
-    for (final type in active) {
-      final remaining = session.powerUpRemaining[type];
-      if (remaining != null) {
-        ref.read(gameSessionProvider.notifier).setPowerUpTimer(type, (remaining - scaledDt).clamp(0.0, 999.0).toDouble());
+      final active = session.activePowerUps;
+      for (final type in active) {
+        final remaining = session.powerUpRemaining[type];
+        if (remaining != null) {
+          ref.read(gameSessionProvider.notifier).setPowerUpTimer(type, (remaining - scaledDt).clamp(0.0, 999.0).toDouble());
+        }
       }
-    }
 
-    super.update(dt);
+      super.update(dt);
       return;
     }
 
@@ -194,11 +206,8 @@ class PaperFlightGame extends FlameGame
       _handleGesturePowerUp();
     }
 
-    final scaledDt = dt * _timeScale;
-
     // Apply slow-mo speed override (drives this frame's motion and the
     // distance it travels).
-    final session = ref.read(gameSessionProvider);
     double effectiveSpeed = _scrollSpeed;
     if (session.activePowerUps.contains(PowerUpType.slowMo)) {
       effectiveSpeed *= GameConfig.slowMoPowerUpMultiplier;
@@ -273,6 +282,7 @@ class PaperFlightGame extends FlameGame
     collectibleSpawner.reset();
     powerUpSpawner.reset();
     scoringSystem.reset();
+    streakSystem.reset();
     biomeManager.reset();
     windSystem.reset();
 
@@ -291,9 +301,11 @@ class PaperFlightGame extends FlameGame
       return;
     }
 
-    // Shield absorbs the hit.
+    // Shield absorbs the hit — the combo gauge keeps half of itself instead
+    // of facing the old instant wipe (Combo Decay design).
     if (session.shieldActive) {
       ref.read(gameSessionProvider.notifier).consumeShield();
+      scoringSystem.onObstacleHit();
       plane.playShieldHitAnimation();
       return;
     }
@@ -338,6 +350,33 @@ class PaperFlightGame extends FlameGame
     Future.delayed(Duration(milliseconds: (duration * 1000).toInt()), () {
       _timeScale = 1.0;
       ref.read(gameSessionProvider.notifier).deactivatePowerUp(PowerUpType.slowMo);
+    });
+  }
+
+  /// Death Defying near-miss reward: a micro hit-stop freeze-frame followed by
+  /// a quick camera zoom pulse — the "did I just survive that?" beat.
+  ///
+  /// Uses [pauseEngine]/[resumeEngine] (like the crash freeze) so the whole
+  /// world halts for ~110ms, then the zoom pulse plays out over real time.
+  /// Guarded so repeat awards can't stack freezes, and a player pause during
+  /// the window cancels the resume.
+  void triggerDeathDefyingSlowMo() {
+    if (_phase != GamePhase.playing || _deathDefyingFreezeActive) return;
+    _deathDefyingFreezeActive = true;
+    pauseEngine();
+    Future.delayed(GameConfig.deathDefyingFreeze, () {
+      if (_phase == GamePhase.playing) {
+        resumeEngine();
+        // ScaleEffect on the viewfinder drives the camera zoom (Flame's
+        // documented camera-zoom mechanism); uniform scale asserted by API.
+        camera.viewfinder.add(
+          ScaleEffect.to(
+            Vector2.all(GameConfig.deathDefyingCameraZoom),
+            EffectController(duration: 0.08, reverseDuration: 0.16),
+          ),
+        );
+      }
+      _deathDefyingFreezeActive = false;
     });
   }
 

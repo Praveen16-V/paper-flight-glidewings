@@ -25,11 +25,13 @@ void spawnCoinFeedback(
   _playSfx('coin_collect.mp3');
 }
 
-/// Spawns an energetic near-miss feedback at [position]: golden/cyan spark burst,
-/// floating "+points NEAR MISS!" banner, and audio sting.
+/// Spawns tier-aware near-miss feedback at [position]: golden/cyan spark
+/// burst, a floating banner naming the risk tier in its signature color, and
+/// a pitch-shifted audio sting (Hair-Thin sharper, Death Defying deeper).
 void spawnNearMissFeedback(
   PaperFlightGame game,
   Vector2 position,
+  NearMissTier tier,
   int points,
 ) {
   final world = game.world;
@@ -37,12 +39,71 @@ void spawnNearMissFeedback(
   world.add(
     FloatingScoreText(
       position: position.clone(),
-      text: '+$points NEAR MISS!',
-      color: const Color(0xFFFFEB3B),
-      fontSize: 20,
+      text: '+$points ${tier.label}',
+      color: _nearMissTierColor(tier),
+      fontSize: _nearMissTierFontSize(tier),
     ),
   );
-  _playSfx('near_miss.mp3');
+  _playNearMissSting(tier.stingPlaybackRate);
+}
+
+Color _nearMissTierColor(NearMissTier tier) {
+  switch (tier) {
+    case NearMissTier.closeShave:
+      return const Color(0xFFFFEB3B); // caution yellow
+    case NearMissTier.hairThin:
+      return const Color(0xFFFF9800); // hot orange
+    case NearMissTier.deathDefying:
+      return const Color(0xFFFF1744); // adrenaline red
+  }
+}
+
+double _nearMissTierFontSize(NearMissTier tier) {
+  switch (tier) {
+    case NearMissTier.closeShave:
+      return 20;
+    case NearMissTier.hairThin:
+      return 22;
+    case NearMissTier.deathDefying:
+      return 26;
+  }
+}
+
+/// Spawns the escalating streak payout text for the Clean Flight systems —
+/// smaller and off to the side so it never collides with coin / near-miss
+/// banners at the plane.
+void spawnStreakFeedback(
+  PaperFlightGame game,
+  Vector2 position,
+  String text,
+  Color color,
+) {
+  game.world.add(
+    FloatingScoreText(
+      position: position,
+      text: text,
+      color: color,
+      fontSize: 13,
+    ),
+  );
+}
+
+// Lazily-created pool shared by all near-miss stings. A pool (rather than
+// FlameAudio.play) is required because stings are pitch-shifted per tier via
+// the playback-rate parameter, which the shared one-shot player cannot set.
+AudioPool? _nearMissStingPool;
+
+Future<void> _playNearMissSting(double rate) async {
+  try {
+    final pool = _nearMissStingPool ??= await AudioPool.create(
+      source: 'near_miss.mp3',
+      prefix: 'assets/audio/',
+      maxPlayers: 3,
+    );
+    pool.play(volume: 0.9, rate: rate);
+  } catch (_) {
+    // Audio playback safely ignored if asset is silent or unsupported in test.
+  }
 }
 
 /// Spawns an origami crash explosion: fluttering paper shreds, shockwave ring,
