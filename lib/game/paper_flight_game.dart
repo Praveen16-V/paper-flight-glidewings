@@ -52,6 +52,9 @@ class PaperFlightGame extends FlameGame
   double _timeScale = 1.0;
   double get timeScale => _timeScale;
 
+  /// Accumulator for periodic Coin Rush coin showers.
+  double _coinRushShowerTimer = 0;
+
   // ── Systems ───────────────────────────────────────────────────────────────
 
   late final InputManager inputManager;
@@ -133,13 +136,11 @@ class PaperFlightGame extends FlameGame
 
     final scaledDt = dt * _timeScale;
 
-    // Apply turbo/slow-mo speed overrides (drives this frame's motion and
-    // the distance it travels).
+    // Apply slow-mo speed override (drives this frame's motion and the
+    // distance it travels).
     final session = ref.read(gameSessionProvider);
     double effectiveSpeed = _scrollSpeed;
-    if (session.activePowerUps.contains(PowerUpType.turboGust)) {
-      effectiveSpeed *= GameConfig.turboPowerUpMultiplier;
-    } else if (session.activePowerUps.contains(PowerUpType.slowMo)) {
+    if (session.activePowerUps.contains(PowerUpType.slowMo)) {
       effectiveSpeed *= GameConfig.slowMoPowerUpMultiplier;
     }
 
@@ -153,6 +154,15 @@ class PaperFlightGame extends FlameGame
     _scrollSpeed = _scrollSpeedForDistance(_distanceMeters);
 
     super.update(dt);
+
+    // Coin Rush: keep raining coin showers down for the power-up's duration.
+    if (session.activePowerUps.contains(PowerUpType.coinRush)) {
+      _coinRushShowerTimer += scaledDt;
+      if (_coinRushShowerTimer >= GameConfig.coinRushShowerInterval) {
+        _coinRushShowerTimer = 0;
+        collectibleSpawner.spawnCoinShower();
+      }
+    }
 
     // Push distance to provider for HUD (throttled — every 5 frames approx).
     if ((_distanceMeters * 10).toInt() % 5 == 0) {
@@ -176,6 +186,7 @@ class PaperFlightGame extends FlameGame
     _scrollSpeed = GameConfig.baseScrollSpeed;
     _distanceMeters = 0;
     _timeScale = 1.0;
+    _coinRushShowerTimer = 0;
     _phase = GamePhase.playing;
     _isReviving = false;
 
@@ -195,6 +206,12 @@ class PaperFlightGame extends FlameGame
     if (_phase != GamePhase.playing) return;
 
     final session = ref.read(gameSessionProvider);
+
+    // Ghost: the plane phases straight through every obstacle.
+    if (session.activePowerUps.contains(PowerUpType.ghost)) {
+      plane.playGhostPhaseAnimation();
+      return;
+    }
 
     // Shield absorbs the hit.
     if (session.shieldActive) {
@@ -244,6 +261,13 @@ class PaperFlightGame extends FlameGame
       _timeScale = 1.0;
       ref.read(gameSessionProvider.notifier).deactivatePowerUp(PowerUpType.slowMo);
     });
+  }
+
+  /// Kicks off the Coin Rush power-up: immediately rains an opening coin shower
+  /// and resets the periodic-shower timer.
+  void beginCoinRush() {
+    _coinRushShowerTimer = 0;
+    collectibleSpawner.spawnCoinShower();
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────

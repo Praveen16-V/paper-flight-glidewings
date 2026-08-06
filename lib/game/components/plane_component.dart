@@ -9,6 +9,7 @@ import 'package:flutter/animation.dart';
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../core/utils/math_utils.dart';
+import '../../providers/game_session_provider.dart';
 import '../paper_flight_game.dart';
 import 'plane_trail_component.dart';
 
@@ -75,6 +76,16 @@ class PlaneComponent extends PositionComponent
   /// Wing-fold amount [0 = fully spread (gliding), 1 = folded up (holding)].
   double _wingFold = 0.0;
 
+  // ── Active Power-up Visual State ─────────────────────────────────────────
+
+  bool _shieldActive = false;
+  bool _ghostActive = false;
+  bool _magnetActive = false;
+  bool _coinRushActive = false;
+
+  /// Phase used to flicker the ghost-translucency outline.
+  double _ghostFlickerPhase = 0;
+
   // ── Children ───────────────────────────────────────────────────────────────
 
   late final PlaneTrailComponent _trail;
@@ -118,6 +129,12 @@ class PlaneComponent extends PositionComponent
     final w = size.x;
     final h = size.y;
 
+    // Ghost: plane becomes translucent and shimmers while phasing.
+    if (_ghostActive) {
+      final flicker = 0.55 + 0.2 * sin(_ghostFlickerPhase);
+      paint.color = paint.color.withOpacity(flicker.clamp(0.4, 0.9));
+    }
+
     // Rotate canvas so the nose (local +X) points up (screen -Y).
     canvas.save();
     canvas.translate(w / 2, h / 2);
@@ -144,7 +161,80 @@ class PlaneComponent extends PositionComponent
     );
 
     canvas.restore();
+
     super.render(canvas);
+
+    // Power-up overlay visuals, drawn in screen space around the plane on top
+    // of children (trail) so bubbles/auras read clearly.
+    if (_ghostActive) _drawGhostShimmer(canvas, w, h);
+    if (_magnetActive) _drawMagnetAura(canvas, w, h);
+    if (_coinRushActive) _drawCoinRushGlow(canvas, w, h);
+    if (_shieldActive) _drawShieldBubble(canvas, w, h);
+  }
+
+  /// Shimmering cyan ghost outline + small drift wisps while phasing.
+  void _drawGhostShimmer(Canvas canvas, double w, double h) {
+    final pulse = 0.35 + 0.25 * sin(_ghostFlickerPhase);
+    final paint = Paint()
+      ..color = Color.fromRGBO(128, 222, 234, pulse)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(w / 2, h / 2),
+          width: w + 10,
+          height: h + 10,
+        ),
+        const Radius.circular(8),
+      ),
+      paint,
+    );
+  }
+
+  /// Purple aura ring radiating while the coin magnet is active.
+  void _drawMagnetAura(Canvas canvas, double w, double h) {
+    final pulse = 0.35 + 0.2 * sin(_ghostFlickerPhase * 0.8);
+    final glowPaint = Paint()
+      ..color = Color.fromRGBO(171, 71, 188, pulse)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+    final ringPaint = Paint()
+      ..color = Color.fromRGBO(212, 143, 229, 0.7 + 0.3 * sin(_ghostFlickerPhase))
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+    final r = w * 0.75 + 4.0;
+    canvas.drawCircle(Offset(w / 2, h / 2), r + 6, glowPaint);
+    canvas.drawCircle(Offset(w / 2, h / 2), r, ringPaint);
+  }
+
+  /// Warm golden halo while Coin Rush is active.
+  void _drawCoinRushGlow(Canvas canvas, double w, double h) {
+    final pulse = 0.3 + 0.2 * sin(_ghostFlickerPhase * 0.7);
+    final glowPaint = Paint()
+      ..color = Color.fromRGBO(255, 200, 60, pulse)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+    final r = w * 0.8;
+    canvas.drawCircle(Offset(w / 2, h / 2), r + 4, glowPaint);
+  }
+
+  /// Pulsing blue shield bubble protecting the plane from one hit.
+  void _drawShieldBubble(Canvas canvas, double w, double h) {
+    final pulse = 0.5 + 0.3 * sin(_ghostFlickerPhase * 1.2);
+    final bubblePaint = Paint()
+      ..color = Color.fromRGBO(100, 181, 246, 0.18 + 0.12 * pulse)
+      ..style = PaintingStyle.fill;
+    final rimPaint = Paint()
+      ..color = Color.fromRGBO(144, 202, 249, 0.8 + 0.2 * pulse)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+    final r = (w > h ? w : h) * 0.72;
+    canvas.drawCircle(Offset(w / 2, h / 2), r, bubblePaint);
+    canvas.drawCircle(Offset(w / 2, h / 2), r, rimPaint);
+    // Glossy highlight
+    final glossPaint = Paint()
+      ..color = const Color(0x66FFFFFF)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(w / 2 - r * 0.3, h / 2 - r * 0.35), r * 0.18, glossPaint);
   }
 
   /// Draws the paper-plane dart shape.
@@ -197,6 +287,14 @@ class PlaneComponent extends PositionComponent
     final isHolding = input.isHolding;
     final pressEdge = isHolding && !_wasHolding;   // first frame of hold
     final releaseEdge = !isHolding && _wasHolding; // first frame of release
+
+    // Reflect active power-ups so render() can draw their visuals.
+    final session = gameRef.ref.read(gameSessionProvider);
+    _shieldActive = session.shieldActive;
+    _ghostActive = session.activePowerUps.contains(PowerUpType.ghost);
+    _magnetActive = session.activePowerUps.contains(PowerUpType.magnet);
+    _coinRushActive = session.activePowerUps.contains(PowerUpType.coinRush);
+    if (_ghostActive) _ghostFlickerPhase += dt * 20.0;
 
     // ── Vertical Physics ─────────────────────────────────────────────────────
 
@@ -435,6 +533,10 @@ class PlaneComponent extends PositionComponent
     _glideArcActive = false;
     _oscillationPhase = 0;
     _oscillationStrength = 0;
+    _shieldActive = false;
+    _ghostActive = false;
+    _magnetActive = false;
+    _coinRushActive = false;
     angle = 0;
     position = Vector2(
       GameConfig.designWidth * GameConfig.planeStartX,
@@ -479,6 +581,18 @@ class PlaneComponent extends PositionComponent
         EffectController(duration: 0.08, reverseDuration: 0.08),
       ),
     );
+  }
+
+  /// Quick pulse + brighten when the ghost plane phases through an obstacle.
+  void playGhostPhaseAnimation() {
+    children.whereType<ScaleEffect>().toList().forEach(remove);
+    add(
+      ScaleEffect.by(
+        Vector2.all(1.22),
+        EffectController(duration: 0.06, reverseDuration: 0.06),
+      ),
+    );
+    _ghostFlickerPhase += pi; // flash brighter on phase
   }
 
   Vector2 get worldPosition => absolutePosition;

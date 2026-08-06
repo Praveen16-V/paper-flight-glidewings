@@ -65,7 +65,12 @@ class ScoringSystem extends Component {
     _comboMultiplier =
         1.0 + (_comboCount * GameConfig.comboMultiplierStep);
     _coinsThisRun++;
-    final points = (_comboMultiplier * 10).toInt();
+    var points = (_comboMultiplier * 10).toInt();
+    // Coin Rush: every coin is worth 2× for the duration of the power-up.
+    final session = game.ref.read(gameSessionProvider);
+    if (session.activePowerUps.contains(PowerUpType.coinRush)) {
+      points = (points * GameConfig.coinRushValueMultiplier).toInt();
+    }
     _coinScoreAccumulated += points;
     return points;
   }

@@ -1,4 +1,4 @@
-﻿import 'package:flame/components.dart';
+import 'package:flame/components.dart';
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
@@ -105,6 +105,19 @@ class CollectibleSpawner extends Component {
     coin.activate(spawnPosition: pos, recycleCallback: _recycleCoin);
     game.world.add(coin);
     _active.add(coin);
+  }
+
+  /// Rains a short vertical column of coins down at a random X. Used by the
+  /// Coin Rush power-up to flood the screen with collectibles.
+  void spawnCoinShower() {
+    final x = MathUtils.randomRange(
+      GameConfig.horizontalEdgeMargin + 25,
+      GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 25,
+    );
+    final count = MathUtils.randomInt(5, 8);
+    for (int i = 0; i < count; i++) {
+      _spawnCoinAt(Vector2(x, GameConfig.coinSpawnY - i * 30.0));
+    }
   }
 
   void _recycleCoin(CoinComponent coin) {

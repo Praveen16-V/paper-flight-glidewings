@@ -108,9 +108,9 @@ extension ObstacleLabel on ObstacleType {
 enum PowerUpType {
   shield,
   magnet,
-  turboGust,
+  ghost,
   slowMo,
-  secondWind,
+  coinRush,
 }
 
 extension PowerUpLabel on PowerUpType {
@@ -120,12 +120,12 @@ extension PowerUpLabel on PowerUpType {
         return 'Shield';
       case PowerUpType.magnet:
         return 'Magnet';
-      case PowerUpType.turboGust:
-        return 'Turbo Gust';
+      case PowerUpType.ghost:
+        return 'Ghost';
       case PowerUpType.slowMo:
-        return 'Slow-Mo Air Pocket';
-      case PowerUpType.secondWind:
-        return 'Second Wind';
+        return 'Slow-Mo';
+      case PowerUpType.coinRush:
+        return 'Coin Rush';
     }
   }
 
@@ -135,12 +135,12 @@ extension PowerUpLabel on PowerUpType {
         return 'shield';
       case PowerUpType.magnet:
         return 'magnet';
-      case PowerUpType.turboGust:
-        return 'turbo';
+      case PowerUpType.ghost:
+        return 'ghost';
       case PowerUpType.slowMo:
         return 'slowmo';
-      case PowerUpType.secondWind:
-        return 'second_wind';
+      case PowerUpType.coinRush:
+        return 'coin_rush';
     }
   }
 }

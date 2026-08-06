@@ -108,7 +108,7 @@ lib/
 │   │   ├── biome_manager.dart      # Distance → biome + per-biome obstacle weights
 │   │   ├── obstacle_spawner.dart   # Interval spawn, object pools, recycle
 │   │   ├── collectible_spawner.dart # Coin patterns: single/line/arc
-│   │   └── powerup_spawner.dart    # Weighted spawn, rare second-wind
+│   │   └── powerup_spawner.dart    # Weighted spawn, periodic timer
 │   └── overlays/
 │       └── hud_overlay.dart        # Flutter HUD: score, combo, power-ups, pause
 │
