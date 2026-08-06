@@ -4,7 +4,7 @@ import 'package:flame/components.dart';
 import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/painting.dart';
 
-import '../../core/enums/game_enums.dart';
+import '../../../core/enums/game_enums.dart';
 import '../../paper_flight_game.dart';
 
 /// Spawns a satisfying coin-pickup feedback at [position] on the [game]: a gold
