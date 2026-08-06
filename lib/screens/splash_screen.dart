@@ -40,19 +40,25 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   Future<void> _init() async {
-    // Claim daily reward silently.
+    // Small delay to let the first frame paint before doing any work.
     await Future.delayed(const Duration(milliseconds: 200));
+
+    // Claim daily reward silently — fail soft if persistence isn't ready yet.
     if (mounted) {
-      final reward =
-          await ref.read(saveDataProvider.notifier).claimDailyLoginReward();
-      if (reward > 0) {
-        AnalyticsService.instance.logEvent('daily_login_reward',
-            params: {'coins': reward});
+      try {
+        final reward =
+            await ref.read(saveDataProvider.notifier).claimDailyLoginReward();
+        if (reward > 0) {
+          AnalyticsService.instance.logEvent('daily_login_reward',
+              params: {'coins': reward});
+        }
+      } catch (e) {
+        debugPrint('Daily reward claim skipped: $e');
       }
     }
 
-    // Minimum splash hold.
-    await Future.delayed(const Duration(milliseconds: 1800));
+    // Minimum splash hold — total ~2s from launch including the 200ms above.
+    await Future.delayed(const Duration(milliseconds: 1600));
     if (mounted) {
       Navigator.of(context).pushReplacementNamed(AppRoutes.mainMenu);
     }
