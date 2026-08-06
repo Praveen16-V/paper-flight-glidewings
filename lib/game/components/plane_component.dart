@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flame/effects.dart';
+import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/animation.dart';
 
 import '../../core/constants/game_config.dart';
@@ -168,6 +169,13 @@ class PlaneComponent extends PositionComponent
 
     super.render(canvas);
 
+    // Night Sky: a subtle forward cone makes hazards readable in the dark.
+    if (game.biomeManager.currentBiome == Biome.night) {
+      final lamp = Paint()
+        ..shader = RadialGradient(colors: [const Color(0x55FFF6C4), const Color(0x00FFF6C4)]).createShader(Rect.fromCircle(center: Offset(w / 2, h / 2 - 55), radius: 82));
+      canvas.drawCircle(Offset(w / 2, h / 2 - 55), 82, lamp);
+    }
+
     // Power-up overlay visuals, drawn in screen space around the plane on top
     // of children (trail) so bubbles/auras read clearly.
     if (_ghostActive) _drawGhostShimmer(canvas, w, h);
@@ -305,6 +313,7 @@ class PlaneComponent extends PositionComponent
   }
 
   double _snapFlashTimer = 0.0;
+  bool _wasInThermal = false;
 
   void _triggerSnapFlash() {
     _snapFlashTimer = 0.22;
@@ -435,7 +444,7 @@ class PlaneComponent extends PositionComponent
       if (_glideArcActive) {
         // Lighter gravity during the upward coast.
         _velocityY +=
-            GameConfig.gravity * GameConfig.glideGravityScale * fallMult * dt;
+            GameConfig.gravity * GameConfig.glideGravityScale * fallMult * wind.profile.gravity * dt;
 
         // Ramp oscillation up from zero so it doesn't pop in jarringly.
         _oscillationStrength = (_oscillationStrength +
@@ -449,7 +458,7 @@ class PlaneComponent extends PositionComponent
       } else {
         // Full gravity fall.
         _velocityY +=
-            GameConfig.gravity * GameConfig.fullGravityScale * fallMult * dt;
+            GameConfig.gravity * GameConfig.fullGravityScale * fallMult * wind.profile.gravity * dt;
 
         // Keep oscillation at full strength during free fall.
         _oscillationStrength =
@@ -479,9 +488,13 @@ class PlaneComponent extends PositionComponent
     final normX = position.x / GameConfig.designWidth;
     final laneIndex = wind.laneForNormX(normX);
     final laneWind = wind.windAt(laneIndex);
-    if (laneWind.type == WindType.thermal) {
+    final inThermal = laneWind.type == WindType.thermal;
+    if (inThermal) {
       _velocityY -= laneWind.liftBonus * dt;
+      // Reuse the bundled wind bed as a short, rewarding updraft whoosh.
+      if (!_wasInThermal) FlameAudio.play('wind_loop.mp3', volume: 0.18);
     }
+    _wasInThermal = inThermal;
 
     // Clamp velocity range.
     _velocityY = _velocityY.clamp(
@@ -494,6 +507,7 @@ class PlaneComponent extends PositionComponent
     final controlMult = wind.isInTurbulence(normX)
         ? (1.0 - GameConfig.turbulenceControlReduction)
         : 1.0;
+    final biomeControl = wind.profile.control;
 
     final turnMult = planeType.turnSpeedMultiplier;
     final baseSpeed = input.currentScheme == ControlScheme.joystick
@@ -503,6 +517,7 @@ class PlaneComponent extends PositionComponent
         baseSpeed *
         turnMult *
         controlMult *
+        biomeControl *
         sensitivity;
 
     _velocityX = MathUtils.lerp(
@@ -534,6 +549,10 @@ class PlaneComponent extends PositionComponent
     // ── Visual Rotation (Task 3) ───────────────────────────────────────────────
 
     _updateRotation();
+    // Turbulence visibly rattles the wings as well as reducing control.
+    if (wind.isInTurbulence(normX)) {
+      angle += sin(_ghostFlickerPhase * 3.0) * 0.035;
+    }
 
     // ── Wing Fold ─────────────────────────────────────────────────────────────
 
@@ -727,6 +746,7 @@ class PlaneComponent extends PositionComponent
     _ceilingStallTimer = 0.0;
     _ceilingWasInSoftZone = false;
     _snapFlashTimer = 0.0;
+    _wasInThermal = false;
     _shieldActive = false;
     _ghostActive = false;
     _magnetActive = false;

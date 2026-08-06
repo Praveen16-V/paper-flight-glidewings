@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
+import 'package:flame_audio/flame_audio.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/game_config.dart';
@@ -34,6 +35,10 @@ abstract class ObstacleComponent extends PositionComponent
   bool _nearMissAwarded = false;
   void Function(ObstacleComponent)? onRecycle;
 
+  /// Corridor chosen by the spawner for this wave. Full-width hazards align
+  /// their opening here, while moving hazards reserve this approach lane.
+  double? safeCorridorX;
+
   /// Elapsed time since this obstacle was activated.
   double animTime = 0.0;
 
@@ -49,25 +54,44 @@ abstract class ObstacleComponent extends PositionComponent
   void activate({
     required double spawnX,
     required double scrollSpeed,
+    double? safeCorridorX,
     void Function(ObstacleComponent)? recycleCallback,
   }) {
-    position = Vector2(spawnX, GameConfig.obstacleSpawnY);
+    // High-threat hazards begin farther out so their dedicated warning has at
+    // least half a second at the 480 px/s speed cap.
+    final earlyWarning = type == ObstacleType.drone || type == ObstacleType.bird || type == ObstacleType.stormCloud;
+    position = Vector2(spawnX, earlyWarning ? -260 : GameConfig.obstacleSpawnY);
     _active = true;
     _nearMissAwarded = false;
     animTime = 0.0;
     onRecycle = recycleCallback;
+    this.safeCorridorX = safeCorridorX;
     onActivate(scrollSpeed);
+    _playThreatCue();
   }
 
   void deactivate() {
     _active = false;
     onRecycle = null;
+    safeCorridorX = null;
     _nearMissAwarded = false;
     removeAll(children.whereType<ShapeHitbox>().toList());
   }
 
   /// Override in subclasses to set dynamic-specific state.
   void onActivate(double scrollSpeed) {}
+
+  void _playThreatCue() {
+    final cue = switch (type) {
+      ObstacleType.drone => 'drone_warning.wav',
+      ObstacleType.bird => 'bird_warning.wav',
+      ObstacleType.stormCloud => 'thunder_warning.wav',
+      _ => null,
+    };
+    if (cue != null) {
+      try { FlameAudio.play(cue, volume: .32); } catch (_) {}
+    }
+  }
 
   // ── Update ─────────────────────────────────────────────────────────────────
 
@@ -150,12 +174,15 @@ abstract class ObstacleComponent extends PositionComponent
       ..color = telegraphColor.withOpacity(alpha * 0.4)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
 
-    // Target X clamped to screen margins
-    final beaconX = position.x.clamp(32.0, GameConfig.designWidth - 32.0);
+    // Target X clamped to screen margins. Component canvases are local, so
+    // convert the desired screen beacon position before drawing it.
+    final beaconX = position.x.clamp(32.0, GameConfig.designWidth - 32.0).toDouble();
     const beaconY = 18.0;
+    final localX = beaconX - position.x;
+    final localY = beaconY - position.y;
 
     canvas.save();
-    canvas.translate(beaconX, beaconY);
+    canvas.translate(localX, localY);
 
     // Outer glow
     canvas.drawCircle(Offset.zero, 14, glowPaint);
@@ -195,7 +222,11 @@ abstract class ObstacleComponent extends PositionComponent
     canvas.drawPath(chevronPath, warningPaint);
 
     canvas.restore();
+    renderThreatPreview(canvas, localX, localY, progress, pulse);
   }
+
+  /// Subclasses add a legible, type-specific early warning to the shared badge.
+  void renderThreatPreview(Canvas canvas, double x, double y, double progress, double pulse) {}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -222,10 +253,11 @@ class PowerLineObstacle extends ObstacleComponent {
   void onActivate(double scrollSpeed) {
     size = Vector2(GameConfig.designWidth, 40);
     _gapWidth = MathUtils.randomRange(92, 125);
-    _gapX = MathUtils.randomRange(
-      GameConfig.horizontalEdgeMargin + 35,
-      GameConfig.designWidth - GameConfig.horizontalEdgeMargin - _gapWidth - 35,
-    );
+    final minGapX = GameConfig.horizontalEdgeMargin + 35;
+    final maxGapX = GameConfig.designWidth - GameConfig.horizontalEdgeMargin - _gapWidth - 35;
+    _gapX = safeCorridorX == null
+        ? MathUtils.randomRange(minGapX, maxGapX)
+        : (safeCorridorX! - _gapWidth / 2).clamp(minGapX, maxGapX).toDouble();
     _sparkTimer = MathUtils.randomRange(0.5, 2.0);
     _sparkAlpha = 0;
     _setupHitboxes();
@@ -455,10 +487,11 @@ class BuildingObstacle extends ObstacleComponent {
   void onActivate(double scrollSpeed) {
     size = Vector2(GameConfig.designWidth, 230);
     _gapWidth = MathUtils.randomRange(100, 135);
-    _leftWidth = MathUtils.randomRange(
-      50,
-      GameConfig.designWidth - _gapWidth - 50,
-    );
+    const minGapX = 50.0;
+    final maxGapX = GameConfig.designWidth - _gapWidth - 50;
+    _leftWidth = safeCorridorX == null
+        ? MathUtils.randomRange(minGapX, maxGapX)
+        : (safeCorridorX! - _gapWidth / 2).clamp(minGapX, maxGapX).toDouble();
     _style = math.Random().nextInt(3);
     _setupHitboxes();
   }
@@ -965,6 +998,15 @@ class BirdObstacle extends ObstacleComponent {
   }
 
   @override
+  void renderThreatPreview(Canvas canvas, double x, double y, double progress, double pulse) {
+    final shadow = Paint()..color = Color.fromRGBO(12, 20, 28, .20 + progress * .35);
+    canvas.drawOval(Rect.fromCenter(center: Offset(x, y + 38), width: 42 + pulse * 10, height: 9), shadow);
+    final wing = Paint()..color = const Color(0xFF90CAF9)..style = PaintingStyle.stroke..strokeWidth = 1.8;
+    canvas.drawArc(Rect.fromCenter(center: Offset(x - 8, y), width: 18, height: 11), 3.5, 2.0, false, wing);
+    canvas.drawArc(Rect.fromCenter(center: Offset(x + 8, y), width: 18, height: 11), 3.9, 2.0, false, wing);
+  }
+
+  @override
   void render(Canvas canvas) {
     final w = size.x;
     final h = size.y;
@@ -1126,7 +1168,12 @@ class DroneObstacle extends ObstacleComponent {
     if (_trackingTimer < _trackingDuration) {
       _trackingTimer += dt;
       // Track player X coordinate with smooth response
-      final targetX = gameRef.plane.position.x;
+      var targetX = gameRef.plane.position.x;
+      // Before entering the play area, do not track across the announced safe lane.
+      if (position.y < gameRef.plane.position.y - 120 && safeCorridorX != null &&
+          (targetX - safeCorridorX!).abs() < 55) {
+        targetX = targetX < safeCorridorX! ? safeCorridorX! - 65 : safeCorridorX! + 65;
+      }
       final diff = targetX - position.x;
       _isLockedOn = diff.abs() < 40.0;
       _velocityX = MathUtils.lerp(_velocityX, diff * 1.8, 0.10);
@@ -1137,6 +1184,15 @@ class DroneObstacle extends ObstacleComponent {
     } else {
       _isLockedOn = false;
     }
+  }
+
+  @override
+  void renderThreatPreview(Canvas canvas, double x, double y, double progress, double pulse) {
+    final beam = Paint()..color = Color.fromRGBO(0, 229, 255, .08 + progress * .16);
+    final path = Path()..moveTo(x - 5, y + 10)..lineTo(x - 42, y + 90)..lineTo(x + 42, y + 90)..close();
+    canvas.drawPath(path, beam);
+    final strobe = Paint()..color = Color.fromRGBO(255, 23, 68, .45 + pulse * .5);
+    canvas.drawCircle(Offset(x, y), 5 + pulse * 3, strobe);
   }
 
   @override
@@ -1693,6 +1749,15 @@ class StormCloudObstacle extends ObstacleComponent {
       Offset(size.x * 0.48, size.y * 1.5),
       Offset(size.x * 0.52, size.y * 1.8),
     ];
+  }
+
+  @override
+  void renderThreatPreview(Canvas canvas, double x, double y, double progress, double pulse) {
+    final glow = Paint()..color = Color.fromRGBO(124, 77, 255, .20 + pulse * .32)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
+    canvas.drawCircle(Offset(x, y + 6), 18, glow);
+    final bolt = Paint()..color = const Color(0xFFB388FF)..strokeWidth = 2.0;
+    final path = Path()..moveTo(x + 3, y - 8)..lineTo(x - 3, y + 3)..lineTo(x + 3, y + 3)..lineTo(x - 4, y + 15);
+    canvas.drawPath(path, bolt);
   }
 
   @override

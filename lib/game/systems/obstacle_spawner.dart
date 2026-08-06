@@ -38,6 +38,10 @@ class ObstacleSpawner extends Component {
 
   double _spawnTimer = 0;
   double _lastSpawnX = GameConfig.designWidth * 0.5;
+  double _safeCorridorX = GameConfig.designWidth * 0.5;
+
+  static const double _reactionWindowSeconds = 1.15;
+  static const double _corridorHalfWidth = 54.0;
 
   @override
   Future<void> onLoad() async {
@@ -62,14 +66,16 @@ class ObstacleSpawner extends Component {
 
     final interval = _currentSpawnInterval();
     if (_spawnTimer >= interval) {
-      _spawnTimer = 0;
-      _spawnObstacle();
+      // Keep accumulating if a proposed wave would compromise the currently
+      // reachable corridor; it will retry as soon as the airspace clears.
+      if (_spawnObstacle()) _spawnTimer = 0;
     }
   }
 
   void reset() {
     _spawnTimer = 0;
     _lastSpawnX = GameConfig.designWidth * 0.5;
+    _safeCorridorX = GameConfig.designWidth * 0.5;
     // Return all active obstacles to their pools immediately.
     for (final obs in List.of(_active)) {
       _recycleObstacle(obs);
@@ -83,14 +89,25 @@ class ObstacleSpawner extends Component {
     // Interval shrinks as speed increases — smooth interpolation.
     final speedFraction = (game.scrollSpeed - GameConfig.baseScrollSpeed) /
         (GameConfig.maxScrollSpeed - GameConfig.baseScrollSpeed);
-    return MathUtils.lerp(
+    final baseInterval = MathUtils.lerp(
       GameConfig.obstacleBaseSpawnInterval,
       GameConfig.obstacleMinSpawnInterval,
       speedFraction.clamp(0.0, 1.0),
     );
+    // Backyard deliberately gives newcomers broad, calm clearances; mountain
+    // passes compress the rhythm into the requested chokepoint feeling.
+    final biomeSpacing = switch (game.biomeManager.currentBiome) {
+      Biome.backyard => 1.32,
+      Biome.city => .96,
+      Biome.storm => .88,
+      Biome.mountain => .78,
+      Biome.night => 1.02,
+      Biome.atmosphere => .90,
+    };
+    return baseInterval * biomeSpacing;
   }
 
-  void _spawnObstacle() {
+  bool _spawnObstacle() {
     final types = ObstacleType.values;
     final weights = types
         .map((t) => game.biomeManager.obstacleWeight(t))
@@ -102,6 +119,8 @@ class ObstacleSpawner extends Component {
         ? MathUtils.weightedPick(types, weights)
         : ObstacleType.bird;
 
+    if (!_hasSafeReactionWindow(chosen)) return false;
+    _planSafeCorridor();
     final spawnX = _pickSpawnX(chosen);
     _lastSpawnX = spawnX;
 
@@ -109,11 +128,36 @@ class ObstacleSpawner extends Component {
     obs.activate(
       spawnX: spawnX,
       scrollSpeed: game.scrollSpeed,
+      safeCorridorX: _safeCorridorX,
       recycleCallback: _recycleObstacle,
     );
 
     game.world.add(obs);
     _active.add(obs);
+    return true;
+  }
+
+  /// A full-width gate must never arrive alongside another hazard. At current
+  /// speed this preserves a full reaction window, even at the 480 px/s cap.
+  bool _hasSafeReactionWindow(ObstacleType proposed) {
+    final isGate = proposed == ObstacleType.powerLine || proposed == ObstacleType.building;
+    if (!isGate && !_active.any((o) => o.type == ObstacleType.powerLine || o.type == ObstacleType.building)) return true;
+    final protectedDistance = game.scrollSpeed * _reactionWindowSeconds + 140;
+    return !_active.any((o) => (o.position.y + 80).abs() < protectedDistance);
+  }
+
+  void _planSafeCorridor() {
+    final reachable = GameConfig.joystickMaxSteerSpeed * _reactionWindowSeconds;
+    final desired = game.plane.position.x.clamp(
+      GameConfig.horizontalEdgeMargin + _corridorHalfWidth,
+      GameConfig.designWidth - GameConfig.horizontalEdgeMargin - _corridorHalfWidth,
+    ).toDouble();
+    // The selected gate is always within the maximum lateral bank distance.
+    _safeCorridorX = desired.clamp(
+      game.plane.position.x - reachable,
+      game.plane.position.x + reachable,
+    ).clamp(GameConfig.horizontalEdgeMargin + _corridorHalfWidth,
+        GameConfig.designWidth - GameConfig.horizontalEdgeMargin - _corridorHalfWidth).toDouble();
   }
 
   double _pickSpawnX(ObstacleType type) {
