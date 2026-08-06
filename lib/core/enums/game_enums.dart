@@ -44,14 +44,41 @@ extension BiomeLabel on Biome {
 // ── Obstacles ────────────────────────────────────────────────────────────────
 
 enum ObstacleType {
-  powerLine,    // static, horizontal
-  building,     // static, wide pillar-style gap pair
-  treeBranch,   // static, hangs from top or rises from bottom
-  bird,         // dynamic, patrol pattern
-  drone,        // dynamic, briefly tracks player
+  powerLine,      // static/sagging catenary with electrical sparks & warning flags
+  building,       // skyline buildings with animated rooftop fans, water towers, spires
+  treeBranch,     // organic wind-swaying foliage with leaf flutter & falling leaf particles
+  bird,           // dynamic flapping avian with realistic wing cycles, banking & swooping
+  drone,          // dynamic quadcopter with spinning rotors, searchlight beam & alert LED
+  windTurbine,    // dynamic giant 3-blade rotating wind turbine / paper pinwheel
+  hotAirBalloon,  // dynamic floating hot air balloon with animated burner flame & wicker basket
+  stormCloud,     // dynamic billowing thundercloud with electric discharge arcs & rain
+  kite,           // dynamic fluttering festival kite with dynamic physics ribbon tail
 }
 
 extension ObstacleLabel on ObstacleType {
+  String get displayName {
+    switch (this) {
+      case ObstacleType.powerLine:
+        return 'Power Line';
+      case ObstacleType.building:
+        return 'Skyscraper Rooftop';
+      case ObstacleType.treeBranch:
+        return 'Tree Canopy';
+      case ObstacleType.bird:
+        return 'Swooping Bird';
+      case ObstacleType.drone:
+        return 'Surveillance Drone';
+      case ObstacleType.windTurbine:
+        return 'Wind Turbine';
+      case ObstacleType.hotAirBalloon:
+        return 'Hot Air Balloon';
+      case ObstacleType.stormCloud:
+        return 'Thundercloud';
+      case ObstacleType.kite:
+        return 'Festival Kite';
+    }
+  }
+
   String get assetName {
     switch (this) {
       case ObstacleType.powerLine:
@@ -64,6 +91,14 @@ extension ObstacleLabel on ObstacleType {
         return 'bird';
       case ObstacleType.drone:
         return 'drone';
+      case ObstacleType.windTurbine:
+        return 'wind_turbine';
+      case ObstacleType.hotAirBalloon:
+        return 'hot_air_balloon';
+      case ObstacleType.stormCloud:
+        return 'storm_cloud';
+      case ObstacleType.kite:
+        return 'kite';
     }
   }
 }
