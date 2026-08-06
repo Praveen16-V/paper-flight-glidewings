@@ -4,7 +4,6 @@ import 'dart:ui';
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flame/effects.dart';
-import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/animation.dart';
 import 'package:flutter/painting.dart';
 
@@ -314,7 +313,6 @@ class PlaneComponent extends PositionComponent
   }
 
   double _snapFlashTimer = 0.0;
-  bool _wasInThermal = false;
 
   /// True while the plane's wind lane is a thermal updraft — read by the
   /// thermal-surf streak tracker.
@@ -498,10 +496,9 @@ class PlaneComponent extends PositionComponent
     _inThermal = inThermal;
     if (inThermal) {
       _velocityY -= laneWind.liftBonus * dt;
-      // Reuse the bundled wind bed as a short, rewarding updraft whoosh.
-      if (!_wasInThermal) FlameAudio.play('wind_loop.mp3', volume: 0.18);
+      // (Task 6) The continuous wind-rush ambient in GameFeelSystem now
+      // provides the wind soundscape — no one-shot loop needed here.
     }
-    _wasInThermal = inThermal;
 
     // Clamp velocity range.
     _velocityY = _velocityY.clamp(
@@ -753,7 +750,6 @@ class PlaneComponent extends PositionComponent
     _ceilingStallTimer = 0.0;
     _ceilingWasInSoftZone = false;
     _snapFlashTimer = 0.0;
-    _wasInThermal = false;
     _inThermal = false;
     _shieldActive = false;
     _ghostActive = false;
@@ -821,6 +817,14 @@ class PlaneComponent extends PositionComponent
   }
 
   Vector2 get worldPosition => absolutePosition;
+
+  /// Current lateral (X) velocity in px/s — used by the game-feel camera
+  /// banking and paper-crease trigger. Positive = rightward.
+  double get horizontalVelocity => _velocityX;
+
+  /// Current vertical (Y) velocity in px/s — positive = falling downward.
+  /// Used to drive the wind-rush volume/pitch and the speed-streak overlay.
+  double get verticalVelocity => _velocityY;
 
   /// World-space axis-aligned rect of the collision hitbox — used by
   /// obstacles to compute hitbox-edge clearance for tiered near-misses.

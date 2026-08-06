@@ -108,6 +108,8 @@ class ScoringSystem extends Component {
       points = (points * GameConfig.coinRushValueMultiplier).toInt();
     }
     _coinScoreAccumulated += points;
+    // Juice: coin tap haptic + ascending combo-chime melody (Task 6).
+    game.gameFeelSystem.onCoinCollected(comboCount);
     return points;
   }
 
@@ -130,6 +132,8 @@ class ScoringSystem extends Component {
     _nearMissScoreAccumulated += points;
     final spawnPos = position ?? game.plane.position.clone();
     spawnNearMissFeedback(game, spawnPos, tier, points);
+    // Juice: sharp medium click on a confirmed near-miss (Task 6).
+    game.gameFeelSystem.onNearMiss();
     // Death Defying earns the full drama: micro hit-stop + camera pulse.
     if (tier == NearMissTier.deathDefying) {
       game.triggerDeathDefyingSlowMo();

@@ -29,6 +29,7 @@ import 'systems/scoring_system.dart';
 import 'systems/streak_system.dart';
 import 'systems/wind_system.dart';
 import 'systems/biome_manager.dart';
+import 'systems/game_feel_system.dart';
 
 /// The root FlameGame — Paper Flight.
 ///
@@ -72,6 +73,9 @@ class PaperFlightGame extends FlameGame
   late final ObstacleSpawner obstacleSpawner;
   late final CollectibleSpawner collectibleSpawner;
   late final PowerUpSpawner powerUpSpawner;
+
+  /// Juice layer — adaptive audio, dynamic camera, streaks, chimes & haptics.
+  late final GameFeelSystem gameFeelSystem;
 
   // ── Core Components ───────────────────────────────────────────────────────
 
@@ -151,6 +155,11 @@ class PaperFlightGame extends FlameGame
     touchZonesOverlay = TouchZonesOverlay(inputManager: inputManager);
     world.add(joystickComponent);
     world.add(touchZonesOverlay);
+
+    // Game-feel juice layer — added last so its vignette/streak overlay draws
+    // on top of the whole world.
+    gameFeelSystem = GameFeelSystem();
+    world.add(gameFeelSystem);
 
     // Sync initial control scheme + sensitivity from persisted settings.
     try {
@@ -285,6 +294,7 @@ class PaperFlightGame extends FlameGame
     streakSystem.reset();
     biomeManager.reset();
     windSystem.reset();
+    gameFeelSystem.reset();
 
     ref.read(gameSessionProvider.notifier).startRun();
   }
@@ -307,12 +317,15 @@ class PaperFlightGame extends FlameGame
       ref.read(gameSessionProvider.notifier).consumeShield();
       scoringSystem.onObstacleHit();
       plane.playShieldHitAnimation();
+      gameFeelSystem.onShieldBreak();
       return;
     }
 
     _phase = GamePhase.dying;
     spawnCrashFeedback(this, plane.position);
     pauseEngine();
+    gameFeelSystem.onCrash();
+    gameFeelSystem.silence();
 
     // Brief freeze then transition to game over.
     Future.delayed(GameConfig.crashSlowMoFreeze, () {
@@ -335,6 +348,7 @@ class PaperFlightGame extends FlameGame
     if (_phase != GamePhase.playing) return;
     _phase = GamePhase.paused;
     pauseEngine();
+    gameFeelSystem.silence();
     ref.read(gameSessionProvider.notifier).pause();
   }
 
