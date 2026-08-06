@@ -79,16 +79,23 @@ class PaperFlightGame extends FlameGame
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
-  Color backgroundColor() => const Color(0xFF1A2744);
+  // This is the colour painted before the world has produced its first frame.
+  // Keep it deliberately light: a dark clear colour made a loading/camera
+  // failure indistinguishable from a black gameplay screen on Android.
+  Color backgroundColor() => const Color(0xFF4FC3F7);
 
   @override
   Future<void> onLoad() async {
-    // Static camera — fixed viewport, no follow logic.
+    // Configure the camera before Flame mounts its game tree, then let Flame
+    // mount the world/camera before adding gameplay components.  In particular,
+    // adding world children before the CameraComponent is mounted can leave an
+    // empty viewport on some Android/Impeller devices.
     camera = CameraComponent.withFixedResolution(
       width: GameConfig.designWidth,
       height: GameConfig.designHeight,
       world: world,
     )..viewfinder.anchor = Anchor.topLeft;
+    await super.onLoad();
 
     // Background parallax layers (farthest first).
     background = ParallaxBackground();
@@ -134,7 +141,6 @@ class PaperFlightGame extends FlameGame
       background.transitionToBiome(to);
     });
 
-    await super.onLoad();
   }
 
   void _syncSettings() {
