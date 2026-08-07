@@ -7,6 +7,7 @@ import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../providers/game_session_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../services/daily_seed_service.dart';
 import '../paper_flight_game.dart';
 
 /// Flutter widget HUD drawn on top of the Flame canvas via GameWidget overlays.
@@ -22,39 +23,89 @@ class HudOverlay extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(gameSessionProvider);
     final settings = ref.watch(settingsProvider);
+    final trial = session.mode == GameMode.trial ? game.trial : null;
 
     return SafeArea(
       child: Stack(
         children: [
-          // ── Top bar: score + coins ──────────────────────────────────────
-          Positioned(
-            top: 12,
-            left: 16,
-            right: 72,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _ScoreDisplay(
-                  score: session.score,
-                  isNew: session.lastRunResult?.isNewHighScore ?? false,
+          // ── Top bar (mode-aware, Task 8) ───────────────────────────────
+          if (session.mode == GameMode.trial && trial != null) ...[
+            // Precision Trial: objective pill + coin counter, big clock.
+            Positioned(
+              top: 12,
+              left: 16,
+              right: 72,
+              child: _TrialObjectiveBar(
+                objective: trial.objective,
+                coins: session.coinsThisRun,
+                totalCoins: trial.totalCoins,
+              ),
+            ),
+            if (trial.parSeconds != null)
+              Positioned(
+                top: 58,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: _TrialTimer(
+                    timeLeft: session.trialTimeLeft,
+                    par: trial.parSeconds,
+                  ),
                 ),
-                _CoinDisplay(coins: session.coinsThisRun),
-              ],
+              ),
+          ] else ...[
+            Positioned(
+              top: 12,
+              left: 16,
+              right: 72,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (session.mode == GameMode.zen)
+                    const _ModeTag(label: 'ZEN', color: Color(0xFF66BB6A))
+                  else if (session.mode == GameMode.daily)
+                    _ModeTag(
+                      label: DailySeedService.label(game.dailySeed),
+                      color: AppColors.accentAlt,
+                    )
+                  else
+                    _ScoreDisplay(
+                      score: session.score,
+                      isNew: session.lastRunResult?.isNewHighScore ?? false,
+                    ),
+                  _CoinDisplay(coins: session.coinsThisRun),
+                ],
+              ),
             ),
-          ),
+          ],
 
-          // ── Distance meter ─────────────────────────────────────────────
-          Positioned(
-            top: 60,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: _DistanceDisplay(meters: session.distanceMeters),
+          // ── Distance meter / Zen clock ────────────────────────────────
+          if (session.mode == GameMode.zen)
+            Positioned(
+              top: 56,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: _ZenStatusDisplay(
+                  meters: session.distanceMeters,
+                  seconds: session.runTimeSeconds,
+                ),
+              ),
+            )
+          else if (session.mode != GameMode.trial)
+            Positioned(
+              top: 60,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: _DistanceDisplay(meters: session.distanceMeters),
+              ),
             ),
-          ),
 
-          // ── Combo strip + decay gauge ───────────────────────────────────
-          if (session.comboCount >= 3)
+          // ── Combo strip + decay gauge (classic + daily only) ──────────
+          if (session.comboCount >= 3 &&
+              (session.mode == GameMode.classic ||
+                  session.mode == GameMode.daily))
             Positioned(
               top: 88,
               left: 0,
@@ -223,6 +274,166 @@ class _DistanceDisplay extends StatelessWidget {
         fontSize: 13,
         fontWeight: FontWeight.w600,
         letterSpacing: 1,
+      ),
+    );
+  }
+}
+
+/// Small labelled pill shown in place of the score for Zen / Daily modes.
+class _ModeTag extends StatelessWidget {
+  const _ModeTag({required this.label, required this.color});
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 220),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.hudBackground,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.6), width: 1),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 1,
+        ),
+      ),
+    );
+  }
+}
+
+/// Zen Flight: distance + elapsed time, calm and quiet.
+class _ZenStatusDisplay extends StatelessWidget {
+  const _ZenStatusDisplay({required this.meters, required this.seconds});
+  final double meters;
+  final double seconds;
+
+  @override
+  Widget build(BuildContext context) {
+    final minutes = seconds ~/ 60;
+    final secs = (seconds % 60).toStringAsFixed(0).padLeft(2, '0');
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '${meters.toStringAsFixed(0)} m',
+          style: const TextStyle(
+            color: AppColors.textLight,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '$minutes:$secs',
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.5,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Precision Trial: objective + coins collected/total.
+class _TrialObjectiveBar extends StatelessWidget {
+  const _TrialObjectiveBar({
+    required this.objective,
+    required this.coins,
+    required this.totalCoins,
+  });
+  final String objective;
+  final int coins;
+  final int totalCoins;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.hudBackground,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.flag_outlined, color: AppColors.textLight, size: 14),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              objective,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textLight,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          if (totalCoins > 0) ...[
+            const SizedBox(width: 10),
+            Container(
+              width: 10,
+              height: 10,
+              decoration: const BoxDecoration(
+                color: AppColors.coinGold,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '$coins/$totalCoins',
+              style: const TextStyle(
+                color: AppColors.coinGold,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Precision Trial countdown — turns amber under 5s, red under 3s.
+class _TrialTimer extends StatelessWidget {
+  const _TrialTimer({required this.timeLeft, required this.par});
+  final double? timeLeft;
+  final double? par;
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = timeLeft ?? par ?? 0;
+    final urgent = remaining < 5;
+    final critical = remaining < 3;
+    return Text(
+      '${remaining.toStringAsFixed(1)}s',
+      style: TextStyle(
+        color: critical
+            ? const Color(0xFFFF1744)
+            : urgent
+                ? const Color(0xFFFFB300)
+                : AppColors.textLight,
+        fontSize: 34,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 1,
+        shadows: const [
+          Shadow(color: Colors.black45, blurRadius: 6),
+        ],
       ),
     );
   }

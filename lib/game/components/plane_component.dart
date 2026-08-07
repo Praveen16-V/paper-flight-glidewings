@@ -706,9 +706,16 @@ class PlaneComponent extends PositionComponent
     _handleCeiling(dt);
 
     // ── Fail State ────────────────────────────────────────────────────────────
+    // Zen Flight: there is no floor — the plane softly bounces back up.
 
     if (position.y > GameConfig.designHeight + size.y) {
-      game.onPlaneCrash();
+      if (game.mode == GameMode.zen) {
+        position.y = GameConfig.zenSoftFloorY;
+        _velocityY = GameConfig.zenSoftFloorBounce;
+        _glideArcActive = false;
+      } else {
+        game.onPlaneCrash();
+      }
       return;
     }
 
@@ -976,6 +983,21 @@ class PlaneComponent extends PositionComponent
       ),
     );
     _ghostFlickerPhase += pi; // flash brighter on phase
+  }
+
+  /// Zen Flight bump: a soft sideways + upward shove with a gentle scale
+  /// pulse — feedback without any crash consequence.
+  void applyZenBounce({required double pushX, required double pushY}) {
+    _velocityX += pushX;
+    _velocityY += pushY;
+    _glideArcActive = false;
+    children.whereType<ScaleEffect>().toList().forEach(remove);
+    add(
+      ScaleEffect.by(
+        Vector2.all(1.16),
+        EffectController(duration: 0.09, reverseDuration: 0.14),
+      ),
+    );
   }
 
   /// Brief green swirl when Crane brushes off a branch.

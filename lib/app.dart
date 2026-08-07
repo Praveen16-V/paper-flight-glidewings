@@ -11,6 +11,10 @@ import 'screens/hangar_screen.dart';
 import 'screens/shop_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/daily_challenges_screen.dart';
+import 'screens/modes_screen.dart';
+import 'screens/daily_flight_screen.dart';
+import 'screens/trials_screen.dart';
+import 'screens/trial_results_screen.dart';
 
 class PaperFlightApp extends ConsumerWidget {
   const PaperFlightApp({super.key});
@@ -90,7 +94,8 @@ class PaperFlightApp extends ConsumerWidget {
       case AppRoutes.mainMenu:
         return _fade(const MainMenuScreen());
       case AppRoutes.game:
-        return _fade(const GameScreen());
+        final args = settings.arguments as GameScreenArgs?;
+        return _fade(GameScreen(args: args ?? const GameScreenArgs()));
       case AppRoutes.gameOver:
         final args = settings.arguments as GameOverArgs?;
         return _slide(GameOverScreen(args: args ?? const GameOverArgs()));
@@ -102,6 +107,16 @@ class PaperFlightApp extends ConsumerWidget {
         return _slide(const SettingsScreen());
       case AppRoutes.dailyChallenges:
         return _slide(const DailyChallengesScreen());
+      case AppRoutes.modes:
+        return _slide(const ModesScreen());
+      case AppRoutes.dailyFlight:
+        return _slide(const DailyFlightScreen());
+      case AppRoutes.trials:
+        return _slide(const TrialsScreen());
+      case AppRoutes.trialResult:
+        final args = settings.arguments as TrialResultArgs?;
+        return _slide(
+            TrialResultsScreen(args: args ?? const TrialResultArgs()));
       default:
         return _fade(const SplashScreen());
     }

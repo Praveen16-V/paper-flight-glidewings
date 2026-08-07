@@ -7,6 +7,7 @@ import '../../core/enums/game_enums.dart';
 import '../../core/utils/math_utils.dart';
 import '../../core/utils/object_pool.dart';
 import '../components/obstacles/obstacle_component.dart';
+import '../components/obstacles/obstacle_script.dart';
 import '../paper_flight_game.dart';
 
 /// Manages obstacle spawn timing, object pools, and recycling across all biomes.
@@ -20,6 +21,15 @@ class ObstacleSpawner extends Component {
   ObstacleSpawner({required this.game});
 
   final PaperFlightGame game;
+
+  /// RNG driving every spawn decision. The Daily Seeded Flight swaps this for
+  /// a seed-derived generator (via [PaperFlightGame.spawnRng]) so all players
+  /// see the identical run. Classic/Zen use an unseeded generator.
+  math.Random random = math.Random();
+
+  /// When false (Precision Trials) the procedural spawner stands down — the
+  /// Trial Director drives every spawn from the handcrafted course instead.
+  bool spawnEnabled = true;
 
   // Per-type object pools for all 9 obstacle types.
   late final ObjectPool<PowerLineObstacle> _powerLinePool;
@@ -39,6 +49,11 @@ class ObstacleSpawner extends Component {
   double _spawnTimer = 0;
   double _lastSpawnX = GameConfig.designWidth * 0.5;
   double _safeCorridorX = GameConfig.designWidth * 0.5;
+
+  /// Type chosen on the first frame of a spawn attempt. Held while the air
+  /// space isn't safe so retry frames never consume extra RNG draws — this
+  /// keeps the seeded daily run's spawn sequence frame-rate independent.
+  ObstacleType? _pendingChosen;
 
   static const double _reactionWindowSeconds = 1.15;
   static const double _corridorHalfWidth = 54.0;
@@ -61,6 +76,7 @@ class ObstacleSpawner extends Component {
   @override
   void update(double dt) {
     if (game.phase != GamePhase.playing) return;
+    if (!spawnEnabled) return;
 
     _spawnTimer += dt;
 
@@ -76,6 +92,7 @@ class ObstacleSpawner extends Component {
     _spawnTimer = 0;
     _lastSpawnX = GameConfig.designWidth * 0.5;
     _safeCorridorX = GameConfig.designWidth * 0.5;
+    _pendingChosen = null;
     // Return all active obstacles to their pools immediately.
     for (final obs in List.of(_active)) {
       _recycleObstacle(obs);
@@ -115,11 +132,16 @@ class ObstacleSpawner extends Component {
 
     // Verify at least one obstacle type has positive weight
     final totalWeight = weights.fold<double>(0, (sum, w) => sum + w);
-    final chosen = totalWeight > 0
-        ? MathUtils.weightedPick(types, weights)
-        : ObstacleType.bird;
+    // Pick once per attempt; hold the choice across retry frames so the
+    // seeded RNG draw sequence never depends on frame timing.
+    final chosen = _pendingChosen ??
+        (totalWeight > 0 ? _weightedPick(types, weights) : ObstacleType.bird);
 
-    if (!_hasSafeReactionWindow(chosen)) return false;
+    if (!_hasSafeReactionWindow(chosen)) {
+      _pendingChosen = chosen;
+      return false;
+    }
+    _pendingChosen = null;
     _planSafeCorridor();
     final spawnX = _pickSpawnX(chosen);
     _lastSpawnX = spawnX;
@@ -130,11 +152,44 @@ class ObstacleSpawner extends Component {
       scrollSpeed: game.scrollSpeed,
       safeCorridorX: _safeCorridorX,
       recycleCallback: _recycleObstacle,
+      rng: random,
     );
 
     game.world.add(obs);
     _active.add(obs);
     return true;
+  }
+
+  /// Scripted spawn used by the Precision Trial Director — places an obstacle
+  /// with an exact layout instead of rolling random values.
+  ObstacleComponent spawnScripted(
+    ObstacleType type, {
+    required double x,
+    ObstacleScript? script,
+  }) {
+    final obs = _acquireObstacle(type);
+    obs.activate(
+      spawnX: x,
+      scrollSpeed: game.scrollSpeed,
+      script: script,
+      recycleCallback: _recycleObstacle,
+      rng: random,
+    );
+    game.world.add(obs);
+    _active.add(obs);
+    return obs;
+  }
+
+  /// Seed-aware weighted pick (mirrors MathUtils.weightedPick but uses the
+  /// spawner's own RNG so daily runs are fully deterministic).
+  T _weightedPick<T>(List<T> items, List<double> weights) {
+    final total = weights.fold(0.0, (a, b) => a + b);
+    double roll = random.nextDouble() * total;
+    for (int i = 0; i < items.length; i++) {
+      roll -= weights[i];
+      if (roll <= 0) return items[i];
+    }
+    return items.last;
   }
 
   /// A full-width gate must never arrive alongside another hazard. At current
@@ -168,20 +223,20 @@ class ObstacleSpawner extends Component {
 
     // Branch obstacles pick their own side
     if (type == ObstacleType.treeBranch) {
-      return math.Random().nextBool() ? 0.0 : GameConfig.designWidth;
+      return random.nextBool() ? 0.0 : GameConfig.designWidth;
     }
 
     // Dynamic obstacles: distribute smartly away from last spawn point to avoid clumping
     final minX = GameConfig.horizontalEdgeMargin + 35.0;
     final maxX = GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 35.0;
 
-    double candidateX = MathUtils.randomRange(minX, maxX);
+    double candidateX = minX + random.nextDouble() * (maxX - minX);
     // If candidate is too close to last spawn, shift across screen
     if ((candidateX - _lastSpawnX).abs() < 70.0) {
       if (_lastSpawnX > GameConfig.designWidth * 0.5) {
-        candidateX = MathUtils.randomRange(minX, GameConfig.designWidth * 0.45);
+        candidateX = minX + random.nextDouble() * (GameConfig.designWidth * 0.45 - minX);
       } else {
-        candidateX = MathUtils.randomRange(GameConfig.designWidth * 0.55, maxX);
+        candidateX = GameConfig.designWidth * 0.55 + random.nextDouble() * (maxX - GameConfig.designWidth * 0.55);
       }
     }
 

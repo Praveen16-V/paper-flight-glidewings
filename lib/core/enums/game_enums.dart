@@ -13,6 +13,61 @@ enum GamePhase {
   reviving,  // watching rewarded ad to revive
 }
 
+// ── Game Modes (Task 8) ─────────────────────────────────────────────────────
+
+enum GameMode {
+  classic, // endless arcade — the original mode
+  zen,     // Zen Flight: no crash deaths, calm skies, infinite gliding
+  daily,   // Daily Seeded Flight: one seeded run per UTC day, same for everyone
+  trial,   // Precision Flight: handcrafted puzzle courses with star ratings
+}
+
+extension GameModeLabel on GameMode {
+  String get displayName {
+    switch (this) {
+      case GameMode.classic:
+        return 'Classic Flight';
+      case GameMode.zen:
+        return 'Zen Flight';
+      case GameMode.daily:
+        return 'Daily Seeded';
+      case GameMode.trial:
+        return 'Precision Trial';
+    }
+  }
+
+  String get tagline {
+    switch (this) {
+      case GameMode.classic:
+        return 'Endless arcade. One tap, infinite falls.';
+      case GameMode.zen:
+        return 'No crashes. Calm skies. Just glide.';
+      case GameMode.daily:
+        return 'One run a day — same wind for everyone.';
+      case GameMode.trial:
+        return 'Handcrafted courses. Earn your stars.';
+    }
+  }
+
+  String get icon {
+    switch (this) {
+      case GameMode.classic:
+        return '✈️';
+      case GameMode.zen:
+        return '🍃';
+      case GameMode.daily:
+        return '🗓️';
+      case GameMode.trial:
+        return '🎯';
+    }
+  }
+
+  /// Whether this mode touches the shared coin/gem economy or challenge
+  /// objectives. Task 8 design: Zen and Trials are pure gameplay; the Daily
+  /// awards a leaderboard rank — none of them bank coins.
+  bool get isEconomyRun => this == GameMode.classic;
+}
+
 // ── Biomes ───────────────────────────────────────────────────────────────────
 
 enum Biome {

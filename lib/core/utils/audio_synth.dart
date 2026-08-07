@@ -93,6 +93,59 @@ class AudioSynth {
     return _encode(out);
   }
 
+  /// A slow, warm ambient pad for Zen Flight — a soft major-9 chord with a
+  /// barely-there airy noise bed and a very gentle amplitude LFO, faded in and
+  /// out at both ends so it loops seamlessly. ~10 s, generated once per Zen
+  /// session and played on a looping player.
+  static Uint8List ambientPad({
+    double volume = 0.5,
+    double seconds = 10.0,
+  }) {
+    // Cmaj9 voiced softly: C4, E4, G4, B4, D5 (plus a hint of G3 for warmth).
+    const List<double> chordHz = [196.00, 261.63, 329.63, 392.00, 493.88, 587.33];
+    final int n = (seconds * sampleRate).round();
+    final samples = Float64List(n);
+    final rand = math.Random(11);
+
+    // One-pole low-pass state for the noise bed (soft "breeze" rumble).
+    double xPrev = 0, yPrev = 0;
+    const double alpha = 0.90;
+
+    for (int i = 0; i < n; i++) {
+      final t = i / sampleRate;
+
+      // Loop-safe fade: raised-cosine envelope over the whole buffer.
+      final fadeIn = 0.5 - 0.5 * math.cos(math.pi * (t / 1.5).clamp(0.0, 1.0));
+      final fadeOut = 0.5 + 0.5 * math.cos(math.pi * ((t - (seconds - 1.5)) / 1.5).clamp(0.0, 1.0));
+      final edge = fadeIn * fadeOut;
+
+      // Very slow amplitude swell (~0.14 Hz, ±18%) so the pad breathes.
+      final swell = 1.0 + 0.18 * math.sin(2 * math.pi * 0.14 * t);
+
+      double s = 0;
+      for (int c = 0; c < chordHz.length; c++) {
+        final f = chordHz[c];
+        // Slight per-voice detune for a wide, organic chorus.
+        final detune = 1.0 + (c - 2) * 0.0006;
+        final voice = math.sin(2 * math.pi * f * detune * t) +
+            0.18 * math.sin(2 * math.pi * f * 2 * detune * t) +
+            0.06 * math.sin(2 * math.pi * f * 3 * detune * t);
+        // Per-voice slow attack so notes "bloom" instead of starting.
+        final voiceEnv = 1.0 - math.exp(-t * 1.2);
+        s += voice * voiceEnv * (1.0 / chordHz.length);
+      }
+
+      // Airy noise bed, low-passed into a soft breeze.
+      final noise = (rand.nextDouble() * 2 - 1) * 0.22;
+      final filtered = alpha * (yPrev + noise - xPrev);
+      xPrev = noise;
+      yPrev = filtered;
+
+      samples[i] = (s * swell + filtered) * edge * volume * 0.55;
+    }
+    return _encode(samples);
+  }
+
   /// Encodes a float sample buffer (normalised -1..1) as a 16-bit mono WAV.
   static Uint8List _encode(Float64List samples) {
     final sampleCount = samples.length;

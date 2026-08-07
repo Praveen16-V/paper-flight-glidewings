@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flame/camera.dart';
@@ -12,9 +13,12 @@ import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
 import '../models/run_result.dart';
 import '../models/settings_model.dart';
+import '../models/trial_definition.dart';
 import '../providers/game_session_provider.dart';
 import '../providers/save_data_provider.dart';
 import '../providers/settings_provider.dart';
+import '../services/daily_leaderboard_service.dart';
+import '../services/daily_seed_service.dart';
 import 'components/background/parallax_background.dart';
 import 'components/effects/coin_feedback.dart';
 import 'components/effects/atmosphere_component.dart';
@@ -28,6 +32,7 @@ import 'systems/collectible_spawner.dart';
 import 'systems/powerup_spawner.dart';
 import 'systems/scoring_system.dart';
 import 'systems/streak_system.dart';
+import 'systems/trial_director.dart';
 import 'systems/wind_system.dart';
 import 'systems/biome_manager.dart';
 import 'systems/game_feel_system.dart';
@@ -43,11 +48,44 @@ import 'systems/game_feel_system.dart';
 ///   - Progress = [_distanceMeters], driven by scrollSpeed × elapsed time.
 class PaperFlightGame extends FlameGame
     with HasCollisionDetection, TapCallbacks, DragCallbacks {
-  PaperFlightGame({required this.ref});
+  PaperFlightGame({
+    required this.ref,
+    this.mode = GameMode.classic,
+    this.trialId,
+  });
 
   /// Riverpod ref — lets game systems push state to providers without
   /// needing a BuildContext.
   final WidgetRef ref;
+
+  // ── Game Mode (Task 8) ────────────────────────────────────────────────────
+
+  /// Which mode this game instance runs: classic, zen, daily or trial.
+  final GameMode mode;
+
+  /// Trial id when [mode] is [GameMode.trial].
+  final int? trialId;
+
+  /// The handcrafted course for this run (null outside trials).
+  TrialDefinition? get trial =>
+      trialId == null ? null : TrialPool.byId(trialId!);
+
+  /// Seed of today's Daily Seeded Flight (UTC-based, same for all players).
+  int get dailySeed => DailySeedService.seedForNow();
+
+  /// Seed-aware RNG shared by the spawners. The Daily Seeded Flight derives
+  /// per-system generators from [dailySeed] so every player gets the exact
+  /// same obstacle, coin and power-up layout regardless of frame timing.
+  late math.Random _spawnRng;
+  math.Random get spawnRng => _spawnRng;
+
+  /// Trial director — active only in [GameMode.trial].
+  TrialDirector? trialDirector;
+
+  // ── Zen Flight state ──────────────────────────────────────────────────────
+
+  /// Seconds remaining of Zen bump immunity.
+  double _zenBounceCooldown = 0;
 
   // ── Scroll / Speed ────────────────────────────────────────────────────────
 
@@ -56,6 +94,10 @@ class PaperFlightGame extends FlameGame
 
   double _distanceMeters = 0;
   double get distanceMeters => _distanceMeters;
+
+  /// Wall-clock seconds of the current run (Zen + trial HUD).
+  double _runTimeSeconds = 0;
+  double get runTimeSeconds => _runTimeSeconds;
 
   /// Slow-mo multiplier (1.0 = normal, <1.0 during slow-mo power-up).
   double _timeScale = 1.0;
@@ -137,7 +179,14 @@ class PaperFlightGame extends FlameGame
 
     // Core systems (order matters — input before plane, wind before obstacles).
     inputManager = InputManager(game: this);
-    windSystem = WindSystem();
+    // Wind is seeded per mode: daily uses the UTC day seed (identical for
+    // every player), trials use a fixed per-course seed, zen/classic wander.
+    final windSeed = switch (mode) {
+      GameMode.daily => dailySeed,
+      GameMode.trial => 1000 + (trialId ?? 0),
+      GameMode.zen || GameMode.classic => null,
+    };
+    windSystem = WindSystem(seed: windSeed);
     scoringSystem = ScoringSystem(game: this);
     streakSystem = StreakSystem();
     biomeManager = BiomeManager(game: this);
@@ -253,7 +302,7 @@ class PaperFlightGame extends FlameGame
     // Scroll speed is a pure function of distance reached — the world only
     // speeds up as the player travels further, ramping in gradually instead
     // of accelerating by wall-clock time. Power-up overrides are applied next
-    // frame against this updated base.
+    // frame against this updated base. Trials run at a fixed course speed.
     _scrollSpeed = _scrollSpeedForDistance(_distanceMeters);
 
     super.update(dt);
@@ -267,14 +316,26 @@ class PaperFlightGame extends FlameGame
       }
     }
 
-    // ── Challenge tracking (Task 7) ────────────────────────────────────────
-    _trackChallengeProgress();
+    // ── Challenge tracking (Task 7) — classic runs only ────────────────────
+    if (mode.isEconomyRun) {
+      _trackChallengeProgress();
+    }
 
-    // Push distance to provider for HUD (throttled — every 5 frames approx).
+    // ── Task 8: per-mode bookkeeping ───────────────────────────────────────
+    _runTimeSeconds += scaledDt;
+    if (mode == GameMode.zen && _zenBounceCooldown > 0) {
+      _zenBounceCooldown -= scaledDt;
+    }
+
+    // Push distance + run time to provider for HUD (throttled — every 5
+    // frames approx).
     if ((_distanceMeters * 10).toInt() % 5 == 0) {
       ref
           .read(gameSessionProvider.notifier)
           .updateDistance(_distanceMeters);
+      ref
+          .read(gameSessionProvider.notifier)
+          .updateRunTime(_runTimeSeconds);
     }
   }
 
@@ -334,15 +395,40 @@ class PaperFlightGame extends FlameGame
   ///
   /// Because it is a pure function of meters traveled, the ramp-up is identical
   /// regardless of power-ups or frame rate — distance is the only driver.
-  double _scrollSpeedForDistance(double meters) =>
-      (GameConfig.baseScrollSpeed + GameConfig.scrollSpeedPerMeter * meters)
-          .clamp(GameConfig.baseScrollSpeed, GameConfig.maxScrollSpeed);
+  /// Zen ramps far more gently; trials run at a fixed course speed.
+  double _scrollSpeedForDistance(double meters) {
+    switch (mode) {
+      case GameMode.trial:
+        return trial?.scrollSpeedPxPerSec ?? GameConfig.baseScrollSpeed;
+      case GameMode.zen:
+        return (GameConfig.zenBaseScrollSpeed +
+                GameConfig.zenScrollSpeedPerMeter * meters)
+            .clamp(
+                GameConfig.zenBaseScrollSpeed, GameConfig.zenMaxScrollSpeed);
+      case GameMode.classic:
+      case GameMode.daily:
+        return (GameConfig.baseScrollSpeed +
+                GameConfig.scrollSpeedPerMeter * meters)
+            .clamp(GameConfig.baseScrollSpeed, GameConfig.maxScrollSpeed);
+    }
+  }
 
   void startRun() {
-    _scrollSpeed = GameConfig.baseScrollSpeed;
+    // Daily Seeded Flight: one attempt per UTC day. If it's already used,
+    // refuse to start — the daily screen routes here only when available.
+    if (mode == GameMode.daily &&
+        ref.read(saveDataProvider).dailyLastSeed == dailySeed &&
+        ref.read(saveDataProvider).dailyAttemptUsed) {
+      _phase = GamePhase.idle;
+      return;
+    }
+
+    _scrollSpeed = _scrollSpeedForDistance(0);
     _distanceMeters = 0;
     _timeScale = 1.0;
     _coinRushShowerTimer = 0;
+    _runTimeSeconds = 0;
+    _zenBounceCooldown = 0;
     _phase = GamePhase.playing;
     _isReviving = false;
 
@@ -356,6 +442,33 @@ class PaperFlightGame extends FlameGame
     _powerUpUsedThisRun = false;
     _powerUpsUsedThisRun = 0;
     _craneChargesRemaining = (plane.planeType == PlaneType.crane) ? GameConfig.craneBranchCharges : 0;
+
+    // ── Task 8: mode wiring ────────────────────────────────────────────────
+    // Seed-aware RNG per system (daily → deterministic identical run; each
+    // system gets its own derived generator so frame timing can't reorder
+    // the shared draw sequence across devices).
+    final seed = mode == GameMode.daily ? dailySeed : DateTime.now().millisecondsSinceEpoch;
+    _spawnRng = math.Random(seed);
+    obstacleSpawner.random = math.Random(seed + 101);
+    collectibleSpawner.random = math.Random(seed + 202);
+    powerUpSpawner.random = math.Random(seed + 303);
+
+    // Spawner activity per mode: trials are fully scripted; zen keeps
+    // obstacles + coins but no power-ups; classic/daily run everything.
+    obstacleSpawner.spawnEnabled = mode != GameMode.trial;
+    collectibleSpawner.autoSpawn = mode != GameMode.trial;
+    powerUpSpawner.autoSpawn =
+        mode == GameMode.classic || mode == GameMode.daily;
+
+    // Trials: attach the course director + scripted wind.
+    trialDirector?.removeFromParent();
+    trialDirector = null;
+    windSystem.scriptedWindows = null;
+    if (mode == GameMode.trial && trial != null) {
+      windSystem.scriptedWindows = trial!.windScript;
+      trialDirector = TrialDirector(trial: trial!);
+      world.add(trialDirector!);
+    }
 
     // Resync control scheme at run start (ensures calibration is fresh).
     try {
@@ -380,18 +493,55 @@ class PaperFlightGame extends FlameGame
     powerUpSpawner.reset();
     scoringSystem.reset();
     streakSystem.reset();
-    biomeManager.reset();
+    biomeManager.reset(mode);
     windSystem.reset();
     gameFeelSystem.reset();
 
-    ref.read(gameSessionProvider.notifier).startRun();
+    // Zen Flight: gentle ambient pad from the first flap.
+    if (mode == GameMode.zen) {
+      gameFeelSystem.startZenMusic();
+    } else {
+      gameFeelSystem.stopZenMusic();
+    }
+
+    // Daily Seeded Flight: consuming the attempt counts from the moment the
+    // run starts (even if the player quits mid-flight).
+    if (mode == GameMode.daily) {
+      ref.read(saveDataProvider.notifier).markDailyAttempt(seed: dailySeed);
+    }
+
+    ref.read(gameSessionProvider.notifier).startRun(mode: mode, trialId: trialId);
   }
 
   /// Called by PlaneComponent when it hits an obstacle or falls off-screen.
   void onPlaneCrash({ObstacleType? obstacleType, ObstacleComponent? obstacle}) {
     if (_phase != GamePhase.playing) return;
 
+    // ── Zen Flight (Task 8): there is no death — a gentle bump pushes the
+    // plane aside and life goes on.
+    if (mode == GameMode.zen) {
+      _handleZenBounce(obstacle);
+      return;
+    }
+
     final session = ref.read(gameSessionProvider);
+
+    // ── Precision Trial (Task 8): one hit ends the attempt.
+    if (mode == GameMode.trial) {
+      _phase = GamePhase.dying;
+      spawnCrashFeedback(this, plane.position);
+      pauseEngine();
+      gameFeelSystem.onCrash();
+      gameFeelSystem.silence();
+      Future.delayed(
+        Duration(milliseconds: (GameConfig.trialCrashFreezeSeconds * 1000).round()),
+        () {
+          resumeEngine();
+          _finalizeTrial(completed: false, timedOut: false);
+        },
+      );
+      return;
+    }
 
     // Ghost: the plane phases straight through every obstacle.
     if (session.activePowerUps.contains(PowerUpType.ghost)) {
@@ -446,6 +596,103 @@ class PaperFlightGame extends FlameGame
     _phase = GamePhase.playing;
     plane.revive();
     ref.read(gameSessionProvider.notifier).useRevive();
+  }
+
+  // ── Zen Flight (Task 8) ───────────────────────────────────────────────────
+
+  /// Zen has no crash deaths — contact with an obstacle (or the world floor)
+  /// softly pushes the plane away with a brief immunity window so it never
+  /// rattles. Feedback: paper crease, a gentle scale pulse, no score loss.
+  void _handleZenBounce(ObstacleComponent? obstacle) {
+    if (_zenBounceCooldown > 0) return;
+    _zenBounceCooldown = GameConfig.zenBounceCooldown;
+
+    double pushX = GameConfig.zenBouncePushX;
+    if (obstacle != null) {
+      final delta = plane.position.x - obstacle.position.x;
+      if (delta.abs() > 4) {
+        pushX *= delta.isNegative ? -1 : 1;
+      } else {
+        pushX *= math.Random().nextBool() ? 1 : -1;
+      }
+    } else {
+      // Fell off-screen: push back up into the world.
+      pushX = 0;
+    }
+
+    plane.applyZenBounce(
+      pushX: pushX,
+      pushY: GameConfig.zenBouncePushY,
+    );
+    gameFeelSystem.onShieldBreak(); // soft haptic + chime, no penalty
+    scoringSystem.onObstacleHit(); // tiny combo penalty, nothing else
+  }
+
+  /// Ends a Zen flight from the pause menu: records the personal best
+  /// distance (a stat only — Zen never touches the coin economy), stops the
+  /// ambient music and signals game over so the UI can show the summary.
+  void endZenFlight() {
+    if (_phase != GamePhase.playing && _phase != GamePhase.paused) return;
+    if (_phase == GamePhase.paused) resumeEngine();
+    gameFeelSystem.stopZenMusic();
+    _phase = GamePhase.gameOver;
+    try {
+      ref.read(saveDataProvider.notifier).recordZenRun(_distanceMeters);
+    } catch (_) {}
+    ref.read(gameSessionProvider.notifier).endZen();
+  }
+
+  // ── Precision Trials (Task 8) ─────────────────────────────────────────────
+
+  /// The course was flown to the end — evaluate stars and finalize.
+  void onTrialComplete() {
+    if (_phase != GamePhase.playing) return;
+    _phase = GamePhase.gameOver;
+    gameFeelSystem.silence();
+    _finalizeTrial(completed: true, timedOut: false);
+  }
+
+  /// The trial clock hit zero — the attempt fails.
+  void onTrialTimeout() {
+    if (_phase != GamePhase.playing) return;
+    _phase = GamePhase.gameOver;
+    gameFeelSystem.silence();
+    _finalizeTrial(completed: false, timedOut: true);
+  }
+
+  Future<void> _finalizeTrial({
+    required bool completed,
+    required bool timedOut,
+  }) async {
+    final director = trialDirector;
+    final def = trial;
+    if (director == null || def == null) return;
+
+    final stars = completed ? director.evaluateStars() : 0;
+    final coins = ref.read(gameSessionProvider).coinsThisRun;
+
+    // Persist best stars (progression only — trials award no economy).
+    var isNewBestStars = false;
+    if (stars > 0) {
+      try {
+        isNewBestStars = await ref
+            .read(saveDataProvider.notifier)
+            .recordTrialStars(trialId: def.id, stars: stars);
+      } catch (_) {}
+    }
+
+    ref.read(gameSessionProvider.notifier).completeTrial(
+      TrialOutcome(
+        trialId: def.id,
+        completed: completed,
+        timedOut: timedOut,
+        stars: stars,
+        timeUsedSeconds: director.timeUsedSeconds,
+        coinsCollected: coins,
+        totalCoins: def.countCoins(),
+        isNewBestStars: isNewBestStars,
+      ),
+    );
   }
 
   void pauseRun() {
@@ -565,11 +812,16 @@ class PaperFlightGame extends FlameGame
     final save = ref.read(saveDataProvider);
     final planeType = PlaneType.values[save.equippedPlaneIndex.clamp(0, PlaneType.values.length - 1)];
 
-    // Dart/Crane's signature action is the charge-based paper-snap burst
+    // Dart/Crane's signature action is the charge-based paper-snap burst —
+    // the only power-up allowed in Zen Flight (no timed abilities there).
     if (planeType.usesBoostAsSignatureAction) {
       inputManager.requestSnapFromButton();
       return;
     }
+
+    // Zen + Trials: timed power-ups stay out — Zen is pure gliding and
+    // trials are pure skill (a ghost would trivialise the courses).
+    if (mode == GameMode.zen || mode == GameMode.trial) return;
 
     final type = planeType.signaturePowerUp;
     final session = ref.read(gameSessionProvider);
@@ -588,6 +840,41 @@ class PaperFlightGame extends FlameGame
     final session = ref.read(gameSessionProvider);
     final notifier = ref.read(saveDataProvider.notifier);
 
+    // ── Daily Seeded Flight (Task 8): the award is the leaderboard — the
+    // run never touches coins, high scores or challenge objectives.
+    if (mode == GameMode.daily) {
+      RunResult result;
+      try {
+        final daily = await DailyLeaderboard.instance.submitScore(
+          seed: dailySeed,
+          score: session.score,
+          distanceMeters: _distanceMeters,
+        );
+        result = RunResult(
+          score: session.score,
+          distanceMeters: _distanceMeters,
+          coinsCollected: session.coinsThisRun,
+          nearMisses: session.nearMissesThisRun,
+          isNewHighScore: daily.isPersonalBest,
+          finalBiome: session.currentBiome,
+          wasRevived: wasRevived,
+        );
+      } catch (_) {
+        result = RunResult(
+          score: session.score,
+          distanceMeters: _distanceMeters,
+          coinsCollected: session.coinsThisRun,
+          nearMisses: session.nearMissesThisRun,
+          isNewHighScore: false,
+          finalBiome: session.currentBiome,
+          wasRevived: wasRevived,
+        );
+      }
+      ref.read(gameSessionProvider.notifier).triggerGameOver(result);
+      return;
+    }
+
+    // Classic: full economy + challenge integration (unchanged).
     final isNew = await notifier.recordRunResult(
       score: session.score,
       distanceMeters: _distanceMeters,
