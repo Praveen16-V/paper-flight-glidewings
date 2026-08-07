@@ -72,7 +72,7 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
   @override
   void onRemove() {
     _disposeWind();
-    _stopZenMusic();
+    stopZenMusic();
     super.onRemove();
   }
 

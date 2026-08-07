@@ -134,8 +134,15 @@ class ObstacleSpawner extends Component {
     final totalWeight = weights.fold<double>(0, (sum, w) => sum + w);
     // Pick once per attempt; hold the choice across retry frames so the
     // seeded RNG draw sequence never depends on frame timing.
-    final chosen = _pendingChosen ??
-        (totalWeight > 0 ? _weightedPick(types, weights) : ObstacleType.bird);
+    final ObstacleType chosen;
+    final pending = _pendingChosen;
+    if (pending != null) {
+      chosen = pending;
+    } else {
+      chosen = totalWeight > 0
+          ? _weightedPick(types, weights)
+          : ObstacleType.bird;
+    }
 
     if (!_hasSafeReactionWindow(chosen)) {
       _pendingChosen = chosen;
