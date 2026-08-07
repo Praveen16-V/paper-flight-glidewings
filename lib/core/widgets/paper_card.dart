@@ -22,6 +22,9 @@ class PaperCard extends StatelessWidget {
     this.textureOpacity = 0.55,
     this.onTap,
     this.borderColor,
+    this.borderGradient,
+    this.borderWidth = 1.4,
+    this.gradient,
     this.dogEar,
   });
 
@@ -35,6 +38,9 @@ class PaperCard extends StatelessWidget {
   final double textureOpacity;
   final VoidCallback? onTap;
   final Color? borderColor;
+  final Gradient? borderGradient;
+  final double borderWidth;
+  final Gradient? gradient;
 
   /// Optional folded-corner ribbon/badge drawn in the top-right corner.
   final DogEar? dogEar;
@@ -87,7 +93,12 @@ class PaperCard extends StatelessWidget {
                   child: Stack(
                     children: [
                       Positioned.fill(
-                        child: Container(color: paper),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: paper,
+                            gradient: gradient,
+                          ),
+                        ),
                       ),
                       PaperTexture(opacity: textureOpacity),
                       // top sheen
@@ -123,7 +134,7 @@ class PaperCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (borderColor != null)
+                if (borderColor != null && borderGradient == null)
                   Positioned.fill(
                     child: IgnorePointer(
                       child: DecoratedBox(
@@ -131,8 +142,20 @@ class PaperCard extends StatelessWidget {
                           borderRadius: borderRadius,
                           border: Border.all(
                             color: borderColor!,
-                            width: 1.4,
+                            width: borderWidth,
                           ),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (borderGradient != null)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _GradientBorderPainter(
+                          gradient: borderGradient!,
+                          strokeWidth: borderWidth,
+                          radius: radius,
                         ),
                       ),
                     ),
@@ -234,3 +257,37 @@ class _DogEarClipper extends CustomClipper<Path> {
   @override
   bool shouldReclip(CustomClipper<Path> old) => false;
 }
+
+class _GradientBorderPainter extends CustomPainter {
+  _GradientBorderPainter({
+    required this.gradient,
+    required this.strokeWidth,
+    required this.radius,
+  });
+
+  final Gradient gradient;
+  final double strokeWidth;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(
+      rect.deflate(strokeWidth / 2),
+      Radius.circular(radius),
+    );
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..shader = gradient.createShader(rect);
+    canvas.drawRRect(rrect, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GradientBorderPainter oldDelegate) {
+    return oldDelegate.gradient != gradient ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.radius != radius;
+  }
+}
+

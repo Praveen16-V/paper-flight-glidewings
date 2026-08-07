@@ -34,6 +34,13 @@ void main() {
       final reset = DailySeedService.nextResetUtc(DateTime.utc(2026, 8, 7, 10));
       expect(reset, DateTime.utc(2026, 8, 8));
     });
+
+    test('windLabel returns non-empty string derived deterministically from seed', () {
+      final label1 = DailySeedService.windLabel(12345);
+      final label2 = DailySeedService.windLabel(12345);
+      expect(label1, isNotEmpty);
+      expect(label1, equals(label2));
+    });
   });
 
   group('TrialPool', () {

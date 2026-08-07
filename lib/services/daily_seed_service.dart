@@ -29,4 +29,17 @@ abstract class DailySeedService {
 
   /// Human-friendly label shown on the daily screen, e.g. "Daily #12845".
   static String label(int seed) => 'Daily #$seed';
+
+  /// Deterministic seeded wind condition label for the daily flight.
+  static String windLabel(int seed) {
+    const conditions = [
+      'Strong Crosswinds',
+      'Thermal Updrafts',
+      'Turbulent Gusts',
+      'Swirling Breezes',
+      'Gentle Tailwinds',
+      'Shear Winds',
+    ];
+    return conditions[seed.abs() % conditions.length];
+  }
 }
