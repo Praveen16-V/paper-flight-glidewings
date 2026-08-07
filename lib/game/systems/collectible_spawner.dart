@@ -108,7 +108,12 @@ class CollectibleSpawner extends Component {
         random.nextDouble() * GameConfig.designWidth * 0.5;
     final count = random.nextInt(4) + 6;
     final radius = 50 + random.nextDouble() * 40;
-    spawnCoinArc(centerX: centerX, radius: radius, count: count);
+    spawnCoinArc(
+      centerX: centerX,
+      startY: GameConfig.coinSpawnY,
+      radius: radius,
+      count: count,
+    );
   }
 
   /// Spawns a single coin at an absolute world position.
