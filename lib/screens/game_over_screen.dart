@@ -3,7 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
+import '../core/constants/app_typography.dart';
 import '../core/enums/game_enums.dart';
+import '../core/widgets/paper_button.dart';
+import '../core/widgets/paper_card.dart';
+import '../core/widgets/paper_icons.dart';
+import '../core/widgets/stat_counter.dart';
 import '../models/run_result.dart';
 import '../providers/save_data_provider.dart';
 import '../services/ad_service.dart';
@@ -27,15 +32,6 @@ class GameOverArgs {
 }
 
 /// Results screen shown after every run.
-///
-/// Flow:
-///   1. Maybe show interstitial (respects honeymoon + frequency cap).
-///   2. Display score, distance, coins, near-misses.
-///   3. New-high-score celebration if applicable.
-///   4. Action row:
-///        [Watch Ad → Revive] (once per run, if not already revived)
-///        [Watch Ad → 2× Coins]
-///        [Retry] [Menu]
 class GameOverScreen extends ConsumerStatefulWidget {
   const GameOverScreen({super.key, required this.args});
   final GameOverArgs args;
@@ -81,7 +77,6 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
   Future<void> _runPostGameFlow() async {
     final save = ref.read(saveDataProvider);
 
-    // Log analytics.
     if (_result != null) {
       await AnalyticsService.instance.logRunCompleted(
         score: _result!.score,
@@ -96,8 +91,6 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
       }
     }
 
-    // Maybe show interstitial — classic runs only (Task 8: the daily seeded
-    // flight is a clean, ad-free competitive run).
     if (widget.args.mode == GameMode.classic) {
       await AdService.instance.maybeShowInterstitial(
         totalRuns: save.totalRuns,
@@ -122,71 +115,64 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: _fadeIn,
-          child: SlideTransition(
-            position: _slideIn,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                children: [
-                  const SizedBox(height: 32),
-
-                  // ── Header ────────────────────────────────────────────────
-                  _Header(
-                    isNewHighScore: result?.isNewHighScore ?? false,
-                    biome: result?.finalBiome ?? Biome.city,
-                    mode: widget.args.mode,
-                  ),
-
-                  const SizedBox(height: 28),
-
-                  // ── Daily seeded banner (Task 8) ─────────────────────────
-                  if (widget.args.mode == GameMode.daily) ...[
-                    _DailyBanner(seed: widget.args.dailySeed),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // ── Stats card ────────────────────────────────────────────
-                  if (result != null) _StatsCard(result: result),
-
-                  const SizedBox(height: 28),
-
-                  // ── High score comparison ─────────────────────────────────
-                  if (widget.args.mode == GameMode.classic)
-                    _HighScoreRow(
-                      thisScore: result?.score ?? 0,
-                      bestScore: save.highScore,
-                    )
-                  else
-                    Text(
-                      result?.isNewHighScore == true
-                          ? '🏆 New personal best for this seed!'
-                          : 'Your daily best is tracked on the board.',
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 13,
-                        letterSpacing: 1,
-                      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.surfaceAlt, AppColors.backgroundDeep],
+          ),
+        ),
+        child: SafeArea(
+          child: FadeTransition(
+            opacity: _fadeIn,
+            child: SlideTransition(
+              position: _slideIn,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 32),
+                    _Header(
+                      isNewHighScore: result?.isNewHighScore ?? false,
+                      biome: result?.finalBiome ?? Biome.city,
+                      mode: widget.args.mode,
                     ),
-
-                  const Spacer(),
-
-                  // ── Action buttons ────────────────────────────────────────
-                  _ActionButtons(
-                    result: result,
-                    adsRemoved: save.adsRemoved,
-                    doubleCoinsUsed: _doubleCoinsUsed,
-                    isDaily: widget.args.mode == GameMode.daily,
-                    onRevive: _onRevive,
-                    onDoubleCoins: _onDoubleCoins,
-                    onRetry: _onRetry,
-                    onMenu: _onMenu,
-                  ),
-
-                  const SizedBox(height: 32),
-                ],
+                    const SizedBox(height: 28),
+                    if (widget.args.mode == GameMode.daily) ...[
+                      _DailyBanner(seed: widget.args.dailySeed),
+                      const SizedBox(height: 16),
+                    ],
+                    if (result != null) _StatsCard(result: result),
+                    const SizedBox(height: 28),
+                    if (widget.args.mode == GameMode.classic)
+                      _HighScoreRow(
+                        thisScore: result?.score ?? 0,
+                        bestScore: save.highScore,
+                      )
+                    else
+                      Text(
+                        result?.isNewHighScore == true
+                            ? 'New personal best for this seed!'
+                            : 'Your daily best is tracked on the board.',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.caption
+                            .copyWith(letterSpacing: 0.5),
+                      ),
+                    const Spacer(),
+                    _ActionButtons(
+                      result: result,
+                      adsRemoved: save.adsRemoved,
+                      doubleCoinsUsed: _doubleCoinsUsed,
+                      isDaily: widget.args.mode == GameMode.daily,
+                      onRevive: _onRevive,
+                      onDoubleCoins: _onDoubleCoins,
+                      onRetry: _onRetry,
+                      onMenu: _onMenu,
+                    ),
+                    const SizedBox(height: 32),
+                  ],
+                ),
               ),
             ),
           ),
@@ -195,23 +181,15 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
     );
   }
 
-  // ── Actions ───────────────────────────────────────────────────────────────
-
   void _onRevive() {
     AdService.instance.showRewarded(
       placement: AdPlacement.revive,
       onRewarded: () {
         if (mounted) {
           Navigator.of(context).pushReplacementNamed(AppRoutes.game);
-          // The game screen creates a new PaperFlightGame; revive is handled
-          // by checking canRevive flag in gameSessionProvider on re-entry.
-          // In a full build: pass a revive flag through the route args so the
-          // GameScreen calls game.revive() instead of game.startRun().
         }
       },
-      onDismissed: () {
-        // Player closed ad without watching — do nothing.
-      },
+      onDismissed: () {},
     );
   }
 
@@ -222,8 +200,6 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
       onRewarded: () async {
         if (mounted && _result != null) {
           setState(() => _doubleCoinsUsed = true);
-          // Award the extra coins (the original coins were already saved in
-          // recordRunResult; we add the bonus on top).
           await ref
               .read(saveDataProvider.notifier)
               .addCoins(_result!.coinsCollected);
@@ -236,7 +212,6 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
   void _onRetry() {
     AnalyticsService.instance.logEvent('retry_tapped');
     if (widget.args.mode == GameMode.daily) {
-      // One attempt per day — take the player back to the daily board.
       Navigator.of(context).pushReplacementNamed(AppRoutes.dailyFlight);
       return;
     }
@@ -268,45 +243,63 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final String title;
     final Color titleColor;
+    final Color sheet;
     if (mode == GameMode.daily) {
-      title = isNewHighScore ? '🏆 NEW DAILY BEST!' : 'RUN COMPLETE';
-      titleColor =
-          isNewHighScore ? AppColors.warning : AppColors.accentAlt;
+      title = isNewHighScore ? 'NEW DAILY BEST!' : 'RUN COMPLETE';
+      titleColor = isNewHighScore ? AppColors.warning : AppColors.accentAlt;
+      sheet = AppColors.paperBlue;
     } else if (isNewHighScore) {
-      title = '🏆 NEW BEST!';
+      title = 'NEW BEST!';
       titleColor = AppColors.warning;
+      sheet = AppColors.paperGold;
     } else {
       title = 'CRASHED';
       titleColor = AppColors.danger;
+      sheet = AppColors.paperRose;
     }
     return Column(
       children: [
-        Text(
-          title,
-          style: TextStyle(
-            color: titleColor,
-            fontSize: title.length > 12 ? 22 : 30,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 3,
-          ),
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            // Folded paper ribbon behind title.
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+              decoration: BoxDecoration(
+                color: sheet,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black38,
+                    offset: Offset(0, 4),
+                    blurRadius: 0,
+                  ),
+                ],
+              ),
+              child: Text(
+                title,
+                style: AppTypography.displayMedium.copyWith(
+                  color: titleColor,
+                  fontSize: title.length > 12 ? 22 : 30,
+                  letterSpacing: 2,
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
         Text(
           mode == GameMode.daily
-              ? 'today\'s seeded flight'
+              ? "today's seeded flight"
               : 'in ${biome.displayName}',
-          style: const TextStyle(
-            color: AppColors.textMuted,
-            fontSize: 13,
-            letterSpacing: 1.5,
-          ),
+          style: AppTypography.caption.copyWith(letterSpacing: 1.5),
         ),
       ],
     );
   }
 }
 
-/// Daily seeded flight banner — seed + single-attempt note.
 class _DailyBanner extends StatelessWidget {
   const _DailyBanner({this.seed});
   final int? seed;
@@ -316,29 +309,31 @@ class _DailyBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.paperBlue,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.accentAlt.withOpacity(0.5)),
+        boxShadow: const [
+          BoxShadow(color: Colors.black26, offset: Offset(0, 3), blurRadius: 0),
+        ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.calendar_today_outlined,
-              color: AppColors.accentAlt, size: 15),
+          PaperIcon(PaperIconData.calendar,
+              size: 16, color: AppColors.gemBlueDeep),
           const SizedBox(width: 8),
           Text(
             seed == null ? 'DAILY' : DailySeedService.label(seed!),
-            style: const TextStyle(
-              color: AppColors.accentAlt,
+            style: AppTypography.label.copyWith(
+              color: AppColors.gemBlueDeep,
               fontSize: 13,
-              fontWeight: FontWeight.w800,
               letterSpacing: 1,
             ),
           ),
           const SizedBox(width: 8),
-          const Text(
+          Text(
             '•  one attempt per day',
-            style: TextStyle(color: AppColors.textMuted, fontSize: 11.5),
+            style: AppTypography.caption
+                .copyWith(color: AppColors.paperInkSoft, fontSize: 11.5),
           ),
         ],
       ),
@@ -352,57 +347,56 @@ class _StatsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.divider),
-      ),
+    final doubled = result.doubleCoinsApplied;
+    return PaperCard(
+      color: AppColors.paper,
+      elevation: 1.4,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      dogEar: result.isNewHighScore
+          ? const DogEar(label: 'BEST', color: AppColors.accent, size: 64)
+          : null,
       child: Column(
         children: [
           _StatRow(
             label: 'Score',
-            value: _fmt(result.score),
+            value: result.score,
             highlight: true,
           ),
-          const Divider(color: AppColors.divider, height: 20),
+          Divider(
+              color: AppColors.paperInkSoft.withOpacity(0.25), height: 20),
           _StatRow(
             label: 'Distance',
-            value: '${result.distanceMeters.toStringAsFixed(0)} m',
+            value: result.distanceMeters,
+            suffix: ' m',
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           _StatRow(
-            label: 'Coins',
-            value: result.doubleCoinsApplied
-                ? '${result.coinsCollected * 2} (×2!)'
-                : '${result.coinsCollected}',
-            valueColor:
-                result.doubleCoinsApplied ? AppColors.coinGold : null,
+            label: doubled ? 'Coins  (×2)' : 'Coins',
+            value: doubled ? result.coinsCollected * 2 : result.coinsCollected,
+            valueColor: doubled ? AppColors.coinGoldDeep : null,
+            leading: const CoinChipSized(),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           _StatRow(
             label: 'Near Misses',
-            value: '${result.nearMisses}',
+            value: result.nearMisses,
           ),
           if (result.wasRevived) ...[
-            const SizedBox(height: 8),
-            const _StatRow(
-              label: 'Revived',
-              value: '✓',
-              valueColor: AppColors.success,
-            ),
+            const SizedBox(height: 10),
+            const _CheckRow(label: 'Revived'),
           ],
         ],
       ),
     );
   }
+}
 
-  String _fmt(int n) {
-    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(2)}M';
-    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
-    return n.toString();
-  }
+/// Inline coin glyph sized to a stat row label.
+class CoinChipSized extends StatelessWidget {
+  const CoinChipSized({super.key});
+  @override
+  Widget build(BuildContext context) =>
+      PaperIcon(PaperIconData.coin, size: 16, color: AppColors.coinGold);
 }
 
 class _StatRow extends StatelessWidget {
@@ -411,33 +405,67 @@ class _StatRow extends StatelessWidget {
     required this.value,
     this.highlight = false,
     this.valueColor,
+    this.suffix = '',
+    this.leading,
   });
   final String label;
-  final String value;
+  final num value;
   final bool highlight;
   final Color? valueColor;
+  final String suffix;
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: AppColors.textMuted,
-            fontSize: 14,
-          ),
+        Row(
+          children: [
+            if (leading != null) ...[
+              leading!,
+              const SizedBox(width: 6),
+            ],
+            Text(label,
+                style: AppTypography.bodyMedium
+                    .copyWith(color: AppColors.paperInkSoft)),
+          ],
         ),
-        Text(
-          value,
-          style: TextStyle(
-            color: valueColor ??
-                (highlight ? AppColors.textLight : AppColors.textLight),
-            fontSize: highlight ? 28 : 16,
-            fontWeight: highlight ? FontWeight.w900 : FontWeight.w600,
-          ),
-        ),
+        highlight
+            ? StatCounter(
+                value,
+                suffix: suffix,
+                style: AppTypography.score.copyWith(
+                  color: valueColor ?? AppColors.paperInk,
+                  fontSize: 30,
+                ),
+              )
+            : StatCounter(
+                value,
+                suffix: suffix,
+                style: AppTypography.stat.copyWith(
+                  color: valueColor ?? AppColors.paperInk,
+                  fontSize: 17,
+                ),
+              ),
+      ],
+    );
+  }
+}
+
+class _CheckRow extends StatelessWidget {
+  const _CheckRow({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label,
+            style: AppTypography.bodyMedium
+                .copyWith(color: AppColors.paperInkSoft)),
+        const Icon(Icons.check_circle, color: AppColors.success, size: 20),
       ],
     );
   }
@@ -452,11 +480,7 @@ class _HighScoreRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       'Best: ${_fmt(bestScore)}',
-      style: const TextStyle(
-        color: AppColors.textMuted,
-        fontSize: 13,
-        letterSpacing: 1,
-      ),
+      style: AppTypography.caption.copyWith(letterSpacing: 1),
     );
   }
 
@@ -481,9 +505,6 @@ class _ActionButtons extends StatelessWidget {
   final RunResult? result;
   final bool adsRemoved;
   final bool doubleCoinsUsed;
-
-  /// Daily seeded flights have no revive and no coin doubling — one clean
-  /// attempt, the leaderboard is the reward.
   final bool isDaily;
   final VoidCallback onRevive;
   final VoidCallback onDoubleCoins;
@@ -497,48 +518,44 @@ class _ActionButtons extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Revive row — shown if not already revived and ads available.
         if (_canRevive) ...[
           _AdButton(
-            label: 'Watch Ad → Revive',
+            label: 'Watch Ad  →  Revive',
             icon: Icons.play_circle_outline,
             color: AppColors.success,
             onTap: onRevive,
           ),
           const SizedBox(height: 10),
         ],
-
-        // Double coins — shown once per run (classic only).
         if (!isDaily && !doubleCoinsUsed && !adsRemoved) ...[
           _AdButton(
-            label: doubleCoinsUsed
-                ? '2× Coins — Claimed!'
-                : 'Watch Ad → 2× Coins',
+            label: 'Watch Ad  →  2× Coins',
             icon: Icons.monetization_on_outlined,
             color: AppColors.coinGold,
-            onTap: doubleCoinsUsed ? null : onDoubleCoins,
+            onTap: onDoubleCoins,
           ),
           const SizedBox(height: 16),
         ],
-
-        // Primary actions.
         Row(
           children: [
             Expanded(
-              child: _PrimaryButton(
+              child: PaperButton(
                 label: isDaily ? 'Daily Board' : 'Retry',
-                icon: isDaily ? Icons.calendar_today_outlined : Icons.refresh,
-                onTap: onRetry,
-                isPrimary: true,
+                icon: Icon(
+                  isDaily ? Icons.calendar_today_outlined : Icons.refresh,
+                  size: 20,
+                ),
+                onPressed: onRetry,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _PrimaryButton(
+              child: PaperButton(
                 label: 'Menu',
-                icon: Icons.home_outlined,
-                onTap: onMenu,
-                isPrimary: false,
+                icon: const Icon(Icons.home_outlined, size: 20),
+                onPressed: onMenu,
+                color: AppColors.paperWarm,
+                textColor: AppColors.paperInk,
               ),
             ),
           ],
@@ -562,16 +579,25 @@ class _AdButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final enabled = onTap != null;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 200),
-        opacity: onTap != null ? 1.0 : 0.5,
+        opacity: enabled ? 1.0 : 0.5,
         child: Container(
           height: 52,
           decoration: BoxDecoration(
-            border: Border.all(color: color, width: 1.5),
+            color: AppColors.paperBright,
             borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: _edge(color),
+                offset: const Offset(0, 4),
+                blurRadius: 0,
+              ),
+            ],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -580,11 +606,7 @@ class _AdButton extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 label,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: AppTypography.label.copyWith(color: color, fontSize: 15),
               ),
             ],
           ),
@@ -592,58 +614,7 @@ class _AdButton extends StatelessWidget {
       ),
     );
   }
-}
 
-class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    required this.isPrimary,
-  });
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool isPrimary;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 56,
-        decoration: BoxDecoration(
-          gradient: isPrimary
-              ? const LinearGradient(
-                  colors: [Color(0xFFF5A623), Color(0xFFFF6B35)],
-                )
-              : null,
-          color: isPrimary ? null : AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: isPrimary
-              ? null
-              : Border.all(color: AppColors.divider),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              color: isPrimary ? Colors.white : AppColors.textMuted,
-              size: 20,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: isPrimary ? Colors.white : AppColors.textMuted,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Color _edge(Color c) =>
+      HSLColor.fromColor(c).withLightness(0.35).toColor();
 }

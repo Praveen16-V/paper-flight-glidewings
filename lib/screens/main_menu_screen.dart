@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
-import '../core/enums/game_enums.dart';
+import '../core/constants/app_typography.dart';
+import '../core/widgets/currency_chip.dart';
+import '../core/widgets/paper_button.dart';
+import '../core/widgets/paper_icons.dart';
 import '../providers/save_data_provider.dart';
 import '../services/analytics_service.dart';
 import 'splash_screen.dart'; // reuse PaperPlaneIcon
@@ -46,137 +49,139 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ── Top: currency strip ──────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  _CurrencyChip(
-                    value: save.coins,
-                    color: AppColors.coinGold,
-                    icon: '●',
-                  ),
-                  const SizedBox(width: 10),
-                  _CurrencyChip(
-                    value: save.gems,
-                    color: AppColors.gemBlue,
-                    icon: '◆',
-                  ),
-                ],
-              ),
-            ),
-
-            // ── Centre: logo + plane ──────────────────────────────────────
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  AnimatedBuilder(
-                    animation: _floatY,
-                    builder: (_, __) => Transform.translate(
-                      offset: Offset(0, _floatY.value),
-                      child: PaperPlaneIcon(size: 100),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.surfaceAlt, AppColors.backgroundDeep],
+            stops: [0.0, 0.6],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // ── Top: currency strip ──────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    _DarkCurrencyChip(
+                      child: CoinChip(save.coins, iconSize: 18, fontSize: 15),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'PAPER FLIGHT',
-                    style: TextStyle(
-                      color: AppColors.textLight,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 5,
-                    ),
-                  ),
-                  if (save.highScore > 0) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'BEST  ${_fmt(save.highScore)}',
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 2,
-                      ),
+                    const SizedBox(width: 10),
+                    _DarkCurrencyChip(
+                      child: GemChip(save.gems, iconSize: 16, fontSize: 14),
                     ),
                   ],
-                  const SizedBox(height: 40),
+                ),
+              ),
 
-                  // ── PLAY button ────────────────────────────────────────
-                  _PlayButton(onTap: _onPlay),
-                  const SizedBox(height: 12),
-
-                  // ── Game modes hub (Task 8) ────────────────────────────
-                  GestureDetector(
-                    onTap: _onModes,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.divider),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('🍃', style: TextStyle(fontSize: 14)),
-                          SizedBox(width: 6),
-                          Text(
-                            'MORE MODES',
-                            style: TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 2,
-                            ),
-                          ),
-                          SizedBox(width: 6),
-                          Text('🎯', style: TextStyle(fontSize: 14)),
-                        ],
+              // ── Centre: logo + plane ──────────────────────────────────────
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    AnimatedBuilder(
+                      animation: _floatY,
+                      builder: (_, __) => Transform.translate(
+                        offset: Offset(0, _floatY.value),
+                        child: PaperPlaneIcon(size: 100),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'PAPER FLIGHT',
+                      style: AppTypography.displayMedium.copyWith(
+                        fontSize: 34,
+                        letterSpacing: 3,
+                      ),
+                    ),
+                    if (save.highScore > 0) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.paper,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black26,
+                              offset: Offset(0, 3),
+                              blurRadius: 0,
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'BEST',
+                              style: AppTypography.overline.copyWith(
+                                color: AppColors.paperInkSoft,
+                                letterSpacing: 1.4,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _fmt(save.highScore),
+                              style: AppTypography.statSmall.copyWith(
+                                color: AppColors.accentDeep,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 40),
 
-            // ── Bottom nav bar ────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _NavIcon(
-                    icon: Icons.airplanemode_active,
-                    label: 'Hangar',
-                    onTap: () => Navigator.pushNamed(context, AppRoutes.hangar),
-                  ),
-                  _NavIcon(
-                    icon: Icons.storefront_outlined,
-                    label: 'Shop',
-                    onTap: () => Navigator.pushNamed(context, AppRoutes.shop),
-                  ),
-                  _NavIcon(
-                    icon: Icons.emoji_events_outlined,
-                    label: 'Challenges',
-                    onTap: () =>
-                        Navigator.pushNamed(context, AppRoutes.dailyChallenges),
-                  ),
-                  _NavIcon(
-                    icon: Icons.settings_outlined,
-                    label: 'Settings',
-                    onTap: () =>
-                        Navigator.pushNamed(context, AppRoutes.settings),
-                  ),
-                ],
+                    // ── PLAY button ────────────────────────────────────────
+                    _PlayButton(onTap: _onPlay),
+                    const SizedBox(height: 16),
+
+                    // ── Game modes hub ─────────────────────────────────────
+                    _ModesPill(onTap: _onModes),
+                  ],
+                ),
               ),
-            ),
-          ],
+
+              // ── Bottom nav bar ────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _NavIcon(
+                      icon: Icons.airplanemode_active,
+                      label: 'Hangar',
+                      onTap: () =>
+                          Navigator.pushNamed(context, AppRoutes.hangar),
+                    ),
+                    _NavIcon(
+                      icon: Icons.storefront_outlined,
+                      label: 'Shop',
+                      onTap: () =>
+                          Navigator.pushNamed(context, AppRoutes.shop),
+                    ),
+                    _NavIcon(
+                      icon: Icons.emoji_events_outlined,
+                      label: 'Challenges',
+                      onTap: () => Navigator.pushNamed(
+                          context, AppRoutes.dailyChallenges),
+                    ),
+                    _NavIcon(
+                      icon: Icons.settings_outlined,
+                      label: 'Settings',
+                      onTap: () =>
+                          Navigator.pushNamed(context, AppRoutes.settings),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -201,6 +206,68 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
 
 // ── Sub-widgets ───────────────────────────────────────────────────────────────
 
+/// Small dark translucent chip used for currency on the dark menu backdrop.
+class _DarkCurrencyChip extends StatelessWidget {
+  const _DarkCurrencyChip({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withOpacity(0.85),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.divider.withOpacity(0.6)),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _ModesPill extends StatelessWidget {
+  const _ModesPill({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        decoration: BoxDecoration(
+          color: AppColors.paperWarm,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black38,
+              offset: Offset(0, 3),
+              blurRadius: 0,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PaperIcon(PaperIconData.leaf, size: 16, color: AppColors.success),
+            const SizedBox(width: 8),
+            Text(
+              'MORE MODES',
+              style: AppTypography.overline.copyWith(
+                color: AppColors.paperInk,
+                fontSize: 11,
+                letterSpacing: 1.6,
+              ),
+            ),
+            const SizedBox(width: 8),
+            PaperIcon(PaperIconData.bullseye, size: 16, color: AppColors.danger),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _PlayButton extends StatefulWidget {
   const _PlayButton({required this.onTap});
   final VoidCallback onTap;
@@ -219,7 +286,7 @@ class _PlayButtonState extends State<_PlayButton>
     super.initState();
     _pulse = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 1100),
     )..repeat(reverse: true);
     _scale = Tween<double>(begin: 1.0, end: 1.04).animate(
       CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
@@ -236,36 +303,10 @@ class _PlayButtonState extends State<_PlayButton>
   Widget build(BuildContext context) {
     return ScaleTransition(
       scale: _scale,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: Container(
-          width: 220,
-          height: 64,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFF5A623), Color(0xFFFF6B35)],
-            ),
-            borderRadius: BorderRadius.circular(32),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.accent.withOpacity(0.45),
-                blurRadius: 20,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: const Center(
-            child: Text(
-              'PLAY',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 26,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 6,
-              ),
-            ),
-          ),
-        ),
+      child: PaperButton(
+        label: 'PLAY',
+        onPressed: widget.onTap,
+        color: const Color(0xFFF5A623),
       ),
     );
   }
@@ -295,61 +336,28 @@ class _NavIcon extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: AppColors.paper,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.divider),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0xFFB89E6E),
+                    offset: Offset(0, 4),
+                    blurRadius: 0,
+                  ),
+                ],
               ),
-              child: Icon(icon, color: AppColors.textLight, size: 22),
+              child: Icon(icon, color: AppColors.paperInk, size: 22),
             ),
-            const SizedBox(height: 5),
+            const SizedBox(height: 6),
             Text(
               label,
-              style: const TextStyle(
+              style: AppTypography.caption.copyWith(
                 color: AppColors.textMuted,
                 fontSize: 10,
-                fontWeight: FontWeight.w600,
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _CurrencyChip extends StatelessWidget {
-  const _CurrencyChip({
-    required this.value,
-    required this.color,
-    required this.icon,
-  });
-  final int value;
-  final Color color;
-  final String icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(icon, style: TextStyle(color: color, fontSize: 12)),
-          const SizedBox(width: 5),
-          Text(
-            value.toString(),
-            style: TextStyle(
-              color: color,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
       ),
     );
   }

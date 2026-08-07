@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
+import '../core/constants/app_typography.dart';
 import '../core/enums/game_enums.dart';
+import '../core/widgets/currency_chip.dart';
+import '../core/widgets/paper_button.dart';
+import '../core/widgets/paper_card.dart';
 import '../providers/save_data_provider.dart';
 import '../services/analytics_service.dart';
 
@@ -22,46 +26,28 @@ class HangarScreen extends ConsumerWidget {
           backgroundColor: AppColors.background,
           foregroundColor: AppColors.textLight,
           elevation: 0,
-          title: const Text('Hangar',
-              style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1)),
+          title: Text('Hangar',
+              style: AppTypography.title.copyWith(letterSpacing: 1)),
           actions: [
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: Row(
                 children: [
-                  const Text('●',
-                      style: TextStyle(color: AppColors.coinGold, fontSize: 12)),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${save.coins}',
-                    style: const TextStyle(
-                      color: AppColors.coinGold,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
-                  ),
+                  CoinChip(save.coins, iconSize: 16, fontSize: 14),
                   const SizedBox(width: 10),
-                  const Text('◆',
-                      style: TextStyle(color: AppColors.gemBlue, fontSize: 12)),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${save.gems}',
-                    style: const TextStyle(
-                      color: AppColors.gemBlue,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
-                  ),
+                  GemChip(save.gems, iconSize: 14, fontSize: 13),
+                  const SizedBox(width: 6),
                 ],
               ),
             ),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
             indicatorColor: AppColors.accent,
             labelColor: AppColors.accent,
             unselectedLabelColor: AppColors.textMuted,
-            labelStyle: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1.2, fontSize: 13),
-            tabs: [
+            labelStyle: AppTypography.label
+                .copyWith(fontSize: 13, letterSpacing: 1.2),
+            tabs: const [
               Tab(text: 'PLANES'),
               Tab(text: 'SKINS'),
             ],
@@ -154,140 +140,106 @@ class _PlaneCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: equipped ? AppColors.accent : AppColors.divider,
-          width: equipped ? 2 : 1,
-        ),
-        boxShadow: equipped
-            ? [
-                BoxShadow(
-                  color: AppColors.accent.withOpacity(0.25),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                )
-              ]
-            : null,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _PlanePreview(plane: plane, unlocked: unlocked),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          Text(
-                            plane.displayName,
-                            style: const TextStyle(
-                              color: AppColors.textLight,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
+    return PaperCard(
+      onTap: unlocked && !equipped ? onEquip : null,
+      color: equipped ? AppColors.paperGold : AppColors.paper,
+      elevation: equipped ? 1.5 : 1.0,
+      padding: const EdgeInsets.all(14),
+      borderColor: equipped ? AppColors.accent : null,
+      dogEar: equipped
+          ? const DogEar(label: 'OWNED', color: AppColors.accent, size: 56)
+          : (!unlocked && plane.unlockGemCost > 0
+              ? const DogEar(
+                  label: 'PRO', color: AppColors.gemBlue, size: 56)
+              : null),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _PlanePreview(plane: plane, unlocked: unlocked),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        Text(
+                          plane.displayName,
+                          style: AppTypography.bodyLarge.copyWith(
+                            color: AppColors.paperInk,
+                            fontSize: 16,
                           ),
-                          if (equipped)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.accent,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Text(
-                                'EQUIPPED',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.8,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      plane.tagline,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.paperInkSoft,
+                        fontSize: 11,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: plane.traitBullets
+                          .map((t) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 7, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppColors.paperWarm,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                      color: AppColors.paperInkSoft
+                                          .withOpacity(0.25)),
                                 ),
-                              ),
-                            ),
-                          if (!unlocked && plane.unlockGemCost > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.gemBlue.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: AppColors.gemBlue.withOpacity(0.5)),
-                              ),
-                              child: const Text(
-                                'PREMIUM',
-                                style: TextStyle(
-                                  color: AppColors.gemBlue,
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.8,
+                                child: Text(
+                                  t,
+                                  style: AppTypography.caption.copyWith(
+                                      color: AppColors.paperInkSoft,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700),
                                 ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        plane.tagline,
-                        style: const TextStyle(color: AppColors.textMuted, fontSize: 11, fontStyle: FontStyle.italic),
-                      ),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: plane.traitBullets
-                            .map((t) => Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.surfaceAlt,
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: AppColors.divider.withOpacity(0.6)),
-                                  ),
-                                  child: Text(
-                                    t,
-                                    style: const TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w600),
-                                  ),
-                                ))
-                            .toList(),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          _StatBadge(label: 'Turn', value: plane.turnSpeedMultiplier),
-                          const SizedBox(width: 10),
-                          _StatBadge(label: 'Fall', value: plane.fallSpeedMultiplier),
-                          const SizedBox(width: 10),
-                          _PowerUpBadge(plane: plane),
-                        ],
-                      ),
-                    ],
-                  ),
+                              ))
+                          .toList(),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _StatBadge(
+                            label: 'Turn', value: plane.turnSpeedMultiplier),
+                        const SizedBox(width: 10),
+                        _StatBadge(
+                            label: 'Fall', value: plane.fallSpeedMultiplier),
+                        const SizedBox(width: 10),
+                        _PowerUpBadge(plane: plane),
+                      ],
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                _PlaneActionChip(
-                  unlocked: unlocked,
-                  equipped: equipped,
-                  costCoins: plane.unlockCost,
-                  costGems: plane.unlockGemCost,
-                  canAfford: canAfford,
-                  onUnlock: onUnlock,
-                  onEquip: onEquip,
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+              const SizedBox(width: 8),
+              _PlaneActionChip(
+                unlocked: unlocked,
+                equipped: equipped,
+                costCoins: plane.unlockCost,
+                costGems: plane.unlockGemCost,
+                canAfford: canAfford,
+                onUnlock: onUnlock,
+                onEquip: onEquip,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -461,67 +413,45 @@ class _SkinCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: equipped ? AppColors.accent : AppColors.divider,
-          width: equipped ? 2 : 1,
-        ),
-        boxShadow: equipped
-            ? [BoxShadow(color: AppColors.accent.withOpacity(0.25), blurRadius: 12, offset: const Offset(0, 3))]
-            : null,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            // Swatch preview
-            _SkinSwatch(skin: skin, unlocked: unlocked),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 6,
-                    children: [
-                      Text(
-                        skin.displayName,
-                        style: const TextStyle(color: AppColors.textLight, fontSize: 15, fontWeight: FontWeight.w700),
-                      ),
-                      if (equipped)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(color: AppColors.accent, borderRadius: BorderRadius.circular(10)),
-                          child: const Text('EQUIPPED',
-                              style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    skin.description,
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
-                  ),
-                ],
-              ),
+    return PaperCard(
+      onTap: unlocked && !equipped ? onEquip : null,
+      color: equipped ? AppColors.paperGold : AppColors.paper,
+      elevation: equipped ? 1.4 : 1.0,
+      padding: const EdgeInsets.all(14),
+      borderColor: equipped ? AppColors.accent : null,
+      child: Row(
+        children: [
+          _SkinSwatch(skin: skin, unlocked: unlocked),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  skin.displayName,
+                  style: AppTypography.bodyLarge
+                      .copyWith(color: AppColors.paperInk, fontSize: 15),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  skin.description,
+                  style: AppTypography.caption
+                      .copyWith(color: AppColors.paperInkSoft, fontSize: 11),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            _SkinActionChip(
-              unlocked: unlocked,
-              equipped: equipped,
-              costCoins: skin.unlockCostCoins,
-              costGems: skin.unlockCostGems,
-              canAfford: canAfford,
-              onUnlock: onUnlock,
-              onEquip: onEquip,
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 8),
+          _SkinActionChip(
+            unlocked: unlocked,
+            equipped: equipped,
+            costCoins: skin.unlockCostCoins,
+            costGems: skin.unlockCostGems,
+            canAfford: canAfford,
+            onUnlock: onUnlock,
+            onEquip: onEquip,
+          ),
+        ],
       ),
     );
   }
@@ -630,17 +560,24 @@ class _StatBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final delta = value - 1.0;
     final positive = delta >= 0;
-    final display = delta == 0 ? 'Baseline' : '${positive ? '+' : ''}${(delta * 100).toStringAsFixed(0)}%';
+    final display = delta == 0
+        ? 'Baseline'
+        : '${positive ? '+' : ''}${(delta * 100).toStringAsFixed(0)}%';
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('$label:', style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+        Text('$label:',
+            style: AppTypography.caption
+                .copyWith(color: AppColors.paperInkSoft, fontSize: 11)),
         const SizedBox(width: 3),
         Text(display,
-            style: TextStyle(
-                color: delta == 0 ? AppColors.textMuted : (positive ? AppColors.success : AppColors.warning),
-                fontSize: 11,
-                fontWeight: FontWeight.w700)),
+            style: AppTypography.caption.copyWith(
+              color: delta == 0
+                  ? AppColors.paperInkSoft
+                  : (positive ? AppColors.success : AppColors.warning),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            )),
       ],
     );
   }
@@ -656,9 +593,15 @@ class _PowerUpBadge extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('Power:', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+        Text('Power:',
+            style: AppTypography.caption
+                .copyWith(color: AppColors.paperInkSoft, fontSize: 11)),
         const SizedBox(width: 3),
-        Text(text, style: const TextStyle(color: AppColors.accent, fontSize: 11, fontWeight: FontWeight.w700)),
+        Text(text,
+            style: AppTypography.caption.copyWith(
+                color: AppColors.accentDeep,
+                fontSize: 11,
+                fontWeight: FontWeight.w700)),
       ],
     );
   }
@@ -684,59 +627,40 @@ class _PlaneActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (equipped) return const SizedBox(width: 72);
+    if (equipped) return const SizedBox(width: 76);
     if (unlocked) {
-      return GestureDetector(
-        onTap: onEquip,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors.accentAlt.withOpacity(0.15),
-            border: Border.all(color: AppColors.accentAlt),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Text('Equip', style: TextStyle(color: AppColors.accentAlt, fontWeight: FontWeight.w700, fontSize: 14)),
-        ),
+      return PaperButton(
+        label: 'Equip',
+        compact: true,
+        color: AppColors.accentAlt,
+        textColor: Colors.white,
+        onPressed: onEquip,
       );
     }
-    return GestureDetector(
-      onTap: canAfford ? onUnlock : null,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 200),
-        opacity: canAfford ? 1.0 : 0.42,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors.coinGold.withOpacity(0.12),
-            border: Border.all(color: AppColors.coinGold),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('●', style: TextStyle(color: AppColors.coinGold, fontSize: 10)),
-                  const SizedBox(width: 3),
-                  Text('$costCoins', style: const TextStyle(color: AppColors.coinGold, fontWeight: FontWeight.w800, fontSize: 13)),
-                ],
-              ),
-              if (costGems > 0) ...[
-                const SizedBox(height: 2),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('◆', style: TextStyle(color: AppColors.gemBlue, fontSize: 9)),
-                    const SizedBox(width: 3),
-                    Text('$costGems', style: const TextStyle(color: AppColors.gemBlue, fontWeight: FontWeight.w800, fontSize: 11)),
-                  ],
-                ),
-              ],
-            ],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Opacity(
+          opacity: canAfford ? 1 : 0.45,
+          child: PaperButton(
+            label: 'Unlock',
+            compact: true,
+            onPressed: canAfford ? onUnlock : null,
           ),
         ),
-      ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CoinChip(costCoins, iconSize: 11, fontSize: 11, spacing: 3),
+            if (costGems > 0) ...[
+              const SizedBox(width: 6),
+              GemChip(costGems, iconSize: 10, fontSize: 11, spacing: 3),
+            ],
+          ],
+        ),
+      ],
     );
   }
 }
@@ -761,74 +685,51 @@ class _SkinActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (equipped) return const SizedBox(width: 72);
+    if (equipped) return const SizedBox(width: 76);
     if (unlocked) {
-      return GestureDetector(
-        onTap: onEquip,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors.accentAlt.withOpacity(0.15),
-            border: Border.all(color: AppColors.accentAlt),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Text('Equip', style: TextStyle(color: AppColors.accentAlt, fontWeight: FontWeight.w700, fontSize: 13)),
-        ),
+      return PaperButton(
+        label: 'Equip',
+        compact: true,
+        color: AppColors.accentAlt,
+        textColor: Colors.white,
+        onPressed: onEquip,
       );
     }
     if (costCoins == 0 && costGems == 0) {
-      return GestureDetector(
-        onTap: onUnlock,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors.success.withOpacity(0.12),
-            border: Border.all(color: AppColors.success),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Text('Free', style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w700, fontSize: 13)),
-        ),
+      return PaperButton(
+        label: 'Free',
+        compact: true,
+        color: AppColors.success,
+        textColor: Colors.white,
+        onPressed: onUnlock,
       );
     }
-    return GestureDetector(
-      onTap: canAfford ? onUnlock : null,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 200),
-        opacity: canAfford ? 1.0 : 0.42,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors.coinGold.withOpacity(0.12),
-            border: Border.all(color: AppColors.coinGold),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (costCoins > 0)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('●', style: TextStyle(color: AppColors.coinGold, fontSize: 10)),
-                    const SizedBox(width: 3),
-                    Text('$costCoins', style: const TextStyle(color: AppColors.coinGold, fontWeight: FontWeight.w800, fontSize: 12)),
-                  ],
-                ),
-              if (costGems > 0) ...[
-                if (costCoins > 0) const SizedBox(height: 2),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('◆', style: TextStyle(color: AppColors.gemBlue, fontSize: 9)),
-                    const SizedBox(width: 3),
-                    Text('$costGems', style: const TextStyle(color: AppColors.gemBlue, fontWeight: FontWeight.w800, fontSize: 11)),
-                  ],
-                ),
-              ],
-            ],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Opacity(
+          opacity: canAfford ? 1 : 0.45,
+          child: PaperButton(
+            label: 'Unlock',
+            compact: true,
+            onPressed: canAfford ? onUnlock : null,
           ),
         ),
-      ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (costCoins > 0) ...[
+              CoinChip(costCoins, iconSize: 11, fontSize: 11, spacing: 3),
+            ],
+            if (costGems > 0) ...[
+              if (costCoins > 0) const SizedBox(width: 6),
+              GemChip(costGems, iconSize: 10, fontSize: 11, spacing: 3),
+            ],
+          ],
+        ),
+      ],
     );
   }
 }

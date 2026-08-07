@@ -4,7 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
+import '../core/constants/app_typography.dart';
 import '../core/enums/game_enums.dart';
+import '../core/widgets/paper_button.dart';
+import '../core/widgets/paper_card.dart';
+import '../core/widgets/paper_icons.dart';
+import '../core/widgets/stat_counter.dart';
 import '../game/paper_flight_game.dart';
 import '../game/overlays/hud_overlay.dart';
 import '../models/run_result.dart';
@@ -136,38 +141,59 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('🌿 Zen Flight over', textAlign: TextAlign.center),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${session.distanceMeters.toStringAsFixed(0)} m',
-              style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '$minutes:$secs • ${session.coinsThisRun} glide coins',
-              style: const TextStyle(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Zen flights are pure relaxation — coins are just for fun here.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              Navigator.of(context).popUntil((r) => r.isFirst);
-            },
-            child: const Text('Back to menu'),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 32),
+        child: PaperCard(
+          color: AppColors.paperGreen,
+          elevation: 2,
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          dogEar: const DogEar(
+            label: 'ZEN',
+            color: AppColors.success,
+            size: 56,
           ),
-        ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PaperIcon(PaperIconData.leaf,
+                  size: 40, color: AppColors.success),
+              const SizedBox(height: 10),
+              Text('Zen Flight over',
+                  style: AppTypography.headline
+                      .copyWith(color: AppColors.paperInk)),
+              const SizedBox(height: 18),
+              StatCounter(
+                session.distanceMeters,
+                suffix: ' m',
+                style: AppTypography.score
+                    .copyWith(color: AppColors.paperInk, fontSize: 36),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '$minutes:$secs • ${session.coinsThisRun} glide coins',
+                style: AppTypography.caption
+                    .copyWith(color: AppColors.paperInkSoft),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Zen flights are pure relaxation — coins are just for fun here.',
+                textAlign: TextAlign.center,
+                style: AppTypography.caption
+                    .copyWith(color: AppColors.paperInkSoft, fontSize: 12),
+              ),
+              const SizedBox(height: 20),
+              PaperButton(
+                label: 'Back to menu',
+                expand: true,
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  Navigator.of(context).popUntil((r) => r.isFirst);
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -185,99 +211,64 @@ class _PauseOverlay extends ConsumerWidget {
     final isZen = game.mode == GameMode.zen;
 
     return Container(
-      color: Colors.black54,
+      color: Colors.black.withOpacity(0.62),
       child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              isZen ? 'PAUSED • ZEN' : 'PAUSED',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 36,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 4,
-              ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: PaperCard(
+            color: AppColors.paper,
+            elevation: 2,
+            padding: const EdgeInsets.fromLTRB(24, 26, 24, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  isZen ? 'PAUSED • ZEN' : 'PAUSED',
+                  style: AppTypography.displayMedium
+                      .copyWith(color: AppColors.paperInk, letterSpacing: 3),
+                ),
+                const SizedBox(height: 26),
+                PaperButton(
+                  label: 'Resume',
+                  expand: true,
+                  icon: const Icon(Icons.play_arrow, size: 20),
+                  onPressed: () => game.resumeRun(),
+                ),
+                if (isZen) ...[
+                  const SizedBox(height: 12),
+                  PaperButton(
+                    label: 'End Zen Flight',
+                    expand: true,
+                    color: AppColors.paperGreen,
+                    icon: PaperIcon(PaperIconData.leaf,
+                        size: 18, color: AppColors.paperInk),
+                    onPressed: () => game.endZenFlight(),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                PaperButton(
+                  label: 'Quit',
+                  expand: true,
+                  color: AppColors.paperWarm,
+                  textColor: AppColors.paperInk,
+                  icon: const Icon(Icons.home, size: 20),
+                  onPressed: () {
+                    if (isZen) {
+                      game.endZenFlight();
+                      return;
+                    }
+                    game.resumeRun();
+                    final exitRoute = switch (game.mode) {
+                      GameMode.daily => AppRoutes.dailyFlight,
+                      GameMode.trial => AppRoutes.trials,
+                      GameMode.classic || GameMode.zen => AppRoutes.mainMenu,
+                    };
+                    Navigator.of(context).pushReplacementNamed(exitRoute);
+                  },
+                ),
+              ],
             ),
-            const SizedBox(height: 32),
-            _PauseButton(
-              label: 'Resume',
-              icon: Icons.play_arrow,
-              onTap: () => game.resumeRun(),
-            ),
-            const SizedBox(height: 16),
-            if (isZen) ...[
-              // Zen never ends in a crash — this is the only way out, and it
-              // shows the quiet summary before returning to the menu.
-              _PauseButton(
-                label: 'End Zen Flight',
-                icon: Icons.spa_outlined,
-                onTap: () => game.endZenFlight(),
-              ),
-              const SizedBox(height: 16),
-            ],
-            _PauseButton(
-              label: 'Quit',
-              icon: Icons.home,
-              onTap: () {
-                if (isZen) {
-                  game.endZenFlight();
-                  return;
-                }
-                game.resumeRun();
-                // Mode-aware exit: daily/trials return to their hub, classic
-                // returns to the main menu.
-                final exitRoute = switch (game.mode) {
-                  GameMode.daily => AppRoutes.dailyFlight,
-                  GameMode.trial => AppRoutes.trials,
-                  GameMode.classic || GameMode.zen => AppRoutes.mainMenu,
-                };
-                Navigator.of(context).pushReplacementNamed(exitRoute);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PauseButton extends StatelessWidget {
-  const _PauseButton({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 200,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.divider),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: AppColors.textLight, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: AppColors.textLight,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

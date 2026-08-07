@@ -1,8 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
+import '../core/constants/app_typography.dart';
 import '../providers/save_data_provider.dart';
 import '../services/analytics_service.dart';
 
@@ -68,37 +69,41 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Center(
-        child: FadeTransition(
-          opacity: _fadeIn,
-          child: ScaleTransition(
-            scale: _scaleIn,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Logo placeholder — replace with Image.asset when art is ready.
-                PaperPlaneIcon(size: 120),
-                const SizedBox(height: 24),
-                const Text(
-                  'PAPER FLIGHT',
-                  style: TextStyle(
-                    color: AppColors.textLight,
-                    fontSize: 36,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 6,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.surfaceAlt, AppColors.backgroundDeep],
+          ),
+        ),
+        child: Center(
+          child: FadeTransition(
+            opacity: _fadeIn,
+            child: ScaleTransition(
+              scale: _scaleIn,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PaperPlaneIcon(size: 120),
+                  const SizedBox(height: 24),
+                  Text(
+                    'PAPER FLIGHT',
+                    style: AppTypography.displayMedium.copyWith(
+                      fontSize: 38,
+                      letterSpacing: 4,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'catch the wind',
-                  style: TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w400,
-                    letterSpacing: 3,
+                  const SizedBox(height: 8),
+                  Text(
+                    'catch the wind',
+                    style: AppTypography.caption.copyWith(
+                      fontSize: 14,
+                      letterSpacing: 3,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

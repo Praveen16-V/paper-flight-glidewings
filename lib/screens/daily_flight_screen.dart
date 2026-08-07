@@ -5,17 +5,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
+import '../core/constants/app_typography.dart';
 import '../core/enums/game_enums.dart';
+import '../core/widgets/paper_button.dart';
+import '../core/widgets/paper_card.dart';
+import '../core/widgets/paper_icons.dart';
+import '../core/widgets/stat_counter.dart';
 import '../providers/save_data_provider.dart';
 import '../services/daily_leaderboard_service.dart';
 import '../services/daily_seed_service.dart';
 import 'game_screen.dart';
 
-/// Pre-flight hub for the Daily Seeded Flight (Task 8).
-///
-/// Every player on Earth faces the identical wind, obstacles and coins for
-/// today's seed (UTC-based). One attempt per day — quitting mid-run counts.
-/// The award is a leaderboard rank; the run never touches the coin economy.
+/// Pre-flight hub for the Daily Seeded Flight.
 class DailyFlightScreen extends ConsumerStatefulWidget {
   const DailyFlightScreen({super.key});
 
@@ -77,283 +78,282 @@ class _DailyFlightScreenState extends ConsumerState<DailyFlightScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 16),
-            Text(
-              DailySeedService.label(_seed),
-              style: const TextStyle(
-                color: AppColors.accentAlt,
-                fontSize: 26,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 2,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.surfaceAlt, AppColors.background],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _BackBar(title: DailySeedService.label(_seed)),
+              const SizedBox(height: 4),
+              Text(
+                "TODAY'S SEEDED FLIGHT",
+                style: AppTypography.overline,
               ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'TODAY\'S SEEDED FLIGHT',
-              style: TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // ── Reset countdown ──────────────────────────────────────────
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.schedule,
-                      color: AppColors.textMuted, size: 16),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Next seed in  $hh:$mm:$ss',
-                    style: const TextStyle(
-                      color: AppColors.textLight,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 18),
-
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                children: [
-                  // ── Rules card ─────────────────────────────────────────
-                  _InfoCard(
-                    icon: '🌍',
-                    lines: const [
-                      'The wind, obstacles and coins are generated from today\'s seed — identical for every player worldwide.',
-                      'One attempt per day (UTC). Quitting mid-run counts as your attempt.',
-                      'Award: your place on the daily board. This run doesn\'t bank coins or progress challenges.',
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-
-                  // ── Attempt status ─────────────────────────────────────
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: attemptUsed
-                          ? AppColors.danger.withOpacity(0.12)
-                          : AppColors.success.withOpacity(0.10),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: attemptUsed
-                            ? AppColors.danger.withOpacity(0.5)
-                            : AppColors.success.withOpacity(0.5),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Text(
-                          attemptUsed ? '✅' : '⏳',
-                          style: const TextStyle(fontSize: 22),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            attemptUsed
-                                ? 'Today\'s attempt used. Come back tomorrow for a fresh seed!'
-                                : 'Attempt available — make it count!',
-                            style: const TextStyle(
-                              color: AppColors.textLight,
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // ── Personal best for this seed ────────────────────────
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.divider),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.emoji_events_outlined,
-                            color: AppColors.warning, size: 26),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'YOUR BEST FOR THIS SEED',
-                                style: TextStyle(
-                                  color: AppColors.textMuted,
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.5,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _best == null
-                                    ? '— not flown yet —'
-                                    : '${_best!.score} pts  •  ${_best!.distanceMeters.toStringAsFixed(0)} m',
-                                style: const TextStyle(
-                                  color: AppColors.textLight,
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // ── Recent flights ─────────────────────────────────────
-                  if (_recent.isNotEmpty) ...[
-                    const Text(
-                      'RECENT FLIGHTS',
-                      style: TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppColors.divider),
-                      ),
-                      child: Column(
-                        children: _recent.map((e) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 7),
-                            child: Row(
-                              children: [
-                                Text(
-                                  DailySeedService.label(
-                                      DailySeedService.seedForDate(e.dateUtc)),
-                                  style: const TextStyle(
-                                    color: AppColors.textMuted,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  '${e.score} pts',
-                                  style: const TextStyle(
-                                    color: AppColors.textLight,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  '${e.distanceMeters.toStringAsFixed(0)} m',
-                                  style: const TextStyle(
-                                    color: AppColors.textMuted,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.paperBlue,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: const [
+                    BoxShadow(
+                        color: Colors.black26,
+                        offset: Offset(0, 3),
+                        blurRadius: 0),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    PaperIcon(PaperIconData.calendar,
+                        size: 16, color: AppColors.gemBlueDeep),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Next seed in  $hh:$mm:$ss',
+                      style: AppTypography.statSmall.copyWith(
+                        color: AppColors.gemBlueDeep,
+                        fontSize: 13,
                       ),
                     ),
                   ],
-                ],
+                ),
               ),
-            ),
-
-            // ── Play button ──────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: attemptUsed
-                        ? AppColors.divider
-                        : AppColors.accent,
-                    disabledBackgroundColor: AppColors.divider,
-                  ),
+              const SizedBox(height: 18),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  children: [
+                    _InfoCard(
+                      lines: const [
+                        'The wind, obstacles and coins come from today\'s seed — identical for every player worldwide.',
+                        'One attempt per day (UTC). Quitting mid-run counts as your attempt.',
+                        'The award is your place on the daily board. This run doesn\'t bank coins or progress challenges.',
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    PaperCard(
+                      color: attemptUsed
+                          ? AppColors.paperRose
+                          : AppColors.paperGreen,
+                      elevation: 1.2,
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Icon(
+                            attemptUsed
+                                ? Icons.lock_clock
+                                : Icons.check_circle_outline,
+                            color: attemptUsed
+                                ? AppColors.danger
+                                : AppColors.success,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              attemptUsed
+                                  ? 'Today\'s attempt used. Come back tomorrow for a fresh seed!'
+                                  : 'Attempt available — make it count!',
+                              style: AppTypography.bodyMedium.copyWith(
+                                  color: AppColors.paperInk, fontSize: 13.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    PaperCard(
+                      color: AppColors.paperGold,
+                      elevation: 1.2,
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.emoji_events_outlined,
+                              color: AppColors.accentDeep, size: 26),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('YOUR BEST FOR THIS SEED',
+                                    style: AppTypography.overline.copyWith(
+                                        color: AppColors.paperInkSoft,
+                                        fontSize: 10.5,
+                                        letterSpacing: 1.5)),
+                                const SizedBox(height: 6),
+                                _best == null
+                                    ? Text('— not flown yet —',
+                                        style: AppTypography.caption.copyWith(
+                                            color: AppColors.paperInkSoft,
+                                            fontSize: 15))
+                                    : Row(
+                                        children: [
+                                          StatCounter(_best!.score,
+                                              suffix: ' pts',
+                                              style: AppTypography.stat
+                                                  .copyWith(
+                                                      color: AppColors
+                                                          .paperInk,
+                                                      fontSize: 17)),
+                                          const SizedBox(width: 10),
+                                          Text('•',
+                                              style: AppTypography.caption
+                                                  .copyWith(
+                                                      color: AppColors
+                                                          .paperInkSoft)),
+                                          const SizedBox(width: 10),
+                                          StatCounter(_best!.distanceMeters,
+                                              suffix: ' m',
+                                              style: AppTypography.statSmall
+                                                  .copyWith(
+                                                      color: AppColors
+                                                          .paperInkSoft,
+                                                      fontSize: 14)),
+                                        ],
+                                      ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    if (_recent.isNotEmpty) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4, bottom: 8),
+                        child: Text('RECENT FLIGHTS',
+                            style: AppTypography.overline),
+                      ),
+                      PaperCard(
+                        color: AppColors.paper,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 4),
+                        child: Column(
+                          children: _recent.map((e) {
+                            return Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 8),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    DailySeedService.label(
+                                        DailySeedService.seedForDate(
+                                            e.dateUtc)),
+                                    style: AppTypography.caption.copyWith(
+                                        color: AppColors.paperInkSoft,
+                                        fontSize: 11),
+                                  ),
+                                  const Spacer(),
+                                  StatCounter(e.score,
+                                      suffix: ' pts',
+                                      style: AppTypography.statSmall
+                                          .copyWith(
+                                              color: AppColors.paperInk,
+                                              fontSize: 13)),
+                                  const SizedBox(width: 10),
+                                  StatCounter(e.distanceMeters,
+                                      suffix: ' m',
+                                      style: AppTypography.caption.copyWith(
+                                          color: AppColors.paperInkSoft,
+                                          fontSize: 11)),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                child: PaperButton(
+                  label: attemptUsed
+                      ? 'ATTEMPT USED'
+                      : "FLY TODAY'S SEED",
+                  expand: true,
+                  color: attemptUsed
+                      ? AppColors.paperWarm
+                      : AppColors.accent,
+                  textColor: attemptUsed
+                      ? AppColors.paperInkSoft
+                      : AppColors.paperInk,
                   onPressed: attemptUsed
                       ? null
-                      : () {
-                          Navigator.of(context).pushNamed(
+                      : () => Navigator.of(context).pushNamed(
                             AppRoutes.game,
                             arguments: const GameScreenArgs(
                                 mode: GameMode.daily),
-                          );
-                        },
-                  child: Text(attemptUsed ? 'ATTEMPT USED' : 'FLY TODAY\'S SEED'),
+                          ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
+class _BackBar extends StatelessWidget {
+  const _BackBar({required this.title});
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: AppColors.textLight),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: Text(title,
+                textAlign: TextAlign.center,
+                style: AppTypography.displayMedium.copyWith(
+                  color: AppColors.accentAlt,
+                  fontSize: 26,
+                  letterSpacing: 2,
+                )),
+          ),
+          const SizedBox(width: 48),
+        ],
+      ),
+    );
+  }
+}
+
 class _InfoCard extends StatelessWidget {
-  const _InfoCard({required this.icon, required this.lines});
-  final String icon;
+  const _InfoCard({required this.lines});
   final List<String> lines;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return PaperCard(
+      color: AppColors.paper,
+      elevation: 1.2,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.divider),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text(icon, style: const TextStyle(fontSize: 20)),
+              PaperIcon(PaperIconData.calendar,
+                  size: 20, color: AppColors.gemBlueDeep),
               const SizedBox(width: 8),
-              const Text(
-                'HOW IT WORKS',
-                style: TextStyle(
-                  color: AppColors.textLight,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
-                ),
-              ),
+              Text('HOW IT WORKS',
+                  style: AppTypography.label
+                      .copyWith(color: AppColors.paperInk, fontSize: 12)),
             ],
           ),
           const SizedBox(height: 10),
@@ -361,19 +361,19 @@ class _InfoCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
-                  padding: EdgeInsets.only(top: 5),
-                  child: Text('•  ',
-                      style: TextStyle(color: AppColors.accentAlt)),
+                Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: PaperIcon(PaperIconData.glider,
+                      size: 12, color: AppColors.accentDeep),
                 ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     line,
-                    style: const TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 12.5,
-                      height: 1.4,
-                    ),
+                    style: AppTypography.caption.copyWith(
+                        color: AppColors.paperInkSoft,
+                        fontSize: 12.5,
+                        height: 1.4),
                   ),
                 ),
               ],

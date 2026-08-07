@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
+import '../core/constants/app_typography.dart';
 import '../core/enums/game_enums.dart';
+import '../core/widgets/paper_card.dart';
 import '../providers/settings_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -15,250 +17,242 @@ class SettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.textLight,
-        elevation: 0,
-        title: const Text(
-          'Settings',
-          style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.surfaceAlt, AppColors.background],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _TitleBar(),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    _SectionHeader(title: 'Controls'),
+                    const SizedBox(height: 12),
+                    _SegmentedRow<ControlScheme>(
+                      label: 'Steering',
+                      options: const [
+                        ControlScheme.tilt,
+                        ControlScheme.joystick,
+                        ControlScheme.touchZones
+                      ],
+                      labels: const ['Tilt', 'Joystick', 'Zones'],
+                      selected: settings.controlScheme,
+                      onChanged: (v) => notifier.setControlScheme(v),
+                    ),
+                    const SizedBox(height: 16),
+                    if (settings.controlScheme == ControlScheme.joystick)
+                      _InfoBox(
+                        icon: Icons.gamepad,
+                        text:
+                            'Touch anywhere — a virtual stick appears under your thumb. Slide to steer, hold to climb. Flick up or tap BOOST for the snap.',
+                      ),
+                    if (settings.controlScheme == ControlScheme.joystick)
+                      const SizedBox(height: 16),
+                    _SliderRow(
+                      label: settings.controlScheme == ControlScheme.joystick
+                          ? 'Steering Sensitivity'
+                          : 'Tilt Sensitivity',
+                      value: settings.tiltSensitivity,
+                      min: 0.3,
+                      max: 2.0,
+                      divisions: 17,
+                      enabled: settings.controlScheme == ControlScheme.tilt ||
+                          settings.controlScheme == ControlScheme.joystick,
+                      onChanged: (v) => notifier.setTiltSensitivity(v),
+                      valueLabel: settings.tiltSensitivity.toStringAsFixed(1),
+                    ),
+                    if (settings.controlScheme == ControlScheme.joystick ||
+                        settings.controlScheme == ControlScheme.touchZones) ...[
+                      const SizedBox(height: 20),
+                      _SwitchRow(
+                        label: settings.controlScheme == ControlScheme.joystick
+                            ? 'Show joystick on screen'
+                            : 'Show control zones on screen',
+                        value: settings.showOnScreenControls,
+                        onChanged: (v) =>
+                            notifier.setShowOnScreenControls(v),
+                      ),
+                      const SizedBox(height: 6),
+                      _Hint(
+                        settings.controlScheme == ControlScheme.joystick
+                            ? 'Hide the floating stick for a cleaner view — touching anywhere still steers.'
+                            : 'Hide the zone guides for a cleaner view — tapping left or right half still steers.',
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    _SwitchRow(
+                      label: 'Flick to use power-up',
+                      value: settings.flickToUsePowerUp,
+                      onChanged: (v) => notifier.setFlickToUsePowerUp(v),
+                    ),
+                    const SizedBox(height: 6),
+                    const _Hint(
+                      'Flick up or double-tap fires your plane\'s power-up — Dart: BOOST · Glider: Magnet · Stunt Fold: Ghost. The BOOST button always works.',
+                    ),
+                    const SizedBox(height: 32),
+
+                    _SectionHeader(title: 'Audio'),
+                    const SizedBox(height: 12),
+                    _SwitchRow(
+                      label: 'Sound Effects',
+                      value: settings.sfxEnabled,
+                      onChanged: (v) => notifier.setSfxEnabled(v),
+                    ),
+                    const SizedBox(height: 8),
+                    _SliderRow(
+                      label: 'SFX Volume',
+                      value: settings.sfxVolume,
+                      min: 0,
+                      max: 1,
+                      divisions: 10,
+                      enabled: settings.sfxEnabled,
+                      onChanged: (v) => notifier.setSfxVolume(v),
+                      valueLabel: '${(settings.sfxVolume * 100).toInt()}%',
+                    ),
+                    const SizedBox(height: 16),
+                    _SwitchRow(
+                      label: 'Music',
+                      value: settings.musicEnabled,
+                      onChanged: (v) => notifier.setMusicEnabled(v),
+                    ),
+                    const SizedBox(height: 8),
+                    _SliderRow(
+                      label: 'Music Volume',
+                      value: settings.musicVolume,
+                      min: 0,
+                      max: 1,
+                      divisions: 10,
+                      enabled: settings.musicEnabled,
+                      onChanged: (v) => notifier.setMusicVolume(v),
+                      valueLabel: '${(settings.musicVolume * 100).toInt()}%',
+                    ),
+                    const SizedBox(height: 32),
+
+                    _SectionHeader(title: 'Haptics'),
+                    const SizedBox(height: 12),
+                    _SwitchRow(
+                      label: 'Vibration',
+                      value: settings.hapticEnabled,
+                      onChanged: (v) => notifier.setHapticEnabled(v),
+                    ),
+                    const SizedBox(height: 40),
+
+                    _CalibrationNote(scheme: settings.controlScheme),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
+    );
+  }
+}
+
+class _TitleBar extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 16, 4),
+      child: Row(
         children: [
-          // ── Controls ────────────────────────────────────────────────────
-          _SectionHeader(title: 'Controls'),
-          const SizedBox(height: 12),
-
-          _SegmentedRow<ControlScheme>(
-            label: 'Steering',
-            options: const [
-              ControlScheme.tilt,
-              ControlScheme.joystick,
-              ControlScheme.touchZones
-            ],
-            labels: const ['Tilt', 'Joystick', 'Zones'],
-            selected: settings.controlScheme,
-            onChanged: (v) => notifier.setControlScheme(v),
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: AppColors.textLight),
+            onPressed: () => Navigator.of(context).pop(),
           ),
-          const SizedBox(height: 16),
-          // Explain joystick mode.
-          if (settings.controlScheme == ControlScheme.joystick)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceAlt,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.divider),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.gamepad, color: AppColors.accent, size: 18),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Joystick: touch anywhere — a virtual stick appears under your thumb. Slide it to steer, keep it held to climb. Flick up or tap BOOST for emergency snap.',
-                      style: TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 12,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          if (settings.controlScheme == ControlScheme.joystick) const SizedBox(height: 16),
-          _SliderRow(
-            label: settings.controlScheme == ControlScheme.joystick
-                ? 'Joystick / Steering Sensitivity'
-                : 'Tilt Sensitivity',
-            value: settings.tiltSensitivity,
-            min: 0.3,
-            max: 2.0,
-            divisions: 17,
-            enabled: settings.controlScheme == ControlScheme.tilt ||
-                settings.controlScheme == ControlScheme.joystick,
-            onChanged: (v) => notifier.setTiltSensitivity(v),
-            valueLabel: settings.tiltSensitivity.toStringAsFixed(1),
+          Expanded(
+            child: Text('Settings',
+                textAlign: TextAlign.center, style: AppTypography.headline),
           ),
-          // Show/hide the on-screen control visuals (joystick stick or
-          // touch-zone guides) — only relevant for those two schemes.
-          if (settings.controlScheme == ControlScheme.joystick ||
-              settings.controlScheme == ControlScheme.touchZones) ...[
-            const SizedBox(height: 20),
-            _SwitchRow(
-              label: settings.controlScheme == ControlScheme.joystick
-                  ? 'Show joystick on screen'
-                  : 'Show control zones on screen',
-              value: settings.showOnScreenControls,
-              onChanged: (v) => notifier.setShowOnScreenControls(v),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              settings.controlScheme == ControlScheme.joystick
-                  ? 'Hide the floating stick for a cleaner view — touching anywhere still steers.'
-                  : 'Hide the zone guides for a cleaner view — tapping left or right half still steers.',
-              style: const TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 12,
-                height: 1.4,
-              ),
-            ),
-          ],
-          const SizedBox(height: 20),
-          // Flick/double-tap gesture → the plane's own power-up. Generic
-          // trigger, not hard-wired to the snap burst.
-          _SwitchRow(
-            label: 'Flick to use power-up',
-            value: settings.flickToUsePowerUp,
-            onChanged: (v) => notifier.setFlickToUsePowerUp(v),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Flick up or double-tap fires your plane\'s power-up — Dart: BOOST · Glider: Magnet · Stunt Fold: Ghost. The BOOST button always works.',
-            style: TextStyle(
-              color: AppColors.textMuted,
-              fontSize: 12,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          // ── Audio ────────────────────────────────────────────────────────
-          _SectionHeader(title: 'Audio'),
-          const SizedBox(height: 12),
-
-          _SwitchRow(
-            label: 'Sound Effects',
-            value: settings.sfxEnabled,
-            onChanged: (v) => notifier.setSfxEnabled(v),
-          ),
-          const SizedBox(height: 8),
-          _SliderRow(
-            label: 'SFX Volume',
-            value: settings.sfxVolume,
-            min: 0,
-            max: 1,
-            divisions: 10,
-            enabled: settings.sfxEnabled,
-            onChanged: (v) => notifier.setSfxVolume(v),
-            valueLabel: '${(settings.sfxVolume * 100).toInt()}%',
-          ),
-          const SizedBox(height: 16),
-          _SwitchRow(
-            label: 'Music',
-            value: settings.musicEnabled,
-            onChanged: (v) => notifier.setMusicEnabled(v),
-          ),
-          const SizedBox(height: 8),
-          _SliderRow(
-            label: 'Music Volume',
-            value: settings.musicVolume,
-            min: 0,
-            max: 1,
-            divisions: 10,
-            enabled: settings.musicEnabled,
-            onChanged: (v) => notifier.setMusicVolume(v),
-            valueLabel: '${(settings.musicVolume * 100).toInt()}%',
-          ),
-          const SizedBox(height: 32),
-
-          // ── Haptics ──────────────────────────────────────────────────────
-          _SectionHeader(title: 'Haptics'),
-          const SizedBox(height: 12),
-          _SwitchRow(
-            label: 'Vibration',
-            value: settings.hapticEnabled,
-            onChanged: (v) => notifier.setHapticEnabled(v),
-          ),
-
-          const SizedBox(height: 40),
-
-          // ── Calibration tip ───────────────────────────────────────────────
-          if (settings.controlScheme == ControlScheme.tilt)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.divider),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: AppColors.textMuted, size: 18),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Hold your phone in your normal playing position, then start a run — tilt auto-calibrates to your posture each run.',
-                      style: TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 12,
-                        height: 1.5,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          if (settings.controlScheme == ControlScheme.joystick)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.divider),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: AppColors.textMuted, size: 18),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'The joystick is floating — it appears wherever you touch, so one thumb is all you need. Great for tablets and one-handed play. Your BOOST charges recharge over distance.',
-                      style: TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 12,
-                        height: 1.5,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          if (settings.controlScheme == ControlScheme.touchZones)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.divider),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: AppColors.textMuted, size: 18),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Zones: tap left or right half of screen to steer. Hold anywhere to climb. Use flick-up or BOOST for emergency snap.',
-                      style: TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 12,
-                        height: 1.5,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          const SizedBox(width: 48),
         ],
       ),
     );
   }
 }
 
-// ── Shared setting row widgets ────────────────────────────────────────────────
+class _CalibrationNote extends StatelessWidget {
+  const _CalibrationNote({required this.scheme});
+  final ControlScheme scheme;
+
+  String get _text {
+    switch (scheme) {
+      case ControlScheme.tilt:
+        return 'Hold your phone in your normal playing position, then start a run — tilt auto-calibrates to your posture each run.';
+      case ControlScheme.joystick:
+        return 'The joystick is floating — it appears wherever you touch, so one thumb is all you need. Great for tablets and one-handed play. Your BOOST charges recharge over distance.';
+      case ControlScheme.touchZones:
+        return 'Zones: tap left or right half of screen to steer. Hold anywhere to climb. Use flick-up or BOOST for emergency snap.';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PaperCard(
+      color: AppColors.paperWarm,
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline,
+              color: AppColors.paperInkSoft, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _text,
+              style: AppTypography.caption
+                  .copyWith(color: AppColors.paperInkSoft, height: 1.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Hint extends StatelessWidget {
+  const _Hint(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: AppTypography.caption.copyWith(height: 1.4),
+    );
+  }
+}
+
+class _InfoBox extends StatelessWidget {
+  const _InfoBox({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return PaperCard(
+      color: AppColors.paperBlue,
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.accentDeep, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text,
+                style: AppTypography.caption.copyWith(
+                    color: AppColors.paperInk, height: 1.4)),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title});
@@ -266,15 +260,7 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      title.toUpperCase(),
-      style: const TextStyle(
-        color: AppColors.textMuted,
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 2.5,
-      ),
-    );
+    return Text(title.toUpperCase(), style: AppTypography.overline);
   }
 }
 
@@ -290,21 +276,28 @@ class _SwitchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label,
-            style: const TextStyle(color: AppColors.textLight, fontSize: 16)),
-        Switch(
-          value: value,
-          onChanged: onChanged,
-          activeColor: AppColors.accent,
-          trackColor: WidgetStateProperty.resolveWith((states) =>
-              states.contains(WidgetState.selected)
-                  ? AppColors.accent.withOpacity(0.4)
-                  : AppColors.divider),
-        ),
-      ],
+    return PaperCard(
+      color: AppColors.paper,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Text(label,
+                style: AppTypography.bodyLarge
+                    .copyWith(color: AppColors.paperInk, fontSize: 15)),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeColor: AppColors.accent,
+            trackColor: WidgetStateProperty.resolveWith((states) =>
+                states.contains(WidgetState.selected)
+                    ? AppColors.accent.withOpacity(0.4)
+                    : AppColors.paperInkSoft.withOpacity(0.3)),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -333,37 +326,42 @@ class _SliderRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Opacity(
       opacity: enabled ? 1.0 : 0.4,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(label,
-                  style: const TextStyle(
-                      color: AppColors.textLight, fontSize: 16)),
-              Text(valueLabel,
-                  style: const TextStyle(
-                      color: AppColors.accent, fontSize: 14,
-                      fontWeight: FontWeight.w700)),
-            ],
-          ),
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: AppColors.accent,
-              inactiveTrackColor: AppColors.divider,
-              thumbColor: AppColors.accent,
-              overlayColor: AppColors.accent.withOpacity(0.2),
+      child: PaperCard(
+        color: AppColors.paper,
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(label,
+                      style: AppTypography.bodyLarge.copyWith(
+                          color: AppColors.paperInk, fontSize: 15)),
+                ),
+                Text(valueLabel,
+                    style: AppTypography.statSmall.copyWith(
+                        color: AppColors.accentDeep, fontSize: 14)),
+              ],
             ),
-            child: Slider(
-              value: value.clamp(min, max),
-              min: min,
-              max: max,
-              divisions: divisions,
-              onChanged: enabled ? onChanged : null,
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: AppColors.accent,
+                inactiveTrackColor: AppColors.paperInkSoft.withOpacity(0.3),
+                thumbColor: AppColors.accent,
+                overlayColor: AppColors.accent.withOpacity(0.2),
+              ),
+              child: Slider(
+                value: value.clamp(min, max),
+                min: min,
+                max: max,
+                divisions: divisions,
+                onChanged: enabled ? onChanged : null,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -385,47 +383,58 @@ class _SegmentedRow<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label,
-            style: const TextStyle(color: AppColors.textLight, fontSize: 16)),
-        Row(
-          children: List.generate(options.length, (i) {
-            final isSelected = options[i] == selected;
-            return GestureDetector(
-              onTap: () => onChanged(options[i]),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isSelected ? AppColors.accent : AppColors.surface,
-                  borderRadius: BorderRadius.horizontal(
-                    left: i == 0
-                        ? const Radius.circular(8)
-                        : Radius.zero,
-                    right: i == options.length - 1
-                        ? const Radius.circular(8)
-                        : Radius.zero,
+    return PaperCard(
+      color: AppColors.paper,
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: AppTypography.bodyLarge
+                  .copyWith(color: AppColors.paperInk, fontSize: 15)),
+          const SizedBox(height: 10),
+          Row(
+            children: List.generate(options.length, (i) {
+              final isSelected = options[i] == selected;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => onChanged(options[i]),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.accent
+                          : AppColors.paperWarm,
+                      borderRadius: BorderRadius.horizontal(
+                        left: i == 0
+                            ? const Radius.circular(10)
+                            : Radius.zero,
+                        right: i == options.length - 1
+                            ? const Radius.circular(10)
+                            : Radius.zero,
+                      ),
+                      border: Border.all(
+                          color: AppColors.paperInkSoft.withOpacity(0.25)),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      labels[i],
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: isSelected
+                            ? AppColors.paperInk
+                            : AppColors.paperInkSoft,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
-                  border: Border.all(color: AppColors.divider),
                 ),
-                child: Text(
-                  labels[i],
-                  style: TextStyle(
-                    color: isSelected
-                        ? Colors.white
-                        : AppColors.textMuted,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            );
-          }),
-        ),
-      ],
+              );
+            }),
+          ),
+        ],
+      ),
     );
   }
 }
