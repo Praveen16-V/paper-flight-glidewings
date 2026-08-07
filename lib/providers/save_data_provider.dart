@@ -81,6 +81,57 @@ class SaveDataNotifier extends Notifier<SaveData> {
     return newHighScore;
   }
 
+  // ── Game Modes (Task 8) ──────────────────────────────────────────────────
+
+  /// Consumes today's Daily Seeded Flight attempt. Called the moment a daily
+  /// run starts — quitting mid-run still counts as the attempt.
+  Future<void> markDailyAttempt({required int seed}) async {
+    state = await PersistenceService.instance.updateSave((s) {
+      s.dailyLastSeed = seed;
+      s.dailyAttemptUsed = true;
+      return s;
+    });
+  }
+
+  /// Records the best star rating for a Precision Trial (progression only —
+  /// trials award no coins). Returns true when a new personal best was set.
+  Future<bool> recordTrialStars({
+    required int trialId,
+    required int stars,
+  }) async {
+    var isNewBest = false;
+    state = await PersistenceService.instance.updateSave((s) {
+      final list = List<int>.from(s.trialStars);
+      while (list.length <= trialId) {
+        list.add(0);
+      }
+      if (stars > list[trialId]) {
+        list[trialId] = stars;
+        isNewBest = true;
+      }
+      s.trialStars = list;
+      return s;
+    });
+    return isNewBest;
+  }
+
+  /// Best distance reached in a Zen Flight (a personal stat only — Zen never
+  /// touches the coin economy).
+  Future<void> recordZenRun(double distanceMeters) async {
+    state = await PersistenceService.instance.updateSave((s) {
+      if (distanceMeters > s.zenBestDistanceMeters) {
+        s.zenBestDistanceMeters = distanceMeters;
+      }
+      return s;
+    });
+  }
+
+  /// Star rating (0–3) earned on a trial, or 0 if never played.
+  int trialBestStars(int trialId) {
+    if (trialId < 0 || trialId >= state.trialStars.length) return 0;
+    return state.trialStars[trialId];
+  }
+
   // ── Plane Unlocks ───────────────────────────────────────────────────────
 
   bool isPlaneUnlocked(int planeIndex) =>

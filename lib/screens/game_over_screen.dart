@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
@@ -8,11 +8,22 @@ import '../models/run_result.dart';
 import '../providers/save_data_provider.dart';
 import '../services/ad_service.dart';
 import '../services/analytics_service.dart';
+import '../services/daily_seed_service.dart';
 
 /// Args passed via route.
 class GameOverArgs {
-  const GameOverArgs({this.result});
+  const GameOverArgs({
+    this.result,
+    this.mode = GameMode.classic,
+    this.dailySeed,
+  });
   final RunResult? result;
+
+  /// Which mode this run belonged to (Task 8 — daily behaves differently).
+  final GameMode mode;
+
+  /// Today's daily seed when [mode] is [GameMode.daily].
+  final int? dailySeed;
 }
 
 /// Results screen shown after every run.
@@ -85,18 +96,21 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
       }
     }
 
-    // Maybe show interstitial.
-    await AdService.instance.maybeShowInterstitial(
-      totalRuns: save.totalRuns,
-      runsSinceLastInterstitial: save.runsSinceLastInterstitial,
-      adsRemoved: save.adsRemoved,
-      onComplete: () {
-        if (mounted) {
-          setState(() => _interstitialDone = true);
-          ref.read(saveDataProvider.notifier).resetInterstitialCounter();
-        }
-      },
-    );
+    // Maybe show interstitial — classic runs only (Task 8: the daily seeded
+    // flight is a clean, ad-free competitive run).
+    if (widget.args.mode == GameMode.classic) {
+      await AdService.instance.maybeShowInterstitial(
+        totalRuns: save.totalRuns,
+        runsSinceLastInterstitial: save.runsSinceLastInterstitial,
+        adsRemoved: save.adsRemoved,
+        onComplete: () {
+          if (mounted) {
+            setState(() => _interstitialDone = true);
+            ref.read(saveDataProvider.notifier).resetInterstitialCounter();
+          }
+        },
+      );
+    }
 
     _anim.forward();
   }
@@ -123,9 +137,16 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
                   _Header(
                     isNewHighScore: result?.isNewHighScore ?? false,
                     biome: result?.finalBiome ?? Biome.city,
+                    mode: widget.args.mode,
                   ),
 
                   const SizedBox(height: 28),
+
+                  // ── Daily seeded banner (Task 8) ─────────────────────────
+                  if (widget.args.mode == GameMode.daily) ...[
+                    _DailyBanner(seed: widget.args.dailySeed),
+                    const SizedBox(height: 16),
+                  ],
 
                   // ── Stats card ────────────────────────────────────────────
                   if (result != null) _StatsCard(result: result),
@@ -133,10 +154,22 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
                   const SizedBox(height: 28),
 
                   // ── High score comparison ─────────────────────────────────
-                  _HighScoreRow(
-                    thisScore: result?.score ?? 0,
-                    bestScore: save.highScore,
-                  ),
+                  if (widget.args.mode == GameMode.classic)
+                    _HighScoreRow(
+                      thisScore: result?.score ?? 0,
+                      bestScore: save.highScore,
+                    )
+                  else
+                    Text(
+                      result?.isNewHighScore == true
+                          ? '🏆 New personal best for this seed!'
+                          : 'Your daily best is tracked on the board.',
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 13,
+                        letterSpacing: 1,
+                      ),
+                    ),
 
                   const Spacer(),
 
@@ -145,6 +178,7 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
                     result: result,
                     adsRemoved: save.adsRemoved,
                     doubleCoinsUsed: _doubleCoinsUsed,
+                    isDaily: widget.args.mode == GameMode.daily,
                     onRevive: _onRevive,
                     onDoubleCoins: _onDoubleCoins,
                     onRetry: _onRetry,
@@ -201,10 +235,19 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
 
   void _onRetry() {
     AnalyticsService.instance.logEvent('retry_tapped');
+    if (widget.args.mode == GameMode.daily) {
+      // One attempt per day — take the player back to the daily board.
+      Navigator.of(context).pushReplacementNamed(AppRoutes.dailyFlight);
+      return;
+    }
     Navigator.of(context).pushReplacementNamed(AppRoutes.game);
   }
 
   void _onMenu() {
+    if (widget.args.mode == GameMode.daily) {
+      Navigator.of(context).pushReplacementNamed(AppRoutes.dailyFlight);
+      return;
+    }
     Navigator.of(context).pushReplacementNamed(AppRoutes.mainMenu);
   }
 }
@@ -212,27 +255,46 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
 // ── Sub-widgets ───────────────────────────────────────────────────────────────
 
 class _Header extends StatelessWidget {
-  const _Header({required this.isNewHighScore, required this.biome});
+  const _Header({
+    required this.isNewHighScore,
+    required this.biome,
+    this.mode = GameMode.classic,
+  });
   final bool isNewHighScore;
   final Biome biome;
+  final GameMode mode;
 
   @override
   Widget build(BuildContext context) {
+    final String title;
+    final Color titleColor;
+    if (mode == GameMode.daily) {
+      title = isNewHighScore ? '🏆 NEW DAILY BEST!' : 'RUN COMPLETE';
+      titleColor =
+          isNewHighScore ? AppColors.warning : AppColors.accentAlt;
+    } else if (isNewHighScore) {
+      title = '🏆 NEW BEST!';
+      titleColor = AppColors.warning;
+    } else {
+      title = 'CRASHED';
+      titleColor = AppColors.danger;
+    }
     return Column(
       children: [
         Text(
-          isNewHighScore ? '🏆 NEW BEST!' : 'CRASHED',
+          title,
           style: TextStyle(
-            color:
-                isNewHighScore ? AppColors.warning : AppColors.danger,
-            fontSize: isNewHighScore ? 30 : 26,
+            color: titleColor,
+            fontSize: title.length > 12 ? 22 : 30,
             fontWeight: FontWeight.w900,
             letterSpacing: 3,
           ),
         ),
         const SizedBox(height: 6),
         Text(
-          'in ${biome.displayName}',
+          mode == GameMode.daily
+              ? 'today\'s seeded flight'
+              : 'in ${biome.displayName}',
           style: const TextStyle(
             color: AppColors.textMuted,
             fontSize: 13,
@@ -240,6 +302,46 @@ class _Header extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Daily seeded flight banner — seed + single-attempt note.
+class _DailyBanner extends StatelessWidget {
+  const _DailyBanner({this.seed});
+  final int? seed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.accentAlt.withOpacity(0.5)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.calendar_today_outlined,
+              color: AppColors.accentAlt, size: 15),
+          const SizedBox(width: 8),
+          Text(
+            seed == null ? 'DAILY' : DailySeedService.label(seed!),
+            style: const TextStyle(
+              color: AppColors.accentAlt,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Text(
+            '•  one attempt per day',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 11.5),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -369,6 +471,7 @@ class _ActionButtons extends StatelessWidget {
     required this.result,
     required this.adsRemoved,
     required this.doubleCoinsUsed,
+    this.isDaily = false,
     required this.onRevive,
     required this.onDoubleCoins,
     required this.onRetry,
@@ -378,13 +481,17 @@ class _ActionButtons extends StatelessWidget {
   final RunResult? result;
   final bool adsRemoved;
   final bool doubleCoinsUsed;
+
+  /// Daily seeded flights have no revive and no coin doubling — one clean
+  /// attempt, the leaderboard is the reward.
+  final bool isDaily;
   final VoidCallback onRevive;
   final VoidCallback onDoubleCoins;
   final VoidCallback onRetry;
   final VoidCallback onMenu;
 
   bool get _canRevive =>
-      result != null && !result!.wasRevived && !adsRemoved;
+      !isDaily && result != null && !result!.wasRevived && !adsRemoved;
 
   @override
   Widget build(BuildContext context) {
@@ -401,8 +508,8 @@ class _ActionButtons extends StatelessWidget {
           const SizedBox(height: 10),
         ],
 
-        // Double coins — shown once per run.
-        if (!doubleCoinsUsed && !adsRemoved) ...[
+        // Double coins — shown once per run (classic only).
+        if (!isDaily && !doubleCoinsUsed && !adsRemoved) ...[
           _AdButton(
             label: doubleCoinsUsed
                 ? '2× Coins — Claimed!'
@@ -419,8 +526,8 @@ class _ActionButtons extends StatelessWidget {
           children: [
             Expanded(
               child: _PrimaryButton(
-                label: 'Retry',
-                icon: Icons.refresh,
+                label: isDaily ? 'Daily Board' : 'Retry',
+                icon: isDaily ? Icons.calendar_today_outlined : Icons.refresh,
                 onTap: onRetry,
                 isPrimary: true,
               ),

@@ -76,7 +76,8 @@ lib/
 │   ├── save_data.dart          # Hive persistent save (coins, unlocks, scores)
 │   ├── save_data.g.dart        # Hand-written Hive TypeAdapter
 │   ├── run_result.dart         # Immutable run snapshot
-│   └── settings_model.dart     # Tilt sensitivity, control scheme, audio
+│   ├── settings_model.dart     # Tilt sensitivity, control scheme, audio
+│   └── trial_definition.dart   # Task 8 — 6 handcrafted trial courses
 │
 ├── providers/
 │   ├── save_data_provider.dart   # Currency, unlocks, daily login, run recording
@@ -87,7 +88,9 @@ lib/
 │   ├── persistence_service.dart  # Hive read/write wrapper
 │   ├── ad_service.dart           # AdMob rewarded + interstitial
 │   ├── iap_service.dart          # in_app_purchase wrapper
-│   └── analytics_service.dart    # Firebase Analytics + Crashlytics
+│   ├── analytics_service.dart    # Firebase Analytics + Crashlytics
+│   ├── daily_seed_service.dart   # Task 8 — UTC day → deterministic seed
+│   └── daily_leaderboard_service.dart # Task 8 — pluggable daily leaderboard
 │
 ├── game/
 │   ├── paper_flight_game.dart    # FlameGame root — scroll engine, crash, revive
@@ -108,20 +111,42 @@ lib/
 │   │   ├── biome_manager.dart      # Distance → biome + per-biome obstacle weights
 │   │   ├── obstacle_spawner.dart   # Interval spawn, object pools, recycle
 │   │   ├── collectible_spawner.dart # Coin patterns: single/line/arc
-│   │   └── powerup_spawner.dart    # Weighted spawn, periodic timer
+│   │   ├── powerup_spawner.dart    # Weighted spawn, periodic timer
+│   │   └── trial_director.dart     # Task 8 — scripted trial course playback
 │   └── overlays/
 │       └── hud_overlay.dart        # Flutter HUD: score, combo, power-ups, pause
 │
 └── screens/
     ├── splash_screen.dart          # Logo anim + daily login claim
     ├── main_menu_screen.dart       # Floating plane, PLAY CTA, nav bar
-    ├── game_screen.dart            # GameWidget host + pause overlay
+    ├── game_screen.dart            # GameWidget host + pause overlay (mode-aware)
     ├── game_over_screen.dart       # Results + revive + 2× coins + interstitial
     ├── hangar_screen.dart          # 3 planes, coin unlock, equip
     ├── shop_screen.dart            # IAP + rewarded earn flows
     ├── settings_screen.dart        # Tilt sensitivity, control scheme, audio
-    └── daily_challenges_screen.dart # Streak card + challenge stubs
+    ├── daily_challenges_screen.dart # Streak card + challenge stubs
+    ├── modes_screen.dart           # Task 8 — game modes hub
+    ├── daily_flight_screen.dart    # Task 8 — daily seed board + attempt state
+    ├── trials_screen.dart          # Task 8 — trial list, stars, unlocks
+    └── trial_results_screen.dart   # Task 8 — star ratings + retry/next
 ```
+
+---
+
+## Game modes (Task 8)
+
+Reachable from **MORE MODES** under the PLAY button:
+
+| Mode | What it is | Economy |
+|---|---|---|
+| ✈️ Classic | The original endless arcade run | Full — coins bank, challenges progress |
+| 🍃 Zen Flight | No crash deaths — obstacles gently bounce the plane aside, calm backyard→mountain biomes, wind cut to ~55%, a synthesized ambient pad, slower world. Endless — exit via pause → *End Zen Flight* | None — distance is a personal stat only |
+| 🗓️ Daily Seeded | One run per UTC day. The seed (Knuth-hashed UTC day index) drives wind noise, turbulence, and every obstacle/coin/power-up spawn, so all players face the identical run. Quitting mid-run consumes the attempt | Leaderboard rank only — no coins, no challenges |
+| 🎯 Precision Trials | Six handcrafted courses (powerline threading, coin canyon, skyscraper slalom, bird/branch gauntlet, thermal summit, storm sprint) with scripted layouts, wind windows and turbulence. 1–3 stars per course; course N+1 unlocks after one star on course N | None — stars are progression |
+
+Daily leaderboard: `DailyLeaderboard.instance` is a pluggable service —
+the shipped `LocalDailyLeaderboardService` stores history in a Hive box;
+swap it for a Firestore/REST implementation without touching game code.
 
 ---
 

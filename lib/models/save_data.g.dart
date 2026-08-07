@@ -44,13 +44,17 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
       weeklyChallengeProgress: (fields[23] as List?)?.cast<int>() ?? [],
       weeklyChallengeCompleted: (fields[24] as List?)?.cast<bool>() ?? [],
       weeklyChallengeClaimed: (fields[25] as List?)?.cast<bool>() ?? [],
+      dailyLastSeed: (fields[26] as num?)?.toInt() ?? 0,
+      dailyAttemptUsed: fields[27] as bool? ?? false,
+      trialStars: (fields[28] as List?)?.cast<int>() ?? [],
+      zenBestDistanceMeters: (fields[29] as num?)?.toDouble() ?? 0,
     );
   }
 
   @override
   void write(BinaryWriter writer, SaveData obj) {
     writer
-      ..writeByte(26)
+      ..writeByte(30)
       ..writeByte(0)
       ..write(obj.coins)
       ..writeByte(1)
@@ -102,7 +106,15 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
       ..writeByte(24)
       ..write(obj.weeklyChallengeCompleted)
       ..writeByte(25)
-      ..write(obj.weeklyChallengeClaimed);
+      ..write(obj.weeklyChallengeClaimed)
+      ..writeByte(26)
+      ..write(obj.dailyLastSeed)
+      ..writeByte(27)
+      ..write(obj.dailyAttemptUsed)
+      ..writeByte(28)
+      ..write(obj.trialStars)
+      ..writeByte(29)
+      ..write(obj.zenBestDistanceMeters);
   }
 
   @override

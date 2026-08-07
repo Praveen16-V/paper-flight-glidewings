@@ -33,6 +33,8 @@ Future<void> main() async {
       Hive.registerAdapter(SaveDataAdapter());
       await Hive.openBox<SaveData>('save_data');
       await Hive.openBox('settings');
+      // Daily Seeded Flight leaderboard (Task 8) — local-first storage.
+      await Hive.openBox('daily_leaderboard');
 
       // Firebase — uses stub options until flutterfire configure is run.
       await Firebase.initializeApp(

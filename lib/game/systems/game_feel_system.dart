@@ -47,6 +47,10 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
   double _windTarget = 0.0;
   double _windRate = 1.0;
 
+  // ── Zen Flight ambient pad (Task 8) ───────────────────────────────────────
+  AudioPlayer? _zenMusic;
+  bool _zenMusicStarting = false;
+
   // ── Camera easing state ───────────────────────────────────────────────────
   double _zoom = 1.0;
   double _bankAngle = 0.0;
@@ -68,7 +72,47 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
   @override
   void onRemove() {
     _disposeWind();
+    _stopZenMusic();
     super.onRemove();
+  }
+
+  // ── Zen ambient music ─────────────────────────────────────────────────────
+
+  /// Starts the looping synthesized ambient pad for Zen Flight. Respects the
+  /// music toggle + volume; never blocks the game loop.
+  void startZenMusic() {
+    if (_zenMusic != null || _zenMusicStarting) return;
+    _zenMusicStarting = true;
+    _startZenMusicAsync();
+  }
+
+  Future<void> _startZenMusicAsync() async {
+    try {
+      final settings = _settings();
+      if (!settings.musicEnabled) {
+        _zenMusicStarting = false;
+        return;
+      }
+      final player = AudioPlayer();
+      await player.setReleaseMode(ReleaseMode.loop);
+      await player.setSourceBytes(AudioSynth.ambientPad(volume: 0.8));
+      await player.setVolume(settings.musicVolume);
+      _zenMusic = player;
+      await player.resume();
+    } catch (_) {
+      _zenMusic = null;
+    } finally {
+      _zenMusicStarting = false;
+    }
+  }
+
+  void stopZenMusic() {
+    try {
+      _zenMusic?.stop();
+      _zenMusic?.dispose();
+    } catch (_) {}
+    _zenMusic = null;
+    _zenMusicStarting = false;
   }
 
   // ── Lifecycle hooks called by PaperFlightGame ─────────────────────────────

@@ -109,6 +109,25 @@ class SaveData extends HiveObject {
   @HiveField(25)
   List<bool> weeklyChallengeClaimed;
 
+  // ── Game Modes (Task 8) ───────────────────────────────────────────────────
+
+  /// Seed of the last daily seeded flight the player started (0 = never).
+  @HiveField(26)
+  int dailyLastSeed;
+
+  /// Whether today's single daily attempt has been consumed. Only meaningful
+  /// while [dailyLastSeed] equals the current day's seed.
+  @HiveField(27)
+  bool dailyAttemptUsed;
+
+  /// Best star rating per trial id (index = trial id, 0–3 stars).
+  @HiveField(28)
+  List<int> trialStars;
+
+  /// Best distance (m) reached in Zen Flight.
+  @HiveField(29)
+  double zenBestDistanceMeters;
+
   SaveData({
     this.coins = 0,
     this.gems = 0,
@@ -136,6 +155,10 @@ class SaveData extends HiveObject {
     List<int>? weeklyChallengeProgress,
     List<bool>? weeklyChallengeCompleted,
     List<bool>? weeklyChallengeClaimed,
+    this.dailyLastSeed = 0,
+    this.dailyAttemptUsed = false,
+    List<int>? trialStars,
+    this.zenBestDistanceMeters = 0,
   })  : unlockedPlaneIndices = unlockedPlaneIndices ?? [0],
         unlockedSkinIndices = unlockedSkinIndices ?? [0],
         dailyChallengeIds = dailyChallengeIds ?? [],
@@ -145,7 +168,8 @@ class SaveData extends HiveObject {
         weeklyChallengeIds = weeklyChallengeIds ?? [],
         weeklyChallengeProgress = weeklyChallengeProgress ?? [],
         weeklyChallengeCompleted = weeklyChallengeCompleted ?? [],
-        weeklyChallengeClaimed = weeklyChallengeClaimed ?? [];
+        weeklyChallengeClaimed = weeklyChallengeClaimed ?? [],
+        trialStars = trialStars ?? [];
 
   /// Returns a fresh default save for a new installation.
   factory SaveData.fresh() => SaveData();

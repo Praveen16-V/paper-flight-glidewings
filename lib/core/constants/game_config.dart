@@ -400,4 +400,52 @@ abstract class GameConfig {
 
   /// Weekly: 3 challenges refreshed each Monday.
   static const int weeklyChallengeCount = 3;
+
+  // ── Zen Flight / Endless Breeze (Task 8) ───────────────────────────────────
+  /// Zen world scrolls slower and ramps far more gently than classic — the
+  /// world drifts by instead of rushing at the player.
+  static const double zenBaseScrollSpeed = 100.0;
+  static const double zenScrollSpeedPerMeter = 0.08;
+  static const double zenMaxScrollSpeed = 280.0;
+
+  /// Global wind calm-down multiplier for Zen (1.0 = classic strength).
+  static const double zenWindScale = 0.55;
+
+  /// Seconds of immunity after a Zen bump so the plane doesn't rattle.
+  static const double zenBounceCooldown = 1.0;
+
+  /// Lateral + upward push applied to the plane on a Zen bump (px/s).
+  static const double zenBouncePushX = 220.0;
+  static const double zenBouncePushY = -70.0;
+
+  /// Zen has no crash — the plane softly bounces off the bottom of the world.
+  static const double zenSoftFloorY = 770.0;
+  static const double zenSoftFloorBounce = -80.0;
+
+  /// Zen biomes: Backyard Morning up to this distance, then Mountain Pass.
+  static const double zenBiomeMountainAt = 400.0;
+
+  // ── Daily Seeded Flight (Task 8) ───────────────────────────────────────────
+  /// Knuth multiplicative hash constants used to turn the UTC day index into
+  /// the daily seed. Any player anywhere gets the same seed on the same day.
+  static const int dailySeedSaltA = 2654435761;
+  static const int dailySeedSaltB = 1013904223;
+
+  // ── Precision Trials (Task 8) ──────────────────────────────────────────────
+  /// Course "end" marker: the run completes this many meters after the last
+  /// scripted element reaches the plane row.
+  static const double trialFinishMarginMeters = 40.0;
+
+  /// Lead distance (m) between a spawn event and the element reaching the
+  /// plane row, matching obstacleSpawnY (-80) and the plane start row.
+  static const double trialObstacleLeadMeters = 63.0;
+
+  /// Same, for bird/drone/storm-cloud style early-warning spawns (-260).
+  static const double trialEarlyWarningLeadMeters = 81.0;
+
+  /// Same, for coins / power-ups spawning at -40 / -50.
+  static const double trialCoinLeadMeters = 59.0;
+
+  /// Seconds of immunity after a trial crash-freeze before the results push.
+  static const double trialCrashFreezeSeconds = 0.9;
 }

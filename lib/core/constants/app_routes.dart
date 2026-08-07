@@ -8,4 +8,10 @@ abstract class AppRoutes {
   static const String shop = '/shop';
   static const String settings = '/settings';
   static const String dailyChallenges = '/challenges';
+
+  // ── Game Modes hub (Task 8) ──────────────────────────────────────────────
+  static const String modes = '/modes';
+  static const String dailyFlight = '/daily-flight';
+  static const String trials = '/trials';
+  static const String trialResult = '/trial-result';
 }

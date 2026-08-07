@@ -1,9 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flame/components.dart';
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
-import '../../core/utils/math_utils.dart';
 import '../../core/utils/noise.dart';
+import '../../models/trial_definition.dart';
 import '../paper_flight_game.dart';
 
 class LaneWind {
@@ -24,12 +26,28 @@ class TurbulencePocket {
 
 /// Four evolving wind lanes, with biome-specific force profiles and temporary
 /// turbulence pockets. Rendering reads the same data the plane physics uses.
+///
+/// Task 8:
+///  - [WindSystem.seed] makes the noise field + turbulence deterministic —
+///    the Daily Seeded Flight passes the daily seed so every player faces the
+///    identical wind.
+///  - [WindSystem.scriptedWindows] overrides the noise field for Precision
+///    Trials (handcrafted thermal / turbulence lanes).
+///  - Zen Flight scales the whole field down via [GameConfig.zenWindScale]
+///    and never spawns turbulence.
 class WindSystem extends Component with HasGameRef<PaperFlightGame> {
-  WindSystem() : _noise = ValueNoise(seed: 7);
+  WindSystem({int? seed})
+      : _noise = ValueNoise(seed: seed ?? 7),
+        _rng = math.Random(seed ?? 7);
+
   final ValueNoise _noise;
+  final math.Random _rng;
   double _time = 0;
   double _nextTurbulenceAt = 2;
   final List<_Pocket> _pockets = [];
+
+  /// Scripted wind lane windows for Precision Trials (null = natural noise).
+  List<ScriptedWindWindow>? scriptedWindows;
 
   List<TurbulencePocket> get turbulencePockets => _pockets
       .map((p) => TurbulencePocket(normX: p.normX, radius: p.radius, ttl: p.ttl))
@@ -37,18 +55,36 @@ class WindSystem extends Component with HasGameRef<PaperFlightGame> {
 
   @override
   void update(double dt) {
+    // Only while playing: keeps the seeded RNG draw sequence identical for
+    // every daily run (idle time before the run must not consume draws).
+    if (gameRef.phase != GamePhase.playing) return;
     _time += dt * GameConfig.windNoiseTimeScale;
     for (final p in _pockets) { p.ttl -= dt; }
     _pockets.removeWhere((p) => p.ttl <= 0);
     if (_time >= _nextTurbulenceAt && _pockets.length < 3) {
       _maybeSpawnTurbulence();
-      _nextTurbulenceAt = _time + MathUtils.randomRange(3.5, 7.5);
+      _nextTurbulenceAt = _time + _rng.nextDouble() * 4.0 + 3.5;
     }
   }
 
   LaneWind windAt(int laneIndex) {
-    final noiseVal = _noise.fbm(laneIndex * GameConfig.windNoiseLaneScale, _time, octaves: 3);
     final profile = this.profile;
+
+    // Precision Trial wind is fully handcrafted — windows win over noise.
+    final windows = scriptedWindows;
+    if (windows != null) {
+      for (final w in windows) {
+        if (w.laneIndex == laneIndex &&
+            gameRef.distanceMeters >= w.startMeters &&
+            gameRef.distanceMeters < w.endMeters) {
+          return _scriptedLaneWind(w, profile);
+        }
+      }
+      // Outside any window the air is still — trials only push where scripted.
+      return const LaneWind(lateralForce: 0, liftBonus: 0, type: WindType.calm, intensity: 0);
+    }
+
+    final noiseVal = _noise.fbm(laneIndex * GameConfig.windNoiseLaneScale, _time, octaves: 3);
     WindType type;
     double lateral;
     double lift = 0;
@@ -66,12 +102,61 @@ class WindSystem extends Component with HasGameRef<PaperFlightGame> {
       type = WindType.calm;
       lateral = noiseVal * GameConfig.maxWindForce * .2 * profile.wind;
     }
-    return LaneWind(lateralForce: lateral, liftBonus: lift, type: type, intensity: (noiseVal.abs() * profile.wind).clamp(0.0, 1.0).toDouble());
+
+    final zenScale = gameRef.mode == GameMode.zen ? GameConfig.zenWindScale : 1.0;
+    return LaneWind(
+      lateralForce: lateral * zenScale,
+      liftBonus: lift * zenScale,
+      type: type,
+      intensity: (noiseVal.abs() * profile.wind).clamp(0.0, 1.0).toDouble(),
+    );
+  }
+
+  LaneWind _scriptedLaneWind(ScriptedWindWindow w, AirProfile profile) {
+    switch (w.type) {
+      case WindType.calm:
+        return const LaneWind(lateralForce: 0, liftBonus: 0, type: WindType.calm, intensity: 0);
+      case WindType.leftPush:
+        return LaneWind(
+          lateralForce: -GameConfig.maxWindForce * profile.wind * w.intensity,
+          liftBonus: 0,
+          type: WindType.leftPush,
+          intensity: w.intensity,
+        );
+      case WindType.rightPush:
+        return LaneWind(
+          lateralForce: GameConfig.maxWindForce * profile.wind * w.intensity,
+          liftBonus: 0,
+          type: WindType.rightPush,
+          intensity: w.intensity,
+        );
+      case WindType.thermal:
+        return LaneWind(
+          lateralForce: 0,
+          liftBonus: GameConfig.thermalLiftForce * profile.thermal * w.intensity,
+          type: WindType.thermal,
+          intensity: w.intensity,
+        );
+      case WindType.turbulent:
+        // Deterministic jitter from the seeded noise field.
+        final jitter = _noise.fbm(w.laneIndex * 3.7, _time, octaves: 2);
+        return LaneWind(
+          lateralForce: jitter * GameConfig.maxWindForce * profile.wind * w.intensity,
+          liftBonus: 0,
+          type: WindType.turbulent,
+          intensity: w.intensity,
+        );
+    }
   }
 
   int laneForNormX(double normX) => (normX * GameConfig.windLaneCount).floor().clamp(0, GameConfig.windLaneCount - 1);
   bool isInTurbulence(double normX) => _pockets.any((p) => (normX - p.normX).abs() < p.radius);
   List<double> get laneIntensities => List.generate(GameConfig.windLaneCount, (i) => windAt(i).intensity);
+
+  /// Adds a scripted turbulence pocket (Precision Trials). [ttl] seconds.
+  void addTurbulencePocket(double normX, double radius, double ttl) {
+    _pockets.add(_Pocket(normX: normX, radius: radius, ttl: ttl));
+  }
 
   /// Lets plane mechanics tune gravity/control response without duplicating
   /// biome decisions in individual components.
@@ -86,12 +171,18 @@ class WindSystem extends Component with HasGameRef<PaperFlightGame> {
     }
   }
 
-  void reset() { _time = 0; _nextTurbulenceAt = 2; _pockets.clear(); }
+  void reset() {
+    _time = 0;
+    _nextTurbulenceAt = 2 + _rng.nextDouble() * 4;
+    _pockets.clear();
+  }
 
   void _maybeSpawnTurbulence() {
+    // Zen Flight never spawns turbulence — the sky stays calm.
+    if (gameRef.mode == GameMode.zen) return;
     final chance = gameRef.biomeManager.currentBiome == Biome.storm ? .72 : .32;
-    if (MathUtils.randomRange(0, 1) > chance) return;
-    _pockets.add(_Pocket(normX: MathUtils.randomRange(.1, .9), radius: MathUtils.randomRange(.08, .18), ttl: MathUtils.randomRange(2, 5)));
+    if (_rng.nextDouble() > chance) return;
+    _pockets.add(_Pocket(normX: _rng.nextDouble() * .8 + .1, radius: _rng.nextDouble() * .1 + .08, ttl: _rng.nextDouble() * 3 + 2));
   }
 }
 

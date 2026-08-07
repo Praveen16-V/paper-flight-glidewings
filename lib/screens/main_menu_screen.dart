@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
@@ -108,6 +108,39 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
 
                   // ── PLAY button ────────────────────────────────────────
                   _PlayButton(onTap: _onPlay),
+                  const SizedBox(height: 12),
+
+                  // ── Game modes hub (Task 8) ────────────────────────────
+                  GestureDetector(
+                    onTap: _onModes,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.divider),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('🍃', style: TextStyle(fontSize: 14)),
+                          SizedBox(width: 6),
+                          Text(
+                            'MORE MODES',
+                            style: TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 2,
+                            ),
+                          ),
+                          SizedBox(width: 6),
+                          Text('🎯', style: TextStyle(fontSize: 14)),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -152,6 +185,11 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
   void _onPlay() {
     AnalyticsService.instance.logEvent('play_tapped');
     Navigator.of(context).pushNamed(AppRoutes.game);
+  }
+
+  void _onModes() {
+    AnalyticsService.instance.logEvent('modes_tapped');
+    Navigator.of(context).pushNamed(AppRoutes.modes);
   }
 
   String _fmt(int n) {

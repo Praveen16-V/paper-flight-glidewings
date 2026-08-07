@@ -1,18 +1,28 @@
+import 'dart:math' as math;
+
 import 'package:flame/components.dart';
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
-import '../../core/utils/math_utils.dart';
 import '../../core/utils/object_pool.dart';
 import '../components/powerups/powerup_component.dart';
 import '../paper_flight_game.dart';
 
 /// Spawns power-ups procedurally on a slow timer.
 /// Ghost and Coin Rush are slightly rarer to keep them exciting.
+///
+/// Task 8: disabled for Zen Flight (no pressure) and Precision Trials
+/// (pure skill courses); the Daily Seeded Flight uses a seeded RNG.
 class PowerUpSpawner extends Component {
   PowerUpSpawner({required this.game});
 
   final PaperFlightGame game;
+
+  /// Seed-aware RNG (daily runs). See ObstacleSpawner.random.
+  math.Random random = math.Random();
+
+  /// False for Zen Flight and Precision Trials.
+  bool autoSpawn = true;
 
   final Map<PowerUpType, ObjectPool<PowerUpComponent>> _pools = {};
   final List<PowerUpComponent> _active = [];
@@ -33,6 +43,7 @@ class PowerUpSpawner extends Component {
   @override
   void update(double dt) {
     if (game.phase != GamePhase.playing) return;
+    if (!autoSpawn) return;
     _spawnTimer += dt;
     if (_spawnTimer >= GameConfig.powerUpBaseSpawnInterval) {
       _spawnTimer = 0;
@@ -49,7 +60,7 @@ class PowerUpSpawner extends Component {
   }
 
   void _spawnPowerUp() {
-    final type = MathUtils.weightedPick(
+    final type = _weightedPick(
       PowerUpType.values,
       [
         1.4, // shield
@@ -61,10 +72,12 @@ class PowerUpSpawner extends Component {
     );
 
     final spawnPos = Vector2(
-      MathUtils.randomRange(
-        GameConfig.horizontalEdgeMargin + 30,
-        GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 30,
-      ),
+      GameConfig.horizontalEdgeMargin +
+          30 +
+          random.nextDouble() *
+              (GameConfig.designWidth -
+                  GameConfig.horizontalEdgeMargin * 2 -
+                  60),
       GameConfig.powerUpSpawnY,
     );
 
@@ -79,5 +92,15 @@ class PowerUpSpawner extends Component {
     pu.deactivate();
     if (pu.parent != null) game.world.remove(pu);
     _pools[pu.type]!.release(pu);
+  }
+
+  T _weightedPick<T>(List<T> items, List<double> weights) {
+    final total = weights.fold(0.0, (a, b) => a + b);
+    double roll = random.nextDouble() * total;
+    for (int i = 0; i < items.length; i++) {
+      roll -= weights[i];
+      if (roll <= 0) return items[i];
+    }
+    return items.last;
   }
 }

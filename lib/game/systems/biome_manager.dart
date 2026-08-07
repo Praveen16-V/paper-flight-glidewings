@@ -7,6 +7,12 @@ import '../paper_flight_game.dart';
 
 /// Tracks which biome the player is currently in based on distance traveled.
 /// Notifies game systems when a biome transition occurs.
+///
+/// Task 8: biome progression is mode-aware —
+///  - Classic / Daily: the standard backyard → city → storm → mountain →
+///    night → atmosphere journey.
+///  - Zen Flight: only calm biomes (Backyard Morning, then Mountain Pass).
+///  - Precision Trials: pinned to the trial's biome for the whole course.
 class BiomeManager extends Component {
   BiomeManager({required this.game});
 
@@ -24,7 +30,11 @@ class BiomeManager extends Component {
   @override
   void update(double dt) {
     final dist = game.distanceMeters;
-    final newBiome = _biomeForDistance(dist);
+    final newBiome = switch (game.mode) {
+      GameMode.trial => _currentBiome, // pinned to the trial biome
+      GameMode.zen => _zenBiomeForDistance(dist),
+      GameMode.classic || GameMode.daily => _biomeForDistance(dist),
+    };
     if (newBiome != _currentBiome) {
       final old = _currentBiome;
       _currentBiome = newBiome;
@@ -35,8 +45,17 @@ class BiomeManager extends Component {
     }
   }
 
-  void reset() {
-    _currentBiome = Biome.city;
+  /// Resets biome state for a new run in [mode].
+  void reset(GameMode mode) {
+    switch (mode) {
+      case GameMode.trial:
+        _currentBiome = game.trial?.biome ?? Biome.city;
+      case GameMode.zen:
+        _currentBiome = Biome.backyard;
+      case GameMode.classic:
+      case GameMode.daily:
+        _currentBiome = Biome.city;
+    }
   }
 
   static Biome _biomeForDistance(double meters) {
@@ -46,6 +65,13 @@ class BiomeManager extends Component {
     if (meters < GameConfig.biomeMountainEnd) return Biome.mountain;
     if (meters < GameConfig.biomeNightEnd) return Biome.night;
     return Biome.atmosphere;
+  }
+
+  /// Zen only visits the calm biomes: Backyard Morning first, then a gentle
+  /// endless Mountain Pass. Never storm, never night, never the atmosphere.
+  static Biome _zenBiomeForDistance(double meters) {
+    if (meters < GameConfig.zenBiomeMountainAt) return Biome.backyard;
+    return Biome.mountain;
   }
 
   /// Returns the spawn weight for a given obstacle type in the current biome.

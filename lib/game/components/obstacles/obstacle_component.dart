@@ -12,6 +12,7 @@ import '../../../core/utils/math_utils.dart';
 import '../../../providers/game_session_provider.dart';
 import '../../paper_flight_game.dart';
 import '../plane_component.dart';
+import 'obstacle_script.dart';
 
 /// Base class for all obstacle types.
 ///
@@ -44,6 +45,22 @@ abstract class ObstacleComponent extends PositionComponent
   /// their opening here, while moving hazards reserve this approach lane.
   double? safeCorridorX;
 
+  /// Handcrafted layout overrides for scripted spawns (trials / daily seed).
+  /// Null in the classic endless mode — everything stays random there.
+  ObstacleScript? script;
+
+  /// Seeded RNG for this activation — the Daily Seeded Flight passes a
+  /// seed-derived generator so every player sees the identical run. Falls
+  /// back to an unseeded generator in classic/zen mode.
+  late math.Random _rng;
+
+  double rngRange(double min, double max) =>
+      min + _rng.nextDouble() * (max - min);
+
+  int rngInt(int min, int max) => min + _rng.nextInt(max - min + 1);
+
+  bool rngBool() => _rng.nextBool();
+
   /// Elapsed time since this obstacle was activated.
   double animTime = 0.0;
 
@@ -64,6 +81,8 @@ abstract class ObstacleComponent extends PositionComponent
     required double scrollSpeed,
     double? safeCorridorX,
     void Function(ObstacleComponent)? recycleCallback,
+    ObstacleScript? script,
+    math.Random? rng,
   }) {
     // High-threat hazards begin farther out so their dedicated warning has at
     // least half a second at the 480 px/s speed cap.
@@ -76,6 +95,8 @@ abstract class ObstacleComponent extends PositionComponent
     challengeGapCounted = false;
     onRecycle = recycleCallback;
     this.safeCorridorX = safeCorridorX;
+    this.script = script;
+    _rng = rng ?? math.Random();
     onActivate(scrollSpeed);
     _playThreatCue();
   }
@@ -84,6 +105,7 @@ abstract class ObstacleComponent extends PositionComponent
     _active = false;
     onRecycle = null;
     safeCorridorX = null;
+    script = null;
     _nearMissAwarded = false;
     _minNearMissClearance = double.infinity;
     removeAll(children.whereType<ShapeHitbox>().toList());
@@ -329,13 +351,17 @@ class PowerLineObstacle extends ObstacleComponent {
   @override
   void onActivate(double scrollSpeed) {
     size = Vector2(GameConfig.designWidth, 40);
-    _gapWidth = MathUtils.randomRange(92, 125);
+    final scriptedGapWidth = script?.gapWidth;
+    _gapWidth = scriptedGapWidth ?? rngRange(92, 125);
     final minGapX = GameConfig.horizontalEdgeMargin + 35;
     final maxGapX = GameConfig.designWidth - GameConfig.horizontalEdgeMargin - _gapWidth - 35;
-    _gapX = safeCorridorX == null
-        ? MathUtils.randomRange(minGapX, maxGapX)
-        : (safeCorridorX! - _gapWidth / 2).clamp(minGapX, maxGapX).toDouble();
-    _sparkTimer = MathUtils.randomRange(0.5, 2.0);
+    final scriptedCenter = script?.gapCenterX;
+    _gapX = scriptedCenter != null
+        ? (scriptedCenter - _gapWidth / 2).clamp(minGapX, maxGapX).toDouble()
+        : safeCorridorX == null
+            ? rngRange(minGapX, maxGapX)
+            : (safeCorridorX! - _gapWidth / 2).clamp(minGapX, maxGapX).toDouble();
+    _sparkTimer = rngRange(0.5, 2.0);
     _sparkAlpha = 0;
     _setupHitboxes();
   }
@@ -568,13 +594,17 @@ class BuildingObstacle extends ObstacleComponent {
   @override
   void onActivate(double scrollSpeed) {
     size = Vector2(GameConfig.designWidth, 230);
-    _gapWidth = MathUtils.randomRange(100, 135);
+    final scriptedGapWidth = script?.gapWidth;
+    _gapWidth = scriptedGapWidth ?? rngRange(100, 135);
     const minGapX = 50.0;
     final maxGapX = GameConfig.designWidth - _gapWidth - 50;
-    _leftWidth = safeCorridorX == null
-        ? MathUtils.randomRange(minGapX, maxGapX)
-        : (safeCorridorX! - _gapWidth / 2).clamp(minGapX, maxGapX).toDouble();
-    _style = math.Random().nextInt(3);
+    final scriptedCenter = script?.gapCenterX;
+    _leftWidth = scriptedCenter != null
+        ? (scriptedCenter - _gapWidth / 2).clamp(minGapX, maxGapX).toDouble()
+        : safeCorridorX == null
+            ? rngRange(minGapX, maxGapX)
+            : (safeCorridorX! - _gapWidth / 2).clamp(minGapX, maxGapX).toDouble();
+    _style = rngInt(0, 2);
     _setupHitboxes();
   }
 
@@ -815,10 +845,10 @@ class TreeBranchObstacle extends ObstacleComponent {
 
   @override
   void onActivate(double scrollSpeed) {
-    _fromLeft = math.Random().nextBool();
-    _branchWidth = MathUtils.randomRange(75, 125);
+    _fromLeft = script?.fromLeft ?? rngBool();
+    _branchWidth = rngRange(75, 125);
     size = Vector2(_branchWidth, 42);
-    _swayPhase = MathUtils.randomRange(0, math.pi * 2);
+    _swayPhase = rngRange(0, math.pi * 2);
     _fallingLeaves.clear();
 
     // Spawn anchor: left edge (0) or right edge (designWidth - width)
@@ -1049,11 +1079,11 @@ class BirdObstacle extends ObstacleComponent {
   void onActivate(double scrollSpeed) {
     size = Vector2(36, 26);
     _spawnX = position.x;
-    _patrolAmplitude = MathUtils.randomRange(55, 110);
-    _patrolFreq = MathUtils.randomRange(1.4, 2.6);
-    _patrolPhase = MathUtils.randomRange(0, math.pi * 2);
-    _wingFlapPhase = MathUtils.randomRange(0, math.pi * 2);
-    _birdSpecies = math.Random().nextInt(3);
+    _patrolAmplitude = script?.driftAmp ?? rngRange(55, 110);
+    _patrolFreq = script?.driftFreq ?? rngRange(1.4, 2.6);
+    _patrolPhase = rngRange(0, math.pi * 2);
+    _wingFlapPhase = rngRange(0, math.pi * 2);
+    _birdSpecies = rngInt(0, 2);
     _velocityX = 0;
 
     removeAll(children.whereType<ShapeHitbox>().toList());
@@ -1233,7 +1263,7 @@ class DroneObstacle extends ObstacleComponent {
   @override
   void onActivate(double scrollSpeed) {
     size = Vector2(38, 28);
-    _trackingDuration = MathUtils.randomRange(2.5, 4.2);
+    _trackingDuration = rngRange(2.5, 4.2);
     _trackingTimer = 0;
     _velocityX = 0;
     _isLockedOn = false;
@@ -1437,10 +1467,10 @@ class WindTurbineObstacle extends ObstacleComponent {
 
   @override
   void onActivate(double scrollSpeed) {
-    _bladeRadius = MathUtils.randomRange(60, 78);
+    _bladeRadius = rngRange(60, 78);
     size = Vector2(_bladeRadius * 2.2, _bladeRadius * 2.2 + 60);
-    _bladeAngle = MathUtils.randomRange(0, math.pi * 2);
-    _rotSpeed = MathUtils.randomRange(1.2, 1.9) * (math.Random().nextBool() ? 1 : -1);
+    _bladeAngle = rngRange(0, math.pi * 2);
+    _rotSpeed = rngRange(1.2, 1.9) * (rngBool() ? 1 : -1);
 
     removeAll(children.whereType<ShapeHitbox>().toList());
     // Central hub & mast hitbox
@@ -1594,9 +1624,9 @@ class HotAirBalloonObstacle extends ObstacleComponent {
   void onActivate(double scrollSpeed) {
     size = Vector2(72, 96);
     _spawnX = position.x;
-    _driftAmp = MathUtils.randomRange(25, 45);
-    _driftPhase = MathUtils.randomRange(0, math.pi * 2);
-    _colorTheme = math.Random().nextInt(3);
+    _driftAmp = script?.driftAmp ?? rngRange(25, 45);
+    _driftPhase = rngRange(0, math.pi * 2);
+    _colorTheme = rngInt(0, 2);
 
     removeAll(children.whereType<ShapeHitbox>().toList());
     // Balloon envelope hitbox
@@ -1800,7 +1830,7 @@ class StormCloudObstacle extends ObstacleComponent {
   @override
   void onActivate(double scrollSpeed) {
     size = Vector2(100, 55);
-    _chargeTimer = MathUtils.randomRange(1.2, 2.5);
+    _chargeTimer = rngRange(1.2, 2.5);
     _lightningAlpha = 0;
     _lightningPoints = [];
 
@@ -1945,8 +1975,8 @@ class KiteObstacle extends ObstacleComponent {
   void onActivate(double scrollSpeed) {
     size = Vector2(40, 110);
     _spawnX = position.x;
-    _driftAmp = MathUtils.randomRange(35, 65);
-    _flutterPhase = MathUtils.randomRange(0, math.pi * 2);
+    _driftAmp = script?.driftAmp ?? rngRange(35, 65);
+    _flutterPhase = rngRange(0, math.pi * 2);
 
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(RectangleHitbox(
