@@ -53,11 +53,11 @@ class _TrialResultsScreenState extends State<TrialResultsScreen>
 
     _shake = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
     _shakeOffset = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0, end: -7), weight: 12),
-      TweenSequenceItem(tween: Tween(begin: -7, end: 7), weight: 18),
-      TweenSequenceItem(tween: Tween(begin: 7, end: -4), weight: 14),
-      TweenSequenceItem(tween: Tween(begin: -4, end: 3), weight: 12),
-      TweenSequenceItem(tween: Tween(begin: 3, end: 0), weight: 14),
+      TweenSequenceItem(tween: Tween<double>(begin: 0.0, end: -7.0), weight: 12),
+      TweenSequenceItem(tween: Tween<double>(begin: -7.0, end: 7.0), weight: 18),
+      TweenSequenceItem(tween: Tween<double>(begin: 7.0, end: -4.0), weight: 14),
+      TweenSequenceItem(tween: Tween<double>(begin: -4.0, end: 3.0), weight: 12),
+      TweenSequenceItem(tween: Tween<double>(begin: 3.0, end: 0.0), weight: 14),
     ]).animate(CurvedAnimation(parent: _shake, curve: Curves.easeOut));
 
     _confettiTicker = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat();
@@ -66,8 +66,8 @@ class _TrialResultsScreenState extends State<TrialResultsScreen>
     _starCtrls = List.generate(3, (i) => AnimationController(vsync: this, duration: const Duration(milliseconds: 520)));
     _starScales = _starCtrls
         .map((c) => TweenSequence<double>([
-              TweenSequenceItem(tween: Tween(begin: 0, end: 1.28).chain(CurveTween(curve: Curves.easeOutBack)), weight: 55),
-              TweenSequenceItem(tween: Tween(begin: 1.28, end: 1.0).chain(CurveTween(curve: Curves.easeOutCubic)), weight: 45),
+              TweenSequenceItem(tween: Tween<double>(begin: 0.0, end: 1.28).chain(CurveTween(curve: Curves.easeOutBack)), weight: 55),
+              TweenSequenceItem(tween: Tween<double>(begin: 1.28, end: 1.0).chain(CurveTween(curve: Curves.easeOutCubic)), weight: 45),
             ]).animate(c))
         .toList();
     _starRot = _starCtrls
