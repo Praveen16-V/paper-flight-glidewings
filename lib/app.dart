@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/constants/app_colors.dart';
 import 'core/constants/app_routes.dart';
+import 'core/constants/app_typography.dart';
 import 'screens/splash_screen.dart';
 import 'screens/main_menu_screen.dart';
 import 'screens/game_screen.dart';
@@ -42,32 +43,15 @@ class PaperFlightApp extends ConsumerWidget {
         onSurface: AppColors.textLight,
       ),
       scaffoldBackgroundColor: AppColors.background,
-      fontFamily: 'Nunito', // fallback to system if not bundled
+      fontFamily: AppTypography.body,
       textTheme: const TextTheme(
-        displayLarge: TextStyle(
-          fontSize: 48,
-          fontWeight: FontWeight.w900,
-          letterSpacing: -1.5,
-        ),
-        displayMedium: TextStyle(
-          fontSize: 36,
-          fontWeight: FontWeight.w800,
-        ),
-        headlineMedium: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.w700,
-        ),
-        titleLarge: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-        ),
-        bodyLarge: TextStyle(fontSize: 16),
-        bodyMedium: TextStyle(fontSize: 14),
-        labelLarge: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.5,
-        ),
+        displayLarge: AppTypography.displayLarge,
+        displayMedium: AppTypography.displayMedium,
+        headlineMedium: AppTypography.headline,
+        titleLarge: AppTypography.title,
+        bodyLarge: AppTypography.bodyLarge,
+        bodyMedium: AppTypography.bodyMedium,
+        labelLarge: AppTypography.label,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(

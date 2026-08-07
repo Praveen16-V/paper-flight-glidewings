@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
+import '../core/constants/app_typography.dart';
 import '../core/enums/game_enums.dart';
+import '../core/widgets/paper_button.dart';
+import '../core/widgets/paper_card.dart';
+import '../core/widgets/paper_icons.dart';
+import '../core/widgets/stat_counter.dart';
 import '../models/trial_definition.dart';
 import '../providers/game_session_provider.dart';
 import 'game_screen.dart';
@@ -13,8 +18,7 @@ class TrialResultArgs {
   final TrialOutcome? outcome;
 }
 
-/// Results screen shown after a Precision Trial finishes — stars, stats,
-/// retry / next-trial / menu actions.
+/// Results screen shown after a Precision Trial finishes.
 class TrialResultsScreen extends StatefulWidget {
   const TrialResultsScreen({super.key, required this.args});
   final TrialResultArgs args;
@@ -46,163 +50,179 @@ class _TrialResultsScreenState extends State<TrialResultsScreen>
   @override
   Widget build(BuildContext context) {
     final outcome = _outcome;
-    final trial = outcome == null
-        ? null
-        : TrialPool.byId(outcome.trialId);
+    final trial =
+        outcome == null ? null : TrialPool.byId(outcome.trialId);
+    final completed = outcome?.completed == true;
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: CurvedAnimation(parent: _anim, curve: Curves.easeIn),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              children: [
-                const SizedBox(height: 40),
-
-                // ── Header ───────────────────────────────────────────────
-                Text(
-                  outcome == null
-                      ? 'TRIAL'
-                      : outcome.completed
-                          ? 'COURSE COMPLETE'
-                          : outcome.timedOut
-                              ? 'TIME UP'
-                              : 'CRASHED',
-                  style: TextStyle(
-                    color: outcome?.completed == true
-                        ? AppColors.success
-                        : AppColors.danger,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 3,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.surfaceAlt, AppColors.backgroundDeep],
+          ),
+        ),
+        child: SafeArea(
+          child: FadeTransition(
+            opacity: CurvedAnimation(parent: _anim, curve: Curves.easeIn),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                children: [
+                  const SizedBox(height: 32),
+                  Text(
+                    outcome == null
+                        ? 'TRIAL'
+                        : completed
+                            ? 'COURSE COMPLETE'
+                            : outcome.timedOut
+                                ? 'TIME UP'
+                                : 'CRASHED',
+                    style: AppTypography.displayMedium.copyWith(
+                      color: completed
+                          ? AppColors.success
+                          : AppColors.danger,
+                      fontSize: 26,
+                      letterSpacing: 2,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  trial?.title ?? '',
-                  style: const TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // ── Stars ───────────────────────────────────────────────
-                if (outcome != null) ...[
-                  _StarsRow(stars: outcome.stars, anim: _anim),
-                  if (outcome.isNewBestStars) ...[
-                    const SizedBox(height: 10),
-                    const Text(
-                      '★ NEW BEST!',
-                      style: TextStyle(
-                        color: AppColors.warning,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 2,
+                  const SizedBox(height: 6),
+                  Text(trial?.title ?? '', style: AppTypography.caption),
+                  const SizedBox(height: 24),
+                  if (outcome != null) ...[
+                    _StarsRow(stars: outcome.stars, anim: _anim),
+                    if (outcome.isNewBestStars) ...[
+                      const SizedBox(height: 10),
+                      Text('★ NEW BEST!',
+                          style: AppTypography.label.copyWith(
+                              color: AppColors.warning,
+                              letterSpacing: 2,
+                              fontSize: 14)),
+                    ],
+                    if (!completed) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        outcome.timedOut
+                            ? 'The clock ran out — fly faster!'
+                            : 'One touch ends the run — try again!',
+                        style: AppTypography.caption.copyWith(fontSize: 12.5),
                       ),
-                    ),
-                  ],
-                  if (!outcome.completed) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      outcome.timedOut
-                          ? 'The clock ran out — fly faster!'
-                          : 'One touch ends the run — try again!',
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 12.5,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 28),
-
-                  // ── Stats card ────────────────────────────────────────
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: AppColors.divider),
-                    ),
-                    child: Column(
-                      children: [
-                        _StatRow(
-                          label: 'Time',
-                          value:
-                              '${outcome.timeUsedSeconds.toStringAsFixed(1)} s',
-                        ),
-                        const Divider(color: AppColors.divider, height: 18),
-                        _StatRow(
-                          label: 'Coins',
-                          value:
-                              '${outcome.coinsCollected}/${outcome.totalCoins}',
-                          valueColor: AppColors.coinGold,
-                        ),
-                        if (trial?.parSeconds != null) ...[
-                          const Divider(color: AppColors.divider, height: 18),
+                    ],
+                    const SizedBox(height: 28),
+                    PaperCard(
+                      color: completed
+                          ? AppColors.paperGreen
+                          : AppColors.paperRose,
+                      elevation: 1.6,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 14),
+                      dogEar: completed
+                          ? const DogEar(
+                              label: 'DONE',
+                              color: AppColors.success,
+                              size: 56)
+                          : null,
+                      child: Column(
+                        children: [
                           _StatRow(
-                            label: 'Par',
-                            value:
-                                '${trial!.parSeconds!.toStringAsFixed(0)} s',
+                            label: 'Time',
+                            value: outcome.timeUsedSeconds,
+                            suffix: ' s',
                           ),
+                          Divider(
+                              color:
+                                  AppColors.paperInkSoft.withOpacity(0.25),
+                              height: 18),
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  PaperIcon(PaperIconData.coin,
+                                      size: 14, color: AppColors.coinGold),
+                                  const SizedBox(width: 6),
+                                  Text('Coins',
+                                      style: AppTypography.bodyMedium
+                                          .copyWith(
+                                              color: AppColors.paperInkSoft)),
+                                ],
+                              ),
+                              StatCounter(
+                                outcome.coinsCollected,
+                                suffix: '/${outcome.totalCoins}',
+                                style: AppTypography.statSmall.copyWith(
+                                    color: AppColors.coinGoldDeep),
+                              ),
+                            ],
+                          ),
+                          if (trial?.parSeconds != null) ...[
+                            Divider(
+                                color: AppColors.paperInkSoft
+                                    .withOpacity(0.25),
+                                height: 18),
+                            _StatRow(
+                              label: 'Par',
+                              value: trial!.parSeconds!,
+                              suffix: ' s',
+                              valueColor: AppColors.paperInk,
+                            ),
+                          ],
                         ],
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  if (trial != null) ...[
+                    PaperButton(
+                      label: 'FLY AGAIN',
+                      expand: true,
+                      onPressed: () => _retry(trial),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: PaperButton(
+                            label: 'MENU',
+                            expand: true,
+                            color: AppColors.paperWarm,
+                            textColor: AppColors.paperInk,
+                            onPressed: () => Navigator.of(context)
+                                .pushReplacementNamed(AppRoutes.trials),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: PaperButton(
+                            label: 'TRIALS',
+                            expand: true,
+                            color: AppColors.paperBlue,
+                            textColor: AppColors.gemBlueDeep,
+                            onPressed: () => Navigator.of(context)
+                                .pushReplacementNamed(AppRoutes.trials),
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                ],
-
-                const Spacer(),
-
-                // ── Actions ─────────────────────────────────────────────
-                if (trial != null) ...[
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => _retry(trial),
-                      child: const Text('FLY AGAIN'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _GhostButton(
-                          label: 'MENU',
-                          onTap: () => Navigator.of(context)
-                              .pushReplacementNamed(AppRoutes.trials),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _GhostButton(
-                          label: 'TRIALS',
-                          onTap: () => Navigator.of(context)
-                              .pushReplacementNamed(AppRoutes.trials),
+                    if (outcome?.completed == true &&
+                        outcome!.stars >= 1) ...[
+                      const SizedBox(height: 4),
+                      TextButton(
+                        onPressed: () => _nextTrial(trial),
+                        child: Text(
+                          'NEXT TRIAL →',
+                          style: AppTypography.label.copyWith(
+                              color: AppColors.accentAlt, letterSpacing: 1),
                         ),
                       ),
                     ],
-                  ),
-                  // Next course unlocks with a star on this one.
-                  if (outcome?.completed == true && outcome!.stars >= 1) ...[
-                    const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: () => _nextTrial(trial),
-                      child: const Text(
-                        'NEXT TRIAL →',
-                        style: TextStyle(
-                          color: AppColors.gemBlue,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ),
                   ],
+                  const SizedBox(height: 24),
                 ],
-                const SizedBox(height: 32),
-              ],
+              ),
             ),
           ),
         ),
@@ -252,10 +272,15 @@ class _StarsRow extends StatelessWidget {
                 ),
               ),
             ),
-            child: Icon(
-              s <= stars ? Icons.star : Icons.star_border,
-              size: 54,
-              color: s <= stars ? AppColors.warning : AppColors.divider,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Icon(
+                s <= stars ? Icons.star : Icons.star_border,
+                size: 54,
+                color: s <= stars
+                    ? AppColors.warning
+                    : AppColors.textMuted.withOpacity(0.4),
+              ),
             ),
           ),
       ],
@@ -264,9 +289,15 @@ class _StarsRow extends StatelessWidget {
 }
 
 class _StatRow extends StatelessWidget {
-  const _StatRow({required this.label, required this.value, this.valueColor});
+  const _StatRow({
+    required this.label,
+    required this.value,
+    this.suffix = '',
+    this.valueColor,
+  });
   final String label;
-  final String value;
+  final double value;
+  final String suffix;
   final Color? valueColor;
 
   @override
@@ -274,51 +305,18 @@ class _StatRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
-        ),
-        Text(
+        Text(label,
+            style: AppTypography.bodyMedium
+                .copyWith(color: AppColors.paperInkSoft)),
+        StatCounter(
           value,
-          style: TextStyle(
-            color: valueColor ?? AppColors.textLight,
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
+          suffix: suffix,
+          style: AppTypography.stat.copyWith(
+            color: valueColor ?? AppColors.paperInk,
+            fontSize: 16,
           ),
         ),
       ],
-    );
-  }
-}
-
-class _GhostButton extends StatelessWidget {
-  const _GhostButton({required this.label, required this.onTap});
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.divider),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.textLight,
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

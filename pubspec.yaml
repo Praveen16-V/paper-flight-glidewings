@@ -104,3 +104,14 @@ flutter:
     - assets/audio/powerup_pickup.mp3
     - assets/audio/near_miss.mp3
     - assets/audio/bgm_city.mp3
+
+  fonts:
+    - family: Fredoka
+      fonts:
+        - asset: assets/fonts/fredoka_variable.ttf
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/nunito_variable.ttf
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/jetbrainsmono_variable.ttf

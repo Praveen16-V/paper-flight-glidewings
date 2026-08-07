@@ -5,6 +5,7 @@ import 'package:flame/components.dart';
 import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/painting.dart';
 
+import '../../../core/constants/app_typography.dart';
 import '../../../core/enums/game_enums.dart';
 import '../../paper_flight_game.dart';
 
@@ -560,10 +561,12 @@ class FloatingScoreText extends PositionComponent {
 
   TextPainter _textPainter(String value, double alpha) {
     final style = TextStyle(
+      fontFamily: AppTypography.mono,
       color: color.withOpacity(alpha.clamp(0.0, 1.0)),
       fontSize: fontSize,
-      fontWeight: FontWeight.w900,
+      fontWeight: FontWeight.w800,
       letterSpacing: 0.8,
+      fontFeatures: const [FontFeature.tabularFigures()],
       shadows: const [
         Shadow(color: Color(0xDD000000), blurRadius: 4, offset: Offset(1.5, 1.5)),
         Shadow(color: Color(0x88000000), blurRadius: 8, offset: Offset(0, 2)),

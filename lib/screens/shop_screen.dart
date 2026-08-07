@@ -4,17 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
+import '../core/constants/app_typography.dart';
 import '../core/enums/game_enums.dart';
+import '../core/widgets/currency_chip.dart';
+import '../core/widgets/paper_button.dart';
+import '../core/widgets/paper_card.dart';
+import '../core/widgets/paper_icons.dart';
 import '../providers/save_data_provider.dart';
 import '../services/ad_service.dart';
 import '../services/analytics_service.dart';
 import '../services/iap_service.dart';
 
 /// Shop screen — IAP products + rewarded-ad earn flows.
-///
-/// IAP products are fetched from the store at build time via [IapService].
-/// Rewarded ad flows (mystery chest, pre-run shield refill) are shown here
-/// as opt-in earn actions for non-paying players.
 class ShopScreen extends ConsumerStatefulWidget {
   const ShopScreen({super.key});
 
@@ -76,21 +77,16 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
       case IapProductIds.gems50:
         await notifier.addGems(50);
       case IapProductIds.starterPack:
-        // Starter pack: 500 coins + 25 gems + remove ads trial.
         await notifier.addCoins(500);
         await notifier.addGems(25);
         await notifier.setAdsRemoved();
       case IapProductIds.planeBundle:
-        // Unlock all planes.
         for (int i = 0; i < 3; i++) {
           await notifier.unlockPlane(i, 0);
         }
     }
-
-    AnalyticsService.instance.logEvent(
-      'iap_delivered',
-      params: {'product_id': productId},
-    );
+    AnalyticsService.instance
+        .logEvent('iap_delivered', params: {'product_id': productId});
   }
 
   void _buy(String productId) {
@@ -104,128 +100,134 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.textLight,
-        elevation: 0,
-        title: const Text('Shop',
-            style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1)),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: _CurrencyRow(coins: save.coins, gems: save.gems),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.surfaceAlt, AppColors.background],
           ),
-        ],
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _TitleBar(coins: save.coins, gems: save.gems),
+              Expanded(
+                child: _loading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                            color: AppColors.accent))
+                    : ListView(
+                        padding: const EdgeInsets.all(20),
+                        children: [
+                          if (!save.adsRemoved) ...[
+                            _SectionHeader(title: 'Ad-Free'),
+                            const SizedBox(height: 12),
+                            _ShopCard(
+                              title: 'Remove Ads',
+                              description:
+                                  'No more interstitials. Ever. Rewarded ads remain optional.',
+                              icon: Icons.block_outlined,
+                              iconColor: AppColors.success,
+                              sheet: AppColors.paperGreen,
+                              dogEar: 'VALUE',
+                              actionLabel: _priceFor(IapProductIds.removeAds),
+                              onTap: () => _buy(IapProductIds.removeAds),
+                            ),
+                            const SizedBox(height: 24),
+                          ],
+                          _SectionHeader(title: 'Deals'),
+                          const SizedBox(height: 12),
+                          _ShopCard(
+                            title: 'Starter Pack',
+                            description:
+                                '500 coins + 25 gems + Remove Ads included. One-time offer.',
+                            icon: Icons.card_giftcard_outlined,
+                            iconColor: AppColors.warning,
+                            sheet: AppColors.paperGold,
+                            dogEar: '1X',
+                            actionLabel: _priceFor(IapProductIds.starterPack),
+                            onTap: () => _buy(IapProductIds.starterPack),
+                          ),
+                          const SizedBox(height: 24),
+                          _SectionHeader(title: 'Coins'),
+                          const SizedBox(height: 12),
+                          _CoinPackRow(
+                            packs: [
+                              _CoinPack(
+                                label: '1,000',
+                                price: _priceFor(IapProductIds.coins1000),
+                                onTap: () => _buy(IapProductIds.coins1000),
+                              ),
+                              _CoinPack(
+                                label: '5,000',
+                                price: _priceFor(IapProductIds.coins5000),
+                                bonus: '+20%',
+                                onTap: () => _buy(IapProductIds.coins5000),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          _SectionHeader(title: 'Gems'),
+                          const SizedBox(height: 12),
+                          _ShopCard(
+                            title: '50 Gems',
+                            description:
+                                'Premium currency. Use for rare unlocks.',
+                            leading: PaperIcon(PaperIconData.gem,
+                                size: 28, color: AppColors.gemBlue),
+                            iconColor: AppColors.gemBlue,
+                            sheet: AppColors.paperBlue,
+                            actionLabel: _priceFor(IapProductIds.gems50),
+                            onTap: () => _buy(IapProductIds.gems50),
+                          ),
+                          const SizedBox(height: 24),
+                          if (!save.adsRemoved) ...[
+                            _SectionHeader(title: 'Earn Free'),
+                            const SizedBox(height: 12),
+                            _EarnCard(
+                              title: 'Mystery Chest',
+                              description: 'Watch a short ad for a bonus chest.',
+                              icon: Icons.card_giftcard_outlined,
+                              iconColor: AppColors.accent,
+                              onTap: _showMysteryChestAd,
+                            ),
+                            const SizedBox(height: 10),
+                            _EarnCard(
+                              title: 'Refill Shield',
+                              description:
+                                  'Start your next run with a free shield.',
+                              icon: Icons.shield_outlined,
+                              iconColor: AppColors.shieldBlue,
+                              onTap: _showRefillShieldAd,
+                            ),
+                          ],
+                          const SizedBox(height: 24),
+                          Center(
+                            child: TextButton(
+                              onPressed: IapService.instance.restorePurchases,
+                              child: Text(
+                                'Restore Purchases',
+                                style: AppTypography.caption.copyWith(
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        ),
       ),
-      body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.accent))
-          : ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                // ── Remove Ads ─────────────────────────────────────────────
-                if (!save.adsRemoved) ...[
-                  _SectionHeader(title: 'Ad-Free'),
-                  const SizedBox(height: 12),
-                  _ShopCard(
-                    title: 'Remove Ads',
-                    description:
-                        'No more interstitials. Ever. Rewarded ads remain '
-                        'optional.',
-                    icon: Icons.block_outlined,
-                    iconColor: AppColors.success,
-                    badge: 'BEST VALUE',
-                    actionLabel: _priceFor(IapProductIds.removeAds),
-                    onTap: () => _buy(IapProductIds.removeAds),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-
-                // ── Starter pack ───────────────────────────────────────────
-                _SectionHeader(title: 'Deals'),
-                const SizedBox(height: 12),
-                _ShopCard(
-                  title: 'Starter Pack',
-                  description:
-                      '500 coins + 25 gems + Remove Ads included. '
-                      'One-time offer.',
-                  icon: Icons.card_giftcard_outlined,
-                  iconColor: AppColors.warning,
-                  badge: 'ONE-TIME',
-                  actionLabel: _priceFor(IapProductIds.starterPack),
-                  onTap: () => _buy(IapProductIds.starterPack),
-                ),
-                const SizedBox(height: 24),
-
-                // ── Coins ──────────────────────────────────────────────────
-                _SectionHeader(title: 'Coins'),
-                const SizedBox(height: 12),
-                _CoinPackRow(
-                  packs: [
-                    _CoinPack(
-                      label: '1,000',
-                      price: _priceFor(IapProductIds.coins1000),
-                      onTap: () => _buy(IapProductIds.coins1000),
-                    ),
-                    _CoinPack(
-                      label: '5,000',
-                      price: _priceFor(IapProductIds.coins5000),
-                      bonus: '+20%',
-                      onTap: () => _buy(IapProductIds.coins5000),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // ── Gems ───────────────────────────────────────────────────
-                _SectionHeader(title: 'Gems'),
-                const SizedBox(height: 12),
-                _ShopCard(
-                  title: '50 Gems',
-                  description: 'Premium currency. Use for rare unlocks.',
-                  icon: Icons.diamond_outlined,
-                  iconColor: AppColors.gemBlue,
-                  actionLabel: _priceFor(IapProductIds.gems50),
-                  onTap: () => _buy(IapProductIds.gems50),
-                ),
-                const SizedBox(height: 24),
-
-                // ── Earn free items ────────────────────────────────────────
-                if (!save.adsRemoved) ...[
-                  _SectionHeader(title: 'Earn Free'),
-                  const SizedBox(height: 12),
-                  _EarnCard(
-                    title: 'Mystery Chest',
-                    description: 'Watch a short ad for a bonus chest.',
-                    icon: Icons.card_giftcard_outlined,
-                    iconColor: AppColors.accent,
-                    onTap: () => _showMysteryChestAd(),
-                  ),
-                  const SizedBox(height: 10),
-                  _EarnCard(
-                    title: 'Refill Shield',
-                    description:
-                        'Start your next run with a free shield.',
-                    icon: Icons.shield_outlined,
-                    iconColor: AppColors.shieldBlue,
-                    onTap: () => _showRefillShieldAd(),
-                  ),
-                ],
-
-                const SizedBox(height: 24),
-                _RestoreButton(onTap: IapService.instance.restorePurchases),
-              ],
-            ),
     );
   }
-
-  // ── Rewarded ad flows ─────────────────────────────────────────────────────
 
   void _showMysteryChestAd() {
     AdService.instance.showRewarded(
       placement: AdPlacement.mysteryChest,
       onRewarded: () async {
-        // Award random chest: 50–150 coins + maybe 1 gem.
         final coins = 50 + (DateTime.now().millisecond % 100);
         await ref.read(saveDataProvider.notifier).addCoins(coins);
         if (mounted) {
@@ -243,8 +245,6 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
     AdService.instance.showRewarded(
       placement: AdPlacement.refillShield,
       onRewarded: () {
-        // Shield pre-run grant is read by GameScreen on next run start.
-        // For MVP: store a pending shield flag in shared_preferences.
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Shield ready for your next run!'),
@@ -264,21 +264,41 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
 
 // ── Sub-widgets ───────────────────────────────────────────────────────────────
 
+class _TitleBar extends StatelessWidget {
+  const _TitleBar({required this.coins, required this.gems});
+  final int coins;
+  final int gems;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 16, 4),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: AppColors.textLight),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+              child: Text('Shop',
+                  style: AppTypography.headline,
+                  textAlign: TextAlign.center)),
+          CoinChip(coins, iconSize: 16, fontSize: 14),
+          const SizedBox(width: 10),
+          GemChip(gems, iconSize: 14, fontSize: 13),
+        ],
+      ),
+    );
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title});
   final String title;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      title.toUpperCase(),
-      style: const TextStyle(
-        color: AppColors.textMuted,
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 2.5,
-      ),
-    );
+    return Text(title.toUpperCase(), style: AppTypography.overline);
   }
 }
 
@@ -286,112 +306,73 @@ class _ShopCard extends StatelessWidget {
   const _ShopCard({
     required this.title,
     required this.description,
-    required this.icon,
+    this.icon,
+    this.leading,
     required this.iconColor,
     required this.actionLabel,
     required this.onTap,
     this.badge,
+    this.dogEar,
+    this.sheet,
   });
 
   final String title;
   final String description;
-  final IconData icon;
+  final IconData? icon;
+  final Widget? leading;
   final Color iconColor;
   final String actionLabel;
   final VoidCallback onTap;
   final String? badge;
+  final String? dogEar;
+  final Color? sheet;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return PaperCard(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.divider),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: iconColor, size: 24),
+      color: sheet ?? AppColors.paper,
+      elevation: 1.2,
+      padding: const EdgeInsets.all(16),
+      dogEar: dogEar != null
+          ? DogEar(label: dogEar!, color: AppColors.accent, size: 58)
+          : null,
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.16),
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: AppColors.textLight,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      if (badge != null) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppColors.warning,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            badge!,
-                            style: const TextStyle(
-                              color: Colors.black,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    description,
-                    style: const TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 12,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
+            child: Center(
+              child: leading ??
+                  Icon(icon, color: iconColor, size: 24),
             ),
-            const SizedBox(width: 12),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFF5A623), Color(0xFFFF6B35)],
-                ),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                actionLabel,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13,
-                ),
-              ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: AppTypography.bodyLarge
+                        .copyWith(color: AppColors.paperInk)),
+                const SizedBox(height: 3),
+                Text(description,
+                    style: AppTypography.caption
+                        .copyWith(color: AppColors.paperInkSoft, height: 1.4)),
+              ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 12),
+          PaperButton(
+            label: actionLabel,
+            compact: true,
+            onPressed: onTap,
+          ),
+        ],
       ),
     );
   }
@@ -414,39 +395,36 @@ class _EarnCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return PaperCard(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.divider),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: iconColor, size: 26),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(
-                        color: AppColors.textLight,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      )),
-                  Text(description,
-                      style: const TextStyle(
-                          color: AppColors.textMuted, fontSize: 12)),
-                ],
-              ),
+      color: AppColors.paperBright,
+      elevation: 1.0,
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Icon(icon, color: iconColor, size: 26),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: AppTypography.bodyLarge
+                        .copyWith(color: AppColors.paperInk, fontSize: 15)),
+                Text(description,
+                    style: AppTypography.caption
+                        .copyWith(color: AppColors.paperInkSoft)),
+              ],
             ),
-            const Icon(Icons.play_circle_outline,
-                color: AppColors.accent, size: 28),
-          ],
-        ),
+          ),
+          PaperButton(
+            label: 'Watch',
+            compact: true,
+            color: AppColors.paperGreen,
+            textColor: AppColors.paperInk,
+            onPressed: onTap,
+          ),
+        ],
       ),
     );
   }
@@ -459,27 +437,19 @@ class _CoinPackRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: packs
-          .map((p) => Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: packs.indexOf(p) < packs.length - 1 ? 10 : 0,
-                  ),
-                  child: _CoinPackCard(pack: p),
-                ),
-              ))
-          .toList(),
+      children: [
+        for (int i = 0; i < packs.length; i++) ...[
+          Expanded(child: _CoinPackCard(pack: packs[i])),
+          if (i < packs.length - 1) const SizedBox(width: 10),
+        ],
+      ],
     );
   }
 }
 
 class _CoinPack {
-  const _CoinPack({
-    required this.label,
-    required this.price,
-    required this.onTap,
-    this.bonus,
-  });
+  const _CoinPack(
+      {required this.label, required this.price, required this.onTap, this.bonus});
   final String label;
   final String price;
   final VoidCallback onTap;
@@ -492,105 +462,37 @@ class _CoinPackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return PaperCard(
       onTap: pack.onTap,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.divider),
-        ),
-        child: Column(
-          children: [
-            const Text('●', style: TextStyle(color: AppColors.coinGold, fontSize: 24)),
-            const SizedBox(height: 4),
-            Text(
-              pack.label,
-              style: const TextStyle(
-                color: AppColors.textLight,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            if (pack.bonus != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                pack.bonus!,
-                style: const TextStyle(
-                  color: AppColors.success,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFF5A623), Color(0xFFFF6B35)],
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                pack.price,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13,
-                ),
-              ),
-            ),
+      color: AppColors.paperGold,
+      elevation: 1.1,
+      padding: const EdgeInsets.all(14),
+      dogEar: pack.bonus != null
+          ? const DogEar(label: 'BONUS', color: AppColors.success, size: 52)
+          : null,
+      child: Column(
+        children: [
+          PaperIcon(PaperIconData.coin, size: 30, color: AppColors.coinGold),
+          const SizedBox(height: 6),
+          Text(pack.label,
+              style: AppTypography.stat
+                  .copyWith(color: AppColors.paperInk, fontSize: 17)),
+          if (pack.bonus != null) ...[
+            const SizedBox(height: 2),
+            Text(pack.bonus!,
+                style: AppTypography.caption.copyWith(
+                    color: AppColors.success,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11)),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CurrencyRow extends StatelessWidget {
-  const _CurrencyRow({required this.coins, required this.gems});
-  final int coins;
-  final int gems;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text('● $coins',
-            style: const TextStyle(
-                color: AppColors.coinGold,
-                fontWeight: FontWeight.w700,
-                fontSize: 14)),
-        const SizedBox(width: 10),
-        Text('◆ $gems',
-            style: const TextStyle(
-                color: AppColors.gemBlue,
-                fontWeight: FontWeight.w700,
-                fontSize: 14)),
-      ],
-    );
-  }
-}
-
-class _RestoreButton extends StatelessWidget {
-  const _RestoreButton({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: TextButton(
-        onPressed: onTap,
-        child: const Text(
-          'Restore Purchases',
-          style: TextStyle(
-            color: AppColors.textMuted,
-            fontSize: 13,
-            decoration: TextDecoration.underline,
+          const SizedBox(height: 10),
+          PaperButton(
+            label: pack.price,
+            compact: true,
+            expand: true,
+            onPressed: pack.onTap,
           ),
-        ),
+        ],
       ),
     );
   }

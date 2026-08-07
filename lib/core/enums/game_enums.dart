@@ -1,6 +1,9 @@
 /// All enums for Paper Flight — kept in one file for easy cross-reference.
 
+import 'package:flutter/material.dart';
+
 import '../constants/game_config.dart';
+import '../widgets/paper_icons.dart';
 
 // ── Game State ──────────────────────────────────────────────────────────────
 
@@ -59,6 +62,34 @@ extension GameModeLabel on GameMode {
         return '🗓️';
       case GameMode.trial:
         return '🎯';
+    }
+  }
+
+  /// The custom paper-craft vector icon for this mode.
+  PaperIconData get paperIcon {
+    switch (this) {
+      case GameMode.classic:
+        return PaperIconData.glider;
+      case GameMode.zen:
+        return PaperIconData.leaf;
+      case GameMode.daily:
+        return PaperIconData.calendar;
+      case GameMode.trial:
+        return PaperIconData.bullseye;
+    }
+  }
+
+  /// The tinted paper-sheet colour used for this mode's card.
+  Color get paperColor {
+    switch (this) {
+      case GameMode.classic:
+        return const Color(0xFFF6E3AE);
+      case GameMode.zen:
+        return const Color(0xFFD9EDD6);
+      case GameMode.daily:
+        return const Color(0xFFDCEBF4);
+      case GameMode.trial:
+        return const Color(0xFFF6DAD2);
     }
   }
 

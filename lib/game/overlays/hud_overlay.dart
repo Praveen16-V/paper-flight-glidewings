@@ -3,8 +3,10 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_typography.dart';
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
+import '../../core/widgets/paper_icons.dart';
 import '../../providers/game_session_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/daily_seed_service.dart';
@@ -205,10 +207,11 @@ class _ScoreDisplay extends StatelessWidget {
           Text(
             _formatScore(score),
             style: const TextStyle(
+              fontFamily: AppTypography.mono,
               color: AppColors.textLight,
               fontSize: 22,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
+              fontWeight: FontWeight.w700,
+              fontFeatures: [FontFeature.tabularFigures()],
             ),
           ),
         ],
@@ -238,21 +241,16 @@ class _CoinDisplay extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 14,
-            height: 14,
-            decoration: const BoxDecoration(
-              color: AppColors.coinGold,
-              shape: BoxShape.circle,
-            ),
-          ),
+          PaperIcon(PaperIconData.coin, size: 16, color: AppColors.coinGold),
           const SizedBox(width: 6),
           Text(
             '$coins',
             style: const TextStyle(
+              fontFamily: AppTypography.mono,
               color: AppColors.coinGold,
               fontSize: 16,
               fontWeight: FontWeight.w700,
+              fontFeatures: [FontFeature.tabularFigures()],
             ),
           ),
         ],
@@ -326,9 +324,11 @@ class _ZenStatusDisplay extends StatelessWidget {
         Text(
           '${meters.toStringAsFixed(0)} m',
           style: const TextStyle(
+            fontFamily: AppTypography.mono,
+            fontFeatures: [FontFeature.tabularFigures()],
             color: AppColors.textLight,
             fontSize: 20,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
             letterSpacing: 0.5,
           ),
         ),
@@ -336,6 +336,8 @@ class _ZenStatusDisplay extends StatelessWidget {
         Text(
           '$minutes:$secs',
           style: const TextStyle(
+            fontFamily: AppTypography.mono,
+            fontFeatures: [FontFeature.tabularFigures()],
             color: AppColors.textMuted,
             fontSize: 12,
             fontWeight: FontWeight.w600,
@@ -385,21 +387,16 @@ class _TrialObjectiveBar extends StatelessWidget {
           ),
           if (totalCoins > 0) ...[
             const SizedBox(width: 10),
-            Container(
-              width: 10,
-              height: 10,
-              decoration: const BoxDecoration(
-                color: AppColors.coinGold,
-                shape: BoxShape.circle,
-              ),
-            ),
+            PaperIcon(PaperIconData.coin, size: 12, color: AppColors.coinGold),
             const SizedBox(width: 4),
             Text(
               '$coins/$totalCoins',
               style: const TextStyle(
+                fontFamily: AppTypography.mono,
                 color: AppColors.coinGold,
                 fontSize: 12,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
+                fontFeatures: [FontFeature.tabularFigures()],
               ),
             ),
           ],
@@ -423,13 +420,15 @@ class _TrialTimer extends StatelessWidget {
     return Text(
       '${remaining.toStringAsFixed(1)}s',
       style: TextStyle(
+        fontFamily: AppTypography.mono,
+        fontFeatures: const [FontFeature.tabularFigures()],
         color: critical
             ? const Color(0xFFFF1744)
             : urgent
                 ? const Color(0xFFFFB300)
                 : AppColors.textLight,
         fontSize: 34,
-        fontWeight: FontWeight.w900,
+        fontWeight: FontWeight.w700,
         letterSpacing: 1,
         shadows: const [
           Shadow(color: Colors.black45, blurRadius: 6),
