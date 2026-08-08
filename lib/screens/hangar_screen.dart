@@ -145,12 +145,24 @@ class _PlanesTabState extends ConsumerState<_PlanesTab> {
                     ),
                   ),
                 ),
-                // quick visual stat legend for trade-offs
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _StatsComparisonHeader(selectedPlane: plane),
+                  child: Row(
+                    children: [
+                      Text('PLANE COLLECTION',
+                          style: AppTypography.overline.copyWith(
+                              color: Colors.white.withOpacity(0.55),
+                              fontSize: 10,
+                              letterSpacing: 1.3)),
+                      const Spacer(),
+                      Text('${PlaneType.values.length} PLANES',
+                          style: AppTypography.caption.copyWith(
+                              color: Colors.white.withOpacity(0.35),
+                              fontSize: 11)),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Expanded(
                   child: ListView.separated(
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
@@ -198,7 +210,10 @@ class _PlanesTabState extends ConsumerState<_PlanesTab> {
                             );
                           }
                         },
-                        onEquip: () => notifier.equipPlane(index),
+                        onEquip: () {
+                          notifier.equipPlane(index);
+                          setState(() => _selected = index);
+                        },
                       );
                     },
                   ),
@@ -606,7 +621,10 @@ class _SkinsTabState extends ConsumerState<_SkinsTab> {
                             );
                           }
                         },
-                        onEquip: () => notifier.equipSkin(index),
+                        onEquip: () {
+                          notifier.equipSkin(index);
+                          setState(() => _selected = index);
+                        },
                       );
                     },
                   ),
@@ -938,85 +956,6 @@ List<double> _statsForPlane(PlaneType p) {
       return [0.50, 0.84, 0.78];
     case PlaneType.stealthJet:
       return [0.82, 0.58, 0.90];
-  }
-}
-
-class _StatsComparisonHeader extends StatelessWidget {
-  const _StatsComparisonHeader({required this.selectedPlane});
-  final PlaneType selectedPlane;
-
-  @override
-  Widget build(BuildContext context) {
-    // All 5 planes in a horizontally scrollable comparison row
-    final allPlanes = PlaneType.values;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text('TRADE-OFF AT A GLANCE',
-                style: AppTypography.overline.copyWith(
-                    color: Colors.white.withOpacity(0.55),
-                    fontSize: 9,
-                    letterSpacing: 1.3)),
-            const Spacer(),
-            Text('SPEED  •  GLIDE  •  SHIELD',
-                style: AppTypography.caption.copyWith(
-                    color: Colors.white.withOpacity(0.32),
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.6)),
-          ],
-        ),
-        const SizedBox(height: 6),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: allPlanes.map((p) {
-              final isSel = p == selectedPlane;
-              final vals = _statsForPlane(p);
-              return Container(
-                width: 72,
-                margin: EdgeInsets.only(
-                    right: p == allPlanes.last ? 0 : 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
-                decoration: BoxDecoration(
-                  color: isSel
-                      ? AppColors.accent.withOpacity(0.16)
-                      : Colors.white.withOpacity(0.06),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isSel
-                        ? AppColors.accent.withOpacity(0.55)
-                        : Colors.white.withOpacity(0.08),
-                    width: isSel ? 1.2 : 1,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Text(p.displayName.toUpperCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.overline.copyWith(
-                            color: isSel
-                                ? AppColors.accent
-                                : Colors.white.withOpacity(0.72),
-                            fontSize: 8,
-                            letterSpacing: 0.8)),
-                    const SizedBox(height: 5),
-                    SizedBox(
-                      height: 36,
-                      child: _RadarChart(values: vals, animate: false, small: true),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
-    );
   }
 }
 

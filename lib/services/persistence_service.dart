@@ -17,7 +17,8 @@ class PersistenceService {
   // ── Save Data ──────────────────────────────────────────────────────────────
 
   SaveData loadSave() {
-    return _saveBox.get(_saveKey) ?? SaveData.fresh();
+    final save = _saveBox.get(_saveKey);
+    return save?.clone() ?? SaveData.fresh();
   }
 
   Future<void> writeSave(SaveData data) async {
@@ -29,7 +30,7 @@ class PersistenceService {
     final current = loadSave();
     final updated = updater(current);
     await writeSave(updated);
-    return updated;
+    return updated.clone();
   }
 
   Future<void> resetSave() async {
