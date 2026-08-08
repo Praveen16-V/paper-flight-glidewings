@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -136,6 +137,12 @@ class PaperFlightGame extends FlameGame
   GamePhase _phase = GamePhase.idle;
   GamePhase get phase => _phase;
 
+  /// Set once [dispose] has run. Any in-flight `Future.delayed` callbacks
+  /// (crash freeze, trial freeze, power-up timers, death-defying hit-stop)
+  /// check this so they never touch a torn-down game/world.
+  bool _disposed = false;
+  bool get isDisposed => _disposed;
+
   bool _isReviving = false;
 
   /// Guards the Death Defying hit-stop so overlapping awards can't stack
@@ -238,6 +245,69 @@ class PaperFlightGame extends FlameGame
     } catch (_) {}
 
     await super.onLoad();
+  }
+
+  /// Called by Flame when the hosting GameWidget is removed from the widget
+  /// tree (which happens every time the player taps Retry / Menu and the
+  /// GameScreen is replaced).
+  ///
+  /// This is the single most important teardown for the "game hangs after
+  /// playing multiple times" bug: previously [GameScreen.dispose] only paused
+  /// the engine, so each prior run's game — along with its accelerometer
+  /// stream subscription ([InputManager]), audio players ([GameFeelSystem])
+  /// and the entire component/world tree — was never released. Those stale
+  /// games piled up run after run until the app hung.
+  @override
+  void onRemove() {
+    // Framework-driven teardown (GameWidget detaching). Flame does not
+    // auto-cascade child removal here, so ask for it explicitly.
+    _releaseResources(cascadeChildren: true);
+    super.onRemove();
+  }
+
+  /// Also released explicitly from [GameScreen.dispose]. Idempotent thanks to
+  /// the [_disposed] guard, so whether Flame tears the game down via the
+  /// GameWidget lifecycle or the host screen calls dispose directly, the
+  /// long-lived resources are released exactly once.
+  @override
+  void dispose() {
+    _releaseResources();
+    super.dispose();
+  }
+
+  /// Releases every long-lived resource owned by this game and marks the game
+  /// disposed so in-flight delayed callbacks bail out. Idempotent — safe to
+  /// call from both the [onRemove] lifecycle hook and an explicit [dispose].
+  void _releaseResources({bool cascadeChildren = false}) {
+    if (_disposed) return;
+    _disposed = true;
+
+    // Stop any further simulation / audio immediately.
+    try {
+      pauseEngine();
+    } catch (_) {}
+
+    // Deterministically release the resources that hold native handles —
+    // the accelerometer stream and the continuous audio players.
+    try {
+      gameFeelSystem.dispose();
+    } catch (_) {}
+    try {
+      inputManager.dispose();
+    } catch (_) {}
+
+    // When torn down via the onRemove lifecycle hook (GameWidget detaching),
+    // Flame does not automatically cascade onRemove through children — the
+    // documented pattern is to do it here. When torn down via dispose(),
+    // super.dispose() performs this cascade, so we don't duplicate it.
+    if (cascadeChildren) {
+      try {
+        removeAll(children);
+        processLifecycleEvents();
+        images.clearCache();
+        assets.clearCache();
+      } catch (_) {}
+    }
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
@@ -536,6 +606,7 @@ class PaperFlightGame extends FlameGame
       Future.delayed(
         Duration(milliseconds: (GameConfig.trialCrashFreezeSeconds * 1000).round()),
         () {
+          if (_disposed) return;
           resumeEngine();
           _finalizeTrial(completed: false, timedOut: false);
         },
@@ -581,8 +652,15 @@ class PaperFlightGame extends FlameGame
     gameFeelSystem.onCrash();
     gameFeelSystem.silence();
 
-    // Brief freeze then transition to game over.
+    // Brief freeze then transition to game over. We fire the navigation
+    // (triggerGameOver) immediately after the short hit-stop so the results
+    // screen starts sliding in at once; persistence (coins/high score/
+    // challenges) runs in the background and can't hold up the transition —
+    // this is what previously left a black/paused frame for a beat or two.
+    // Guard with _disposed so a player who backs out mid-freeze doesn't run
+    // finalization on a torn-down game.
     Future.delayed(GameConfig.crashSlowMoFreeze, () {
+      if (_disposed) return;
       resumeEngine();
       _phase = GamePhase.gameOver;
       _finalizeRun(wasRevived: false);
@@ -671,28 +749,39 @@ class PaperFlightGame extends FlameGame
     final stars = completed ? director.evaluateStars() : 0;
     final coins = ref.read(gameSessionProvider).coinsThisRun;
 
-    // Persist best stars (progression only — trials award no economy).
-    var isNewBestStars = false;
-    if (stars > 0) {
-      try {
-        isNewBestStars = await ref
-            .read(saveDataProvider.notifier)
-            .recordTrialStars(trialId: def.id, stars: stars);
-      } catch (_) {}
+    // Compute the new-best flag synchronously from the in-memory save so the
+    // results screen can celebrate without waiting for disk. The matching
+    // write to storage happens in the background.
+    final previousBest =
+        ref.read(saveDataProvider.notifier).trialBestStars(def.id);
+    final isNewBestStars = stars > previousBest;
+
+    // Navigate to results immediately so the player never sees a frozen/black
+    // frame. Persisting the best-star record happens in the background.
+    if (!_disposed) {
+      ref.read(gameSessionProvider.notifier).completeTrial(
+        TrialOutcome(
+          trialId: def.id,
+          completed: completed,
+          timedOut: timedOut,
+          stars: stars,
+          timeUsedSeconds: director.timeUsedSeconds,
+          coinsCollected: coins,
+          totalCoins: def.countCoins(),
+          isNewBestStars: isNewBestStars,
+        ),
+      );
     }
 
-    ref.read(gameSessionProvider.notifier).completeTrial(
-      TrialOutcome(
-        trialId: def.id,
-        completed: completed,
-        timedOut: timedOut,
-        stars: stars,
-        timeUsedSeconds: director.timeUsedSeconds,
-        coinsCollected: coins,
-        totalCoins: def.countCoins(),
-        isNewBestStars: isNewBestStars,
-      ),
-    );
+    if (stars > 0) {
+      unawaited(() async {
+        try {
+          await ref
+              .read(saveDataProvider.notifier)
+              .recordTrialStars(trialId: def.id, stars: stars);
+        } catch (_) {}
+      }());
+    }
   }
 
   void pauseRun() {
@@ -713,6 +802,7 @@ class PaperFlightGame extends FlameGame
   void applySlowMo(double duration) {
     _timeScale = GameConfig.slowMoPowerUpMultiplier;
     Future.delayed(Duration(milliseconds: (duration * 1000).toInt()), () {
+      if (_disposed) return;
       _timeScale = 1.0;
       ref.read(gameSessionProvider.notifier).deactivatePowerUp(PowerUpType.slowMo);
     });
@@ -730,6 +820,7 @@ class PaperFlightGame extends FlameGame
     _deathDefyingFreezeActive = true;
     pauseEngine();
     Future.delayed(GameConfig.deathDefyingFreeze, () {
+      if (_disposed) return;
       if (_phase == GamePhase.playing) {
         resumeEngine();
         // ScaleEffect on the viewfinder drives the camera zoom (Flame's
@@ -770,7 +861,9 @@ class PaperFlightGame extends FlameGame
         notifier.setPowerUpTimer(PowerUpType.magnet, GameConfig.magnetDuration);
         Future.delayed(
           Duration(milliseconds: (GameConfig.magnetDuration * 1000).toInt()),
-          () => notifier.deactivatePowerUp(PowerUpType.magnet),
+          () {
+            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.magnet);
+          },
         );
       case PowerUpType.ghost:
         // Phase through every obstacle — the big "fly through the wall" moment.
@@ -778,7 +871,9 @@ class PaperFlightGame extends FlameGame
         notifier.setPowerUpTimer(PowerUpType.ghost, GameConfig.ghostDuration);
         Future.delayed(
           Duration(milliseconds: (GameConfig.ghostDuration * 1000).toInt()),
-          () => notifier.deactivatePowerUp(PowerUpType.ghost),
+          () {
+            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.ghost);
+          },
         );
       case PowerUpType.slowMo:
         notifier.activatePowerUp(PowerUpType.slowMo);
@@ -791,7 +886,9 @@ class PaperFlightGame extends FlameGame
         beginCoinRush();
         Future.delayed(
           Duration(milliseconds: (GameConfig.coinRushDuration * 1000).toInt()),
-          () => notifier.deactivatePowerUp(PowerUpType.coinRush),
+          () {
+            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.coinRush);
+          },
         );
     }
   }
@@ -838,77 +935,82 @@ class PaperFlightGame extends FlameGame
 
   Future<void> _finalizeRun({required bool wasRevived}) async {
     final session = ref.read(gameSessionProvider);
-    final notifier = ref.read(saveDataProvider.notifier);
 
-    // ── Daily Seeded Flight (Task 8): the award is the leaderboard — the
-    // run never touches coins, high scores or challenge objectives.
-    if (mode == GameMode.daily) {
-      RunResult result;
-      try {
-        final daily = await DailyLeaderboard.instance.submitScore(
-          seed: dailySeed,
-          score: session.score,
-          distanceMeters: _distanceMeters,
-        );
-        result = RunResult(
-          score: session.score,
-          distanceMeters: _distanceMeters,
-          coinsCollected: session.coinsThisRun,
-          nearMisses: session.nearMissesThisRun,
-          isNewHighScore: daily.isPersonalBest,
-          finalBiome: session.currentBiome,
-          wasRevived: wasRevived,
-        );
-      } catch (_) {
-        result = RunResult(
-          score: session.score,
-          distanceMeters: _distanceMeters,
-          coinsCollected: session.coinsThisRun,
-          nearMisses: session.nearMissesThisRun,
-          isNewHighScore: false,
-          finalBiome: session.currentBiome,
-          wasRevived: wasRevived,
-        );
-      }
-      ref.read(gameSessionProvider.notifier).triggerGameOver(result);
-      return;
-    }
-
-    // Classic: full economy + challenge integration (unchanged).
-    final isNew = await notifier.recordRunResult(
-      score: session.score,
-      distanceMeters: _distanceMeters,
-      coinsEarned: session.coinsThisRun,
-      nearMisses: session.nearMissesThisRun,
-    );
-
-    // Update challenges with run stats
-    try {
-      await notifier.updateChallengesForRun(
-        thermalsEntered: _thermalsEnteredThisRun,
-        maxCombo: _maxComboThisRun,
-        biomeForMaxCombo: _biomeAtMaxCombo,
-        maxComboInStorm: _maxComboInStormThisRun,
-        buildingGapsPassed: _buildingGapsPassedThisRun,
-        usedPowerUp: _powerUpUsedThisRun,
-        coinsCollected: session.coinsThisRun,
-        nearMisses: session.nearMissesThisRun,
-        distanceMeters: _distanceMeters,
-        powerUpsUsed: _powerUpsUsedThisRun,
-      );
-    } catch (_) {}
+    // Compute the high-score flag synchronously from the in-memory save (the
+    // authoritative pre-run high score) so the results screen can show the
+    // NEW BEST stamp without waiting for disk. The matching write to storage
+    // happens in the background below.
+    final preRunHighScore = ref.read(saveDataProvider).highScore;
+    final isNewHighScore =
+        mode != GameMode.daily && session.score > preRunHighScore;
 
     final result = RunResult(
       score: session.score,
       distanceMeters: _distanceMeters,
       coinsCollected: session.coinsThisRun,
       nearMisses: session.nearMissesThisRun,
-      isNewHighScore: isNew,
+      isNewHighScore: isNewHighScore,
       finalBiome: session.currentBiome,
       wasRevived: wasRevived,
     );
 
-    ref.read(gameSessionProvider.notifier).triggerGameOver(result);
+    // Trigger the game-over transition immediately so the results screen starts
+    // sliding in at once. Persistence (coins, high score, challenges, the
+    // daily leaderboard) is fire-and-forget below so it can never add latency
+    // — or a black/paused frame — between the crash and the results screen.
+    if (!_disposed) {
+      ref.read(gameSessionProvider.notifier).triggerGameOver(result);
+    }
+
+    // Persist in the background (unawaited).
+    unawaited(_persistRun());
+  }
+
+  /// Writes the finished run's results to storage off the critical path.
+  Future<void> _persistRun() async {
+    if (_disposed) return;
+    final session = ref.read(gameSessionProvider);
+    final notifier = ref.read(saveDataProvider.notifier);
+
+    try {
+      if (mode == GameMode.daily) {
+        // ── Daily Seeded Flight: the award is the leaderboard — the run never
+        // touches coins, high scores or challenge objectives.
+        try {
+          await DailyLeaderboard.instance.submitScore(
+            seed: dailySeed,
+            score: session.score,
+            distanceMeters: _distanceMeters,
+          );
+        } catch (_) {}
+        return;
+      }
+
+      // Classic: full economy + challenge integration.
+      await notifier.recordRunResult(
+        score: session.score,
+        distanceMeters: _distanceMeters,
+        coinsEarned: session.coinsThisRun,
+        nearMisses: session.nearMissesThisRun,
+      );
+
+      try {
+        await notifier.updateChallengesForRun(
+          thermalsEntered: _thermalsEnteredThisRun,
+          maxCombo: _maxComboThisRun,
+          biomeForMaxCombo: _biomeAtMaxCombo,
+          maxComboInStorm: _maxComboInStormThisRun,
+          buildingGapsPassed: _buildingGapsPassedThisRun,
+          usedPowerUp: _powerUpUsedThisRun,
+          coinsCollected: session.coinsThisRun,
+          nearMisses: session.nearMissesThisRun,
+          distanceMeters: _distanceMeters,
+          powerUpsUsed: _powerUpsUsedThisRun,
+        );
+      } catch (_) {}
+    } catch (_) {
+      // Persistence must never crash the post-game flow.
+    }
   }
 
   // ── Input passthrough (FlameGame tap/drag → InputManager) ─────────────────

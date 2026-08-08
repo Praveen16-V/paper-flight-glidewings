@@ -110,18 +110,33 @@ class PaperFlightApp extends ConsumerWidget {
         pageBuilder: (_, __, ___) => page,
         transitionsBuilder: (_, anim, __, child) =>
             FadeTransition(opacity: anim, child: child),
-        transitionDuration: const Duration(milliseconds: 300),
+        transitionDuration: const Duration(milliseconds: 220),
       );
 
+  /// Slide-up transition used for sheets/results screens.
+  ///
+  /// The incoming page starts fully opaque (its Scaffold paints the app
+  /// background) so there is never a transparent gap revealing a black
+  /// underlying canvas during the pushReplacement from the game screen — this
+  /// is what previously flashed black for a moment before the results screen
+  /// appeared. We also fade it in in lock-step with the slide so even the very
+  /// first frame isn't a blank/transparent placeholder.
   PageRouteBuilder<T> _slide<T>(Widget page) => PageRouteBuilder(
         pageBuilder: (_, __, ___) => page,
-        transitionsBuilder: (_, anim, __, child) => SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 1),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-          child: child,
-        ),
-        transitionDuration: const Duration(milliseconds: 350),
+        transitionsBuilder: (_, anim, __, child) {
+          final curved =
+              CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.06),
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
+            ),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 260),
       );
 }

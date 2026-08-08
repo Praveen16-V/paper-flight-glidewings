@@ -330,7 +330,12 @@ abstract class GameConfig {
 
   // ── UI Animation ─────────────────────────────────────────────────────────
   static const Duration screenTransition = Duration(milliseconds: 300);
-  static const Duration crashSlowMoFreeze = Duration(milliseconds: 120);
+
+  /// Hit-stop after the plane crashes before the results screen begins its
+  /// transition. Kept short so the player never stares at a paused/black frame
+  /// for a noticeable beat — long enough to register the impact + crash sting,
+  /// no longer.
+  static const Duration crashSlowMoFreeze = Duration(milliseconds: 80);
 
   // ── Juice / Game Feel (Task 6) ────────────────────────────────────────────
   /// Camera begins pulling back once world scroll speed passes this (px/s).
@@ -446,6 +451,7 @@ abstract class GameConfig {
   /// Same, for coins / power-ups spawning at -40 / -50.
   static const double trialCoinLeadMeters = 59.0;
 
-  /// Seconds of immunity after a trial crash-freeze before the results push.
-  static const double trialCrashFreezeSeconds = 0.9;
+  /// Seconds of hit-stop after a trial crash before the results push. Short
+  /// enough not to read as a hang/black screen, long enough to register impact.
+  static const double trialCrashFreezeSeconds = 0.35;
 }
