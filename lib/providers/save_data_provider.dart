@@ -19,6 +19,9 @@ class SaveDataNotifier extends Notifier<SaveData> {
     return save;
   }
 
+  @override
+  bool updateShouldNotify(SaveData previous, SaveData next) => true;
+
   // ── Currency ────────────────────────────────────────────────────────────
 
   Future<void> addCoins(int amount) async {

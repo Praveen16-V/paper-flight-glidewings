@@ -173,4 +173,40 @@ class SaveData extends HiveObject {
 
   /// Returns a fresh default save for a new installation.
   factory SaveData.fresh() => SaveData();
+
+  /// Returns a deep copy of this SaveData instance.
+  SaveData clone() {
+    return SaveData(
+      coins: coins,
+      gems: gems,
+      highScore: highScore,
+      highDistanceMeters: highDistanceMeters,
+      totalRuns: totalRuns,
+      totalCoinsCollected: totalCoinsCollected,
+      totalNearMisses: totalNearMisses,
+      unlockedPlaneIndices: List<int>.from(unlockedPlaneIndices),
+      equippedPlaneIndex: equippedPlaneIndex,
+      adsRemoved: adsRemoved,
+      runsSinceLastInterstitial: runsSinceLastInterstitial,
+      isFirstSession: isFirstSession,
+      lastDailyLoginMs: lastDailyLoginMs,
+      dailyLoginStreak: dailyLoginStreak,
+      unlockedSkinIndices: List<int>.from(unlockedSkinIndices),
+      equippedSkinIndex: equippedSkinIndex,
+      lastDailyChallengeMs: lastDailyChallengeMs,
+      dailyChallengeIds: List<int>.from(dailyChallengeIds),
+      dailyChallengeProgress: List<int>.from(dailyChallengeProgress),
+      dailyChallengeCompleted: List<bool>.from(dailyChallengeCompleted),
+      dailyChallengeClaimed: List<bool>.from(dailyChallengeClaimed),
+      lastWeeklyChallengeMs: lastWeeklyChallengeMs,
+      weeklyChallengeIds: List<int>.from(weeklyChallengeIds),
+      weeklyChallengeProgress: List<int>.from(weeklyChallengeProgress),
+      weeklyChallengeCompleted: List<bool>.from(weeklyChallengeCompleted),
+      weeklyChallengeClaimed: List<bool>.from(weeklyChallengeClaimed),
+      dailyLastSeed: dailyLastSeed,
+      dailyAttemptUsed: dailyAttemptUsed,
+      trialStars: List<int>.from(trialStars),
+      zenBestDistanceMeters: zenBestDistanceMeters,
+    );
+  }
 }
