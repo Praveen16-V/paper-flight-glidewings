@@ -62,6 +62,18 @@ abstract class AppColors {
   static const Color shieldBlue = Color(0xFF64B5F6);
   static const Color nearMissGlow = Color(0xFFFFEB3B);
 
+  // ── Sky gradient ─────────────────────────────────────────────────────────
+  /// Deeper, richer gradient used by splash + screen bodies.
+  static const Color gradientTop = Color(0xFF1E2D56);
+  static const Color gradientBottom = Color(0xFF0A0F1E);
+
+  static const LinearGradient skyGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [gradientTop, background, gradientBottom],
+    stops: [0.0, 0.55, 1.0],
+  );
+
   // ── Biome-tint overlays ──────────────────────────────────────────────────
   static const Color biomeCityTint = Color(0x1A4A90D9);
   static const Color biomeStormTint = Color(0x1A37474F);

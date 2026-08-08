@@ -120,15 +120,28 @@ class _PlanesTabState extends ConsumerState<_PlanesTab> {
             ),
             child: Column(
               children: [
-                // drag handle
+                // drag handle — tapping scrolls list to top
                 Center(
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 10, bottom: 8),
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.22),
-                      borderRadius: BorderRadius.circular(2),
+                  child: Tooltip(
+                    message: 'Scroll to top',
+                    child: GestureDetector(
+                      onTap: () {
+                        // scroll controller access via PrimaryScrollController
+                        PrimaryScrollController.of(context).animateTo(
+                          0,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut,
+                        );
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 10, bottom: 8),
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.28),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -434,8 +447,8 @@ class _PlaneShowcaseStageState extends State<_PlaneShowcaseStage>
                         // Radar triangle
                         Center(
                           child: SizedBox(
-                            width: 108,
-                            height: 96,
+                            width: 120,
+                            height: 108,
                             child: _RadarChart(values: stats, animate: true),
                           ),
                         ),
@@ -512,13 +525,25 @@ class _SkinsTabState extends ConsumerState<_SkinsTab> {
             child: Column(
               children: [
                 Center(
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 10, bottom: 8),
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.22),
-                      borderRadius: BorderRadius.circular(2),
+                  child: Tooltip(
+                    message: 'Scroll to top',
+                    child: GestureDetector(
+                      onTap: () {
+                        PrimaryScrollController.of(context).animateTo(
+                          0,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut,
+                        );
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 10, bottom: 8),
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.28),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -922,14 +947,14 @@ class _StatsComparisonHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // mini comparison of the classic trio for trade-off readability
-    const trio = [PlaneType.dart, PlaneType.glider, PlaneType.stuntFold];
+    // All 5 planes in a horizontally scrollable comparison row
+    final allPlanes = PlaneType.values;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Text('TRADe-OFF AT A GLANCE',
+            Text('TRADE-OFF AT A GLANCE',
                 style: AppTypography.overline.copyWith(
                     color: Colors.white.withOpacity(0.55),
                     fontSize: 9,
@@ -944,16 +969,18 @@ class _StatsComparisonHeader extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 6),
-        Row(
-          children: trio.map((p) {
-            final isSel = p == selectedPlane;
-            final vals = _statsForPlane(p);
-            return Expanded(
-              child: Container(
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: allPlanes.map((p) {
+              final isSel = p == selectedPlane;
+              final vals = _statsForPlane(p);
+              return Container(
+                width: 72,
                 margin: EdgeInsets.only(
-                    right: p == trio.last ? 0 : 8),
+                    right: p == allPlanes.last ? 0 : 8),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
                 decoration: BoxDecoration(
                   color: isSel
                       ? AppColors.accent.withOpacity(0.16)
@@ -984,9 +1011,9 @@ class _StatsComparisonHeader extends StatelessWidget {
                     ),
                   ],
                 ),
-              ),
-            );
-          }).toList(),
+              );
+            }).toList(),
+          ),
         ),
       ],
     );
@@ -1093,7 +1120,7 @@ class _RadarPainter extends CustomPainter {
     final stroke = Paint()
       ..color = const Color(0xFFF5A623)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = small ? 1.6 : 2.0
+      ..strokeWidth = small ? 1.6 : 2.4
       ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(dataPath, stroke);
 
@@ -1108,9 +1135,9 @@ class _RadarPainter extends CustomPainter {
         const Color(0xFF4FC3F7),
         const Color(0xFF56CF87)
       ][i];
-      canvas.drawCircle(p, small ? 3.0 : 4.2, Paint()..color = Colors.white);
+      canvas.drawCircle(p, small ? 3.0 : 5.0, Paint()..color = Colors.white);
       canvas.drawCircle(
-          p, small ? 2.0 : 2.8, Paint()..color = dotColor);
+          p, small ? 2.0 : 3.2, Paint()..color = dotColor);
     }
 
     if (small) return;
@@ -1125,10 +1152,10 @@ class _RadarPainter extends CustomPainter {
           text: labels[i],
           style: TextStyle(
             fontFamily: AppTypography.body,
-            fontSize: 7.5,
+            fontSize: 9.0,
             fontWeight: FontWeight.w800,
             letterSpacing: 0.7,
-            color: AppColors.paperInk.withOpacity(0.62),
+            color: AppColors.paperInk.withOpacity(0.72),
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -2156,16 +2183,44 @@ class _SkinPatternPainter extends CustomPainter {
         canvas.drawLine(Offset(12, 3), Offset(12, size.height - 3), margin);
         break;
       case PaperSkin.holographicFoil:
+        // Full-fill rainbow gradient + diagonal shimmer + sparkle dots
         final foil = Paint()
-          ..shader = const LinearGradient(
-                  colors: [Color(0xFFE040FB), Color(0xFF00E5FF), Color(0xFF76FF03)])
+          ..shader = LinearGradient(
+                  colors: [
+                    const Color(0xFFE040FB),
+                    const Color(0xFF00E5FF),
+                    const Color(0xFF76FF03),
+                    const Color(0xFFFFD740),
+                    const Color(0xFFE040FB),
+                  ],
+                  stops: const [0.0, 0.25, 0.5, 0.75, 1.0],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight)
               .createShader(Rect.fromLTWH(0, 0, size.width, size.height))
           ..style = PaintingStyle.fill;
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromLTWH(4, 6, size.width - 8, size.height - 12),
-                const Radius.circular(4)),
-            foil);
+        canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), foil);
+        // white shimmer sweep
+        final sweep = Paint()
+          ..color = Colors.white.withOpacity(0.35)
+          ..style = PaintingStyle.fill;
+        final sweepPath = Path()
+          ..moveTo(size.width * 0.1, 0)
+          ..lineTo(size.width * 0.35, 0)
+          ..lineTo(size.width * 0.65, size.height)
+          ..lineTo(size.width * 0.4, size.height)
+          ..close();
+        canvas.drawPath(sweepPath, sweep);
+        // sparkle dots
+        final sp = Paint()..color = Colors.white.withOpacity(0.9);
+        for (final offset in [
+          Offset(size.width * 0.2, size.height * 0.2),
+          Offset(size.width * 0.7, size.height * 0.35),
+          Offset(size.width * 0.45, size.height * 0.72),
+        ]) {
+          canvas.drawCircle(offset, 1.8, sp);
+          canvas.drawLine(Offset(offset.dx - 4, offset.dy), Offset(offset.dx + 4, offset.dy), sp..strokeWidth = 0.8..style = PaintingStyle.stroke);
+          canvas.drawLine(Offset(offset.dx, offset.dy - 4), Offset(offset.dx, offset.dy + 4), sp);
+        }
         break;
       case PaperSkin.watercolorWash:
         final wash = Paint()
@@ -2244,7 +2299,7 @@ class _PlaneActionChip extends StatelessWidget {
       return PaperButton(
         label: 'Equip',
         compact: true,
-        color: AppColors.accentAlt,
+        color: AppColors.success,
         textColor: Colors.white,
         onPressed: onEquip,
       );
@@ -2329,7 +2384,7 @@ class _SkinActionChip extends StatelessWidget {
       return PaperButton(
         label: 'Equip',
         compact: true,
-        color: AppColors.accentAlt,
+        color: AppColors.success,
         textColor: Colors.white,
         onPressed: onEquip,
       );

@@ -101,12 +101,13 @@ class _DailyFlightScreenState extends ConsumerState<DailyFlightScreen> {
                     horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: AppColors.paperBlue,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
                     BoxShadow(
-                        color: Colors.black26,
-                        offset: Offset(0, 3),
-                        blurRadius: 0),
+                      color: AppColors.backgroundDeep.withOpacity(0.45),
+                      offset: const Offset(0, 3),
+                      blurRadius: 0,
+                    ),
                   ],
                 ),
                 child: Row(
@@ -144,29 +145,54 @@ class _DailyFlightScreenState extends ConsumerState<DailyFlightScreen> {
                           : AppColors.paperGreen,
                       elevation: 1.2,
                       padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Icon(
-                            attemptUsed
-                                ? Icons.lock_clock
-                                : Icons.check_circle_outline,
-                            color: attemptUsed
-                                ? AppColors.danger
-                                : AppColors.success,
-                            size: 24,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              attemptUsed
-                                  ? 'Today\'s attempt used. Come back tomorrow for a fresh seed!'
-                                  : 'Attempt available — make it count!',
-                              style: AppTypography.bodyMedium.copyWith(
-                                  color: AppColors.paperInk, fontSize: 13.5),
+                      child: attemptUsed
+                          ? Column(
+                              children: [
+                                Icon(
+                                  Icons.lock_clock,
+                                  color: AppColors.danger,
+                                  size: 40,
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  "Today's attempt used",
+                                  style: AppTypography.bodyMedium.copyWith(
+                                    color: AppColors.paperInk,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Come back in $hh:$mm:$ss for a fresh seed!',
+                                  style: AppTypography.caption.copyWith(
+                                    color: AppColors.paperInkSoft,
+                                    fontSize: 13,
+                                    height: 1.4,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            )
+                          : Row(
+                              children: [
+                                const Icon(
+                                  Icons.check_circle_outline,
+                                  color: AppColors.success,
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Attempt available — make it count!',
+                                    style: AppTypography.bodyMedium.copyWith(
+                                        color: AppColors.paperInk,
+                                        fontSize: 13.5),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
                     ),
                     const SizedBox(height: 14),
                     PaperCard(
@@ -318,13 +344,30 @@ class _BackBar extends StatelessWidget {
             onPressed: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: Text(title,
-                textAlign: TextAlign.center,
-                style: AppTypography.displayMedium.copyWith(
-                  color: AppColors.accentAlt,
-                  fontSize: 26,
-                  letterSpacing: 2,
-                )),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.displayMedium.copyWith(
+                    color: AppColors.accentAlt,
+                    fontSize: 26,
+                    letterSpacing: 2,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  "Today's Seeded Run",
+                  textAlign: TextAlign.center,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textMuted,
+                    letterSpacing: 1.0,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(width: 48),
         ],
@@ -356,29 +399,30 @@ class _InfoCard extends StatelessWidget {
                       .copyWith(color: AppColors.paperInk, fontSize: 12)),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           for (final line in lines) ...[
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.only(top: 5),
+                  padding: const EdgeInsets.only(top: 3),
                   child: PaperIcon(PaperIconData.glider,
-                      size: 12, color: AppColors.accentDeep),
+                      size: 14, color: AppColors.accentDeep),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     line,
                     style: AppTypography.caption.copyWith(
-                        color: AppColors.paperInkSoft,
-                        fontSize: 12.5,
-                        height: 1.4),
+                      color: AppColors.paperInkSoft,
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
           ],
         ],
       ),

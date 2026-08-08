@@ -80,21 +80,20 @@ class _TrialResultsScreenState extends State<TrialResultsScreen>
   void _scheduleStars() async {
     final outcome = _outcome;
     if (outcome == null) return;
-    // small entry delay before first star
     await Future.delayed(const Duration(milliseconds: 380));
     for (var s = 1; s <= 3; s++) {
       if (!mounted) return;
-      // stamp next star
       _starCtrls[s - 1].forward(from: 0);
       setState(() => _visibleStars = s);
       if (s <= outcome.stars) {
         _triggerShake();
         _burstConfetti(atStar: s);
-      } else {
-        // empty star just fades without shake
       }
       await Future.delayed(const Duration(milliseconds: 420));
     }
+    // Fix 4: stop confetti ticker ~2s after last burst (all confetti settled)
+    await Future.delayed(const Duration(milliseconds: 2200));
+    if (mounted) _confettiTicker.stop();
   }
 
   void _triggerShake() {
@@ -138,6 +137,9 @@ class _TrialResultsScreenState extends State<TrialResultsScreen>
   }
 
   void _tickConfetti() {
+    // Fix 4: guard — skip processing when nothing to animate
+    if (_confetti.isEmpty) return;
+
     const dt = 0.016;
     const gravity = 420.0;
     const drag = 0.98;
@@ -149,7 +151,6 @@ class _TrialResultsScreenState extends State<TrialResultsScreen>
       p.y += p.vy * dt;
       p.rotation += p.rotationSpeed * dt;
     }
-    // cull very old / far fallen
     _confetti.removeWhere((p) => p.life > 2.2 || p.y > 420);
     if (mounted) setState(() {});
   }
@@ -207,6 +208,12 @@ class _TrialResultsScreenState extends State<TrialResultsScreen>
                         color: completed ? AppColors.success : AppColors.danger,
                         fontSize: 26,
                         letterSpacing: 2,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withOpacity(0.5),
+                            blurRadius: 8,
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -314,17 +321,40 @@ class _TrialResultsScreenState extends State<TrialResultsScreen>
                                 ),
                               ],
                             ),
-                            if (trial?.parSeconds != null) ...[
-                              Divider(color: AppColors.paperInkSoft.withOpacity(0.25), height: 18),
+                          ],
+                        ),
+                      ),
+                      // Fix 1: Par comparison bar moved OUTSIDE stats card — now prominent
+                      if (trial?.parSeconds != null) ...[
+                        const SizedBox(height: 12),
+                        PaperCard(
+                          color: AppColors.paperBright,
+                          elevation: 1.2,
+                          padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.compare_arrows_rounded,
+                                      size: 14, color: AppColors.accentAlt),
+                                  const SizedBox(width: 6),
+                                  Text('VS PAR',
+                                      style: AppTypography.overline.copyWith(
+                                          color: AppColors.paperInkSoft,
+                                          letterSpacing: 1.4)),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
                               _ParComparisonBar(
                                 yourTime: outcome.timeUsedSeconds,
                                 parTime: trial!.parSeconds!,
                                 completed: completed,
                               ),
                             ],
-                          ],
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                     const Spacer(),
                     if (trial != null) ...[
@@ -334,28 +364,15 @@ class _TrialResultsScreenState extends State<TrialResultsScreen>
                         onPressed: () => _retry(trial),
                       ),
                       const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: PaperButton(
-                              label: 'MENU',
-                              expand: true,
-                              color: AppColors.paperWarm,
-                              textColor: AppColors.paperInk,
-                              onPressed: () => Navigator.of(context).pushReplacementNamed(AppRoutes.trials),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: PaperButton(
-                              label: 'TRIALS',
-                              expand: true,
-                              color: AppColors.paperBlue,
-                              textColor: AppColors.gemBlueDeep,
-                              onPressed: () => Navigator.of(context).pushReplacementNamed(AppRoutes.trials),
-                            ),
-                          ),
-                        ],
+                      // Fix 2: removed duplicate MENU button (both navigated to AppRoutes.trials)
+                      // Single TRIAL MAP button replaces both MENU + TRIALS
+                      PaperButton(
+                        label: 'TRIAL MAP',
+                        expand: true,
+                        color: AppColors.paperBlue,
+                        textColor: AppColors.gemBlueDeep,
+                        icon: const Icon(Icons.map_rounded, size: 18, color: AppColors.gemBlueDeep),
+                        onPressed: () => Navigator.of(context).pushReplacementNamed(AppRoutes.trials),
                       ),
                       if (outcome?.completed == true && outcome!.stars >= 1) ...[
                         const SizedBox(height: 4),

@@ -156,9 +156,13 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
                 builder: (context, constraints) {
                   return SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: constraints.maxHeight - 16),
-                      child: Column(
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight - 16,
+                          maxWidth: 500,
+                        ),
+                        child: Column(
                         children: [
                           const SizedBox(height: 18),
                           _Header(
@@ -216,7 +220,8 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
                         ],
                       ),
                     ),
-                  );
+                  ),
+                );
                 },
               ),
             ),
@@ -660,10 +665,10 @@ class _FlightLogReceiptCard extends StatelessWidget {
           child: _PunchHolesRow(color: AppColors.backgroundDeep),
         ),
 
-        // NEW BEST stamp — animated
+        // NEW BEST stamp — animated, clear of punch holes
         if (result.isNewHighScore)
           Positioned(
-            top: 62,
+            top: 76,
             right: 10,
             child: AnimatedBuilder(
               animation: stampScale,
@@ -1071,32 +1076,64 @@ class _ActionHierarchy extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              if (_canRevive)
-                Expanded(
-                  child: _AdRewardButton(
-                    label: 'REVIVE',
-                    sublabel: 'Keep flying',
-                    icon: Icons.favorite_rounded,
-                    color: AppColors.success,
-                    badge: 'VIDEO',
-                    onTap: onRevive,
-                  ),
-                ),
-              if (_canRevive && _canDouble) const SizedBox(width: 10),
-              if (_canDouble)
-                Expanded(
-                  child: _AdRewardButton(
-                    label: '2× COINS',
-                    sublabel: '+${result!.coinsCollected}',
-                    icon: Icons.monetization_on_rounded,
-                    color: AppColors.coinGold,
-                    badge: 'VIDEO',
-                    onTap: onDoubleCoins,
-                  ),
-                ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final useColumn = constraints.maxWidth < 320 ||
+                  (_canRevive && _canDouble && constraints.maxWidth < 360);
+              if (useColumn) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_canRevive)
+                      _AdRewardButton(
+                        label: 'REVIVE',
+                        sublabel: 'Keep flying',
+                        icon: Icons.favorite_rounded,
+                        color: AppColors.success,
+                        badge: 'VIDEO',
+                        onTap: onRevive,
+                      ),
+                    if (_canRevive && _canDouble) const SizedBox(height: 8),
+                    if (_canDouble)
+                      _AdRewardButton(
+                        label: '2× COINS',
+                        sublabel: '+${result!.coinsCollected}',
+                        icon: Icons.monetization_on_rounded,
+                        color: AppColors.coinGold,
+                        badge: 'VIDEO',
+                        onTap: onDoubleCoins,
+                      ),
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  if (_canRevive)
+                    Expanded(
+                      child: _AdRewardButton(
+                        label: 'REVIVE',
+                        sublabel: 'Keep flying',
+                        icon: Icons.favorite_rounded,
+                        color: AppColors.success,
+                        badge: 'VIDEO',
+                        onTap: onRevive,
+                      ),
+                    ),
+                  if (_canRevive && _canDouble) const SizedBox(width: 10),
+                  if (_canDouble)
+                    Expanded(
+                      child: _AdRewardButton(
+                        label: '2× COINS',
+                        sublabel: '+${result!.coinsCollected}',
+                        icon: Icons.monetization_on_rounded,
+                        color: AppColors.coinGold,
+                        badge: 'VIDEO',
+                        onTap: onDoubleCoins,
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 14),
           Row(
@@ -1196,11 +1233,11 @@ class _SecondaryMenuButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 46,
+        height: 50,
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.06),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withOpacity(0.18), width: 1.2),
+          border: Border.all(color: Colors.white.withOpacity(0.22), width: 1.5),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,

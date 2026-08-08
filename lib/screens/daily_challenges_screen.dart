@@ -59,19 +59,11 @@ class _DailyChallengesScreenState extends ConsumerState<DailyChallengesScreen> {
                     children: [
                       _StreakStampCard(streak: save.dailyLoginStreak),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(child: _MiniStat(label: 'Coins', value: save.coins, icon: PaperIconData.coin, color: AppColors.coinGold)),
-                          const SizedBox(width: 10),
-                          Expanded(child: _MiniStat(label: 'Gems', value: save.gems, icon: PaperIconData.gem, color: AppColors.gemBlue)),
-                          const SizedBox(width: 10),
-                          Expanded(child: _MiniStat(label: 'Best', value: save.highScore, icon: PaperIconData.bullseye, color: AppColors.accent)),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
+                      // MiniStat row removed — redundant with currency display elsewhere
                       _SectionHeader(
                         title: "TODAY'S CHALLENGES",
                         subtitle: _dailySubtitle(save.lastDailyChallengeMs),
+                        accentColor: AppColors.accent,
                         actionLabel: _hasClaimable(save.dailyChallengeCompleted, save.dailyChallengeClaimed) ? 'Claim all' : null,
                         onAction: _hasClaimable(save.dailyChallengeCompleted, save.dailyChallengeClaimed)
                             ? () => _claimAll(ChallengePeriod.daily)
@@ -96,6 +88,7 @@ class _DailyChallengesScreenState extends ConsumerState<DailyChallengesScreen> {
                       _SectionHeader(
                         title: 'WEEKLY CHALLENGES',
                         subtitle: _weeklySubtitle(save.lastWeeklyChallengeMs),
+                        accentColor: AppColors.accentAlt,
                         actionLabel: _hasClaimable(save.weeklyChallengeCompleted, save.weeklyChallengeClaimed) ? 'Claim all' : null,
                         onAction: _hasClaimable(save.weeklyChallengeCompleted, save.weeklyChallengeClaimed)
                             ? () => _claimAll(ChallengePeriod.weekly)
@@ -512,23 +505,65 @@ class _MiniStat extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, required this.subtitle, this.actionLabel, this.onAction});
+  const _SectionHeader({
+    required this.title,
+    required this.subtitle,
+    this.accentColor = AppColors.accent,
+    this.actionLabel,
+    this.onAction,
+  });
   final String title;
   final String subtitle;
+  final Color accentColor;
   final String? actionLabel;
   final VoidCallback? onAction;
+
   @override
   Widget build(BuildContext context) {
-    return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-      Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: AppTypography.overline),
-        const SizedBox(height: 3),
-        Text(subtitle, style: AppTypography.caption),
-      ])),
-      if (actionLabel != null && onAction != null)
-        PaperButton(label: actionLabel!, compact: true, onPressed: onAction, color: AppColors.success, textColor: Colors.white),
-    ]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          // Colored left-rule accent
+          Container(
+            width: 4,
+            height: 16,
+            decoration: BoxDecoration(
+              color: accentColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: AppTypography.overline.copyWith(color: AppColors.textLight)),
+              const SizedBox(height: 2),
+              Text(subtitle, style: AppTypography.caption.copyWith(fontSize: 11)),
+            ]),
+          ),
+          if (actionLabel != null && onAction != null)
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.success.withOpacity(0.35),
+                    blurRadius: 8,
+                    spreadRadius: 0,
+                  ),
+                ],
+              ),
+              child: PaperButton(
+                label: actionLabel!,
+                compact: true,
+                onPressed: onAction,
+                color: AppColors.success,
+                textColor: Colors.white,
+              ),
+            ),
+        ]),
+      ],
+    );
   }
 }
 
@@ -597,7 +632,7 @@ class _ChallengeCard extends StatelessWidget {
                 value: pct,
                 backgroundColor: AppColors.paperInkSoft.withOpacity(0.2),
                 valueColor: AlwaysStoppedAnimation<Color>(isDone ? AppColors.success : AppColors.accent),
-                minHeight: 6)),
+                minHeight: 8)),
         const SizedBox(height: 8),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text(isDone ? 'Completed' : '$progress / ${definition.target}',
@@ -605,6 +640,12 @@ class _ChallengeCard extends StatelessWidget {
                   color: isDone ? AppColors.success : AppColors.paperInkSoft,
                   fontWeight: isDone ? FontWeight.w700 : FontWeight.w600,
                   fontSize: 12)),
+          if (!isDone)
+            Text('${(pct * 100).toInt()}%',
+                style: AppTypography.caption.copyWith(
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12)),
           if (isClaimable)
             PaperButton(label: 'CLAIM', compact: true, onPressed: onClaim, color: AppColors.success, textColor: Colors.white)
           else if (isDone)

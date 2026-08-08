@@ -85,7 +85,7 @@ class _ModesScreenState extends ConsumerState<ModesScreen> {
               const SizedBox(height: 12),
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                   children: [
                     // ── Classic Mode ──────────────────────────────────────
                     _ClassicModeCard(
@@ -229,8 +229,8 @@ class _ClassicModeCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              // Orange Ribbon Badge
-              _OrangeRibbonBadge(highScore: highScore),
+              // Only show ribbon when there is an actual high score
+              if (highScore > 0) _OrangeRibbonBadge(highScore: highScore),
             ],
           ),
         ],
@@ -517,6 +517,20 @@ class _TrialModeCard extends StatelessWidget {
     const accent = AppColors.danger;
     const mode = GameMode.trial;
 
+    // Motivational context text
+    final String starsContext;
+    final Color starsContextColor;
+    if (earnedStars == 0) {
+      starsContext = 'Complete trials to earn ★ and unlock harder courses';
+      starsContextColor = AppColors.paperInkSoft;
+    } else if (earnedStars < totalStars) {
+      starsContext = '${totalStars - earnedStars} ★ remaining to collect';
+      starsContextColor = AppColors.paperInkSoft;
+    } else {
+      starsContext = 'All stars collected! Master pilot.';
+      starsContextColor = AppColors.success;
+    }
+
     return PaperCard(
       onTap: onTap,
       gradient: const LinearGradient(
@@ -550,6 +564,17 @@ class _TrialModeCard extends StatelessWidget {
                   mode.tagline,
                   style: AppTypography.caption.copyWith(
                     color: AppColors.paperInkSoft,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  starsContext,
+                  style: AppTypography.caption.copyWith(
+                    color: starsContextColor,
+                    fontSize: 11,
+                    fontWeight: earnedStars >= totalStars
+                        ? FontWeight.w700
+                        : FontWeight.w600,
                   ),
                 ),
               ],

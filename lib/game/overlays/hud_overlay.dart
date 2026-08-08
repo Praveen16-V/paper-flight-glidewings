@@ -123,57 +123,62 @@ class HudOverlay extends ConsumerWidget {
 
           // ── Active power-up icons (bottom-left) ────────────────────────
           Positioned(
-            bottom: 100,
+            bottom: MediaQuery.of(context).padding.bottom + 100,
             left: 16,
-            child: _PowerUpBar(activePowerUps: session.activePowerUps, remaining: session.powerUpRemaining),
+            child: _PowerUpBar(
+              activePowerUps: session.activePowerUps,
+              remaining: session.powerUpRemaining,
+            ),
           ),
 
-          // ── Pause button ───────────────────────────────────────────────
+          // ── Pause button — 44×44 with border for visibility ────────────
           Positioned(
             top: 12,
             right: 16,
             child: _PauseButton(game: game),
           ),
 
-          // ── BOOST button (bottom-right) — dedicated snap burst zone ────
+          // ── BOOST button — respects gesture-nav bottom inset ───────────
           Positioned(
-            bottom: 18,
+            bottom: MediaQuery.of(context).padding.bottom + 18,
             right: 16,
             child: _BoostButton(game: game),
           ),
 
-          // ── Joystick hint (subtle, only for joystick scheme, first 3s of run) ─
+          // ── Joystick hint — two-line, narrower, readable ───────────────
           if (settings.controlScheme == ControlScheme.joystick &&
               session.phase == GamePhase.playing)
             Positioned(
-              bottom: 92,
-              left: 0,
-              right: 0,
+              bottom: MediaQuery.of(context).padding.bottom + 110,
+              left: 32,
+              right: 32,
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                   decoration: BoxDecoration(
-                    color: const Color(0x99000000),
-                    borderRadius: BorderRadius.circular(20),
+                    color: const Color(0xBB000000),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Text(
-                    'MOVE THUMB TO STEER  •  HOLD TO CLIMB  •  FLICK UP OR TAP BOOST',
+                    'MOVE THUMB TO STEER  •  HOLD TO CLIMB\nFLICK UP OR TAP BOOST',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Color(0xBBFFFFFF),
-                      fontSize: 9,
+                      color: Color(0xCCFFFFFF),
+                      fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2,
+                      letterSpacing: 1.0,
+                      height: 1.5,
                     ),
                   ),
                 ),
               ),
             ),
 
-          // ── Biome label (fades in on transition) ───────────────────────
+          // ── Biome label — moved lower, less intrusive ─────────────────
           Positioned(
-            bottom: 48,
+            bottom: MediaQuery.of(context).padding.bottom + 28,
             left: 0,
-            right: 0,
+            right: 80, // avoid BOOST button area
             child: Center(
               child: _BiomeLabel(biome: session.currentBiome),
             ),
@@ -470,8 +475,9 @@ class _ComboDisplay extends StatelessWidget {
             child: Text(
               '×${multiplier.toStringAsFixed(1)}  $count COMBO',
               style: const TextStyle(
+                fontFamily: AppTypography.display,
                 color: Colors.white,
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.5,
               ),
@@ -549,12 +555,20 @@ class _PowerUpIcon extends StatelessWidget {
       decoration: BoxDecoration(
         color: _colorForType(type),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white24, width: 1),
+        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: _colorForType(type).withOpacity(0.4),
+            blurRadius: 6,
+            spreadRadius: 0,
+          ),
+        ],
       ),
       child: Center(
-        child: Text(
-          _emojiForType(type),
-          style: const TextStyle(fontSize: 18),
+        child: Icon(
+          _iconForType(type),
+          color: Colors.white,
+          size: 18,
         ),
       ),
     ));
@@ -565,30 +579,30 @@ class _PowerUpIcon extends StatelessWidget {
   Color _colorForType(PowerUpType type) {
     switch (type) {
       case PowerUpType.shield:
-        return const Color(0xFF1565C0); // blue
+        return const Color(0xFF1565C0);
       case PowerUpType.magnet:
-        return const Color(0xFF6A1B9A); // purple
+        return const Color(0xFF6A1B9A);
       case PowerUpType.ghost:
-        return const Color(0xFF00838F); // deep cyan
+        return const Color(0xFF00838F);
       case PowerUpType.slowMo:
-        return const Color(0xFF00695C); // teal
+        return const Color(0xFF00695C);
       case PowerUpType.coinRush:
-        return const Color(0xFFC77800); // amber gold
+        return const Color(0xFFC77800);
     }
   }
 
-  String _emojiForType(PowerUpType type) {
+  IconData _iconForType(PowerUpType type) {
     switch (type) {
       case PowerUpType.shield:
-        return '🛡';
+        return Icons.shield_rounded;
       case PowerUpType.magnet:
-        return '🧲';
+        return Icons.my_location_rounded;
       case PowerUpType.ghost:
-        return '👻';
+        return Icons.visibility_off_rounded;
       case PowerUpType.slowMo:
-        return '⏱';
+        return Icons.timer_rounded;
       case PowerUpType.coinRush:
-        return '💰';
+        return Icons.monetization_on_rounded;
     }
   }
 }
@@ -610,11 +624,19 @@ class _PauseButton extends StatelessWidget {
         }
       },
       child: Container(
-        width: 40,
-        height: 40,
+        width: 44,
+        height: 44,
         decoration: BoxDecoration(
           color: AppColors.hudBackground,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.white.withOpacity(0.22), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.35),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Icon(
           game.phase == GamePhase.paused ? Icons.play_arrow : Icons.pause,
@@ -855,7 +877,7 @@ class _BiomeLabel extends StatelessWidget {
         color: AppColors.textMuted,
         fontSize: 10,
         fontWeight: FontWeight.w700,
-        letterSpacing: 2.5,
+        letterSpacing: 1.5,
       ),
     );
   }

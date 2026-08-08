@@ -24,6 +24,7 @@ class TrialsScreen extends ConsumerStatefulWidget {
 class _TrialsScreenState extends ConsumerState<TrialsScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _dashCtrl;
+  final ScrollController _scrollCtrl = ScrollController();
 
   @override
   void initState() {
@@ -37,6 +38,7 @@ class _TrialsScreenState extends ConsumerState<TrialsScreen>
   @override
   void dispose() {
     _dashCtrl.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -56,6 +58,12 @@ class _TrialsScreenState extends ConsumerState<TrialsScreen>
       nodes.add(_TrialNodeData(trial: trial, stars: stars, unlocked: unlocked));
     }
 
+    // Find furthest unlocked for auto-scroll
+    int furthest = 0;
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].unlocked) furthest = i;
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Container(
@@ -71,12 +79,40 @@ class _TrialsScreenState extends ConsumerState<TrialsScreen>
             children: [
               _TitleBar(),
               Expanded(
-                child: AnimatedBuilder(
-                  animation: _dashCtrl,
-                  builder: (context, _) {
-                    return _FlightMap(
-                      nodes: nodes,
-                      dashPhase: _dashCtrl.value,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Scroll to current position after first frame
+                    const cardH = 118.0;
+                    const verticalGap = 34.0;
+                    const topPad = 18.0;
+                    final targetScrollOffset = (topPad +
+                            furthest * (cardH + verticalGap) +
+                            cardH / 2 -
+                            constraints.maxHeight / 2)
+                        .clamp(0.0, double.infinity);
+
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (_scrollCtrl.hasClients &&
+                          _scrollCtrl.offset == 0 &&
+                          targetScrollOffset > 0) {
+                        _scrollCtrl.animateTo(
+                          targetScrollOffset,
+                          duration: const Duration(milliseconds: 600),
+                          curve: Curves.easeOutCubic,
+                        );
+                      }
+                    });
+
+                    return AnimatedBuilder(
+                      animation: _dashCtrl,
+                      builder: (context, _) {
+                        return _FlightMap(
+                          nodes: nodes,
+                          dashPhase: _dashCtrl.value,
+                          scrollCtrl: _scrollCtrl,
+                          furthest: furthest,
+                        );
+                      },
                     );
                   },
                 ),
@@ -97,19 +133,26 @@ class _TrialNodeData {
 }
 
 class _FlightMap extends StatelessWidget {
-  const _FlightMap({required this.nodes, required this.dashPhase});
+  const _FlightMap({
+    required this.nodes,
+    required this.dashPhase,
+    required this.scrollCtrl,
+    required this.furthest,
+  });
   final List<_TrialNodeData> nodes;
   final double dashPhase;
+  final ScrollController scrollCtrl;
+  final int furthest;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
       final width = constraints.maxWidth;
-      // card metrics
-      const cardW = 172.0;
+      // Fix 1: wider cards — scale with screen width
+      final cardW = (width * 0.52).clamp(160.0, 210.0);
       const cardH = 118.0;
       const verticalGap = 34.0;
-      const horizontalInset = 16.0;
+      const horizontalInset = 12.0;
       const topPad = 18.0;
       const bottomPad = 28.0;
 
@@ -122,13 +165,8 @@ class _FlightMap extends StatelessWidget {
         centersY.add(y);
       }
 
-      // furthest unlocked index for plane token
-      int furthest = 0;
-      for (var i = 0; i < nodes.length; i++) {
-        if (nodes[i].unlocked) furthest = i;
-      }
-
       return SingleChildScrollView(
+        controller: scrollCtrl,
         padding: const EdgeInsets.only(bottom: 8),
         child: SizedBox(
           width: width,
@@ -182,11 +220,11 @@ class _FlightMap extends StatelessWidget {
                     ),
                   ),
                 ),
-              // progress plane token on spine
+              // Fix 2: progress plane token — larger (40×40) with "YOU ARE HERE" label
               if (nodes.isNotEmpty)
                 Positioned(
-                  left: width / 2 - 14,
-                  top: centersY[furthest] - 14,
+                  left: width / 2 - 20,
+                  top: centersY[furthest] - 20,
                   child: _FlyingPlaneToken(
                     unlocked: nodes[furthest].unlocked,
                     stars: nodes[furthest].stars,
@@ -346,6 +384,19 @@ class _MapIsland extends StatelessWidget {
                         ),
                     ],
                   ),
+                  // Fix 4: locked unlock hint
+                  if (!unlocked && index > 0) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Need ★ from checkpoint ${index.toString().padLeft(2, '0')}',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.paperInkSoft.withOpacity(0.75),
+                        fontSize: 9,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                   const SizedBox(height: 6),
                   Row(
                     children: [
@@ -414,18 +465,55 @@ class _FlyingPlaneToken extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 28,
-      height: 28,
-      decoration: BoxDecoration(
-        color: unlocked ? AppColors.accent : AppColors.paperInkSoft.withOpacity(0.55),
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 1.8),
-        boxShadow: [
-          BoxShadow(color: (unlocked ? AppColors.accent : Colors.black).withOpacity(0.28), blurRadius: 6, offset: const Offset(0, 2)),
-        ],
-      ),
-      child: Icon(Icons.flight_rounded, size: 14, color: Colors.white),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: unlocked ? AppColors.accent : AppColors.paperInkSoft.withOpacity(0.55),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              if (unlocked) ...[
+                BoxShadow(
+                  color: AppColors.accent.withOpacity(0.5),
+                  blurRadius: 12,
+                  spreadRadius: 2,
+                ),
+                BoxShadow(
+                  color: AppColors.accent.withOpacity(0.25),
+                  blurRadius: 20,
+                  spreadRadius: 4,
+                ),
+              ],
+              BoxShadow(
+                color: Colors.black.withOpacity(0.28),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Icon(Icons.flight_rounded, size: 20, color: Colors.white),
+        ),
+        const SizedBox(height: 3),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundDeep.withOpacity(0.85),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            'YOU ARE HERE',
+            style: AppTypography.overline.copyWith(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: 6,
+              letterSpacing: 0.6,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -466,7 +554,7 @@ class _FlightPathPainter extends CustomPainter {
       final segmentUnlocked = nodes[i + 1].unlocked;
       final paint = Paint()
         ..color = segmentUnlocked ? AppColors.accent.withOpacity(0.92) : Colors.white.withOpacity(0.20)
-        ..strokeWidth = segmentUnlocked ? 2.2 : 1.6
+        ..strokeWidth = segmentUnlocked ? 2.8 : 1.6
         ..strokeCap = StrokeCap.round
         ..style = PaintingStyle.stroke;
 
@@ -492,7 +580,7 @@ class _FlightPathPainter extends CustomPainter {
       final unlocked = nodes[i].unlocked;
       final paint = Paint()
         ..color = unlocked ? AppColors.accent.withOpacity(0.88) : Colors.white.withOpacity(0.14)
-        ..strokeWidth = unlocked ? 1.8 : 1.3
+        ..strokeWidth = unlocked ? 2.2 : 1.3
         ..strokeCap = StrokeCap.round;
       final start = Offset(islandInnerX, y);
       final end = Offset(spineX, y);
@@ -509,7 +597,7 @@ class _FlightPathPainter extends CustomPainter {
       // outer ring
       canvas.drawCircle(
           Offset(spineX, dotY),
-          7,
+          9,
           Paint()
             ..color = Colors.white.withOpacity(dotUnlocked ? 0.95 : 0.22)
             ..style = PaintingStyle.stroke
@@ -523,9 +611,9 @@ class _FlightPathPainter extends CustomPainter {
       } else {
         fill = AppColors.accent.withOpacity(0.92);
       }
-      canvas.drawCircle(Offset(spineX, dotY), 4.2, Paint()..color = fill);
+      canvas.drawCircle(Offset(spineX, dotY), 5.5, Paint()..color = fill);
       if (isDone) {
-        canvas.drawCircle(Offset(spineX, dotY), 2, Paint()..color = Colors.white.withOpacity(0.92));
+        canvas.drawCircle(Offset(spineX, dotY), 2.4, Paint()..color = Colors.white.withOpacity(0.92));
       }
     }
   }

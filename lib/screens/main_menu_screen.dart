@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,6 +7,7 @@ import '../core/constants/app_typography.dart';
 import '../core/widgets/currency_chip.dart';
 import '../core/widgets/paper_button.dart';
 import '../core/widgets/paper_icons.dart';
+import '../core/widgets/sky_backdrop.dart';
 import '../models/save_data.dart';
 import '../providers/save_data_provider.dart';
 import '../services/analytics_service.dart';
@@ -67,7 +66,7 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
       body: Stack(
         children: [
           // ── Animated parallax sky backdrop ──────────────────────────────
-          const Positioned.fill(child: _ParallaxSkyBackdrop()),
+          const Positioned.fill(child: SkyBackdrop()),
 
           // ── Main content ────────────────────────────────────────────────
           SafeArea(
@@ -128,10 +127,10 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
                           decoration: BoxDecoration(
                             color: AppColors.paper,
                             borderRadius: BorderRadius.circular(20),
-                            boxShadow: const [
+                            boxShadow: [
                               BoxShadow(
-                                color: Colors.black26,
-                                offset: Offset(0, 3),
+                                color: AppColors.backgroundDeep.withOpacity(0.55),
+                                offset: const Offset(0, 3),
                                 blurRadius: 0,
                               ),
                             ],
@@ -252,256 +251,6 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
     if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
     return n.toString();
   }
-}
-
-// ── Animated Parallax Sky Backdrop ─────────────────────────────────────────────
-
-/// Floating paper clouds with layered parallax silhouettes that animate slowly,
-/// giving the main menu an alive, breathing sky environment.
-class _ParallaxSkyBackdrop extends StatefulWidget {
-  const _ParallaxSkyBackdrop();
-
-  @override
-  State<_ParallaxSkyBackdrop> createState() => _ParallaxSkyBackdropState();
-}
-
-class _ParallaxSkyBackdropState extends State<_ParallaxSkyBackdrop>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  /// Procedurally generated cloud data.
-  static const _cloudCount = 8;
-  late final List<_CloudData> _clouds;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 20),
-    )..repeat();
-
-    final rng = math.Random(42);
-    _clouds = List.generate(_cloudCount, (i) {
-      return _CloudData(
-        x: rng.nextDouble(),
-        y: 0.05 + rng.nextDouble() * 0.45,
-        scale: 0.5 + rng.nextDouble() * 0.8,
-        speed: 0.015 + rng.nextDouble() * 0.025,
-        opacity: 0.08 + rng.nextDouble() * 0.12,
-        phase: rng.nextDouble() * math.pi * 2,
-      );
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        final t = _controller.value; // 0→1 over 20s loop
-        return CustomPaint(
-          painter: _SkyPainter(
-            clouds: _clouds,
-            animT: t,
-          ),
-          child: const SizedBox.expand(),
-        );
-      },
-    );
-  }
-}
-
-class _CloudData {
-  final double x;
-  final double y;
-  final double scale;
-  final double speed;
-  final double opacity;
-  final double phase;
-
-  _CloudData({
-    required this.x,
-    required this.y,
-    required this.scale,
-    required this.speed,
-    required this.opacity,
-    required this.phase,
-  });
-}
-
-class _SkyPainter extends CustomPainter {
-  _SkyPainter({required this.clouds, required this.animT});
-
-  final List<_CloudData> clouds;
-  final double animT;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    // ── Subtle star field ─────────────────────────────────────────────────
-    final starRng = math.Random(77);
-    final starPaint = Paint()..color = Colors.white.withOpacity(0.3);
-    for (var i = 0; i < 40; i++) {
-      final sx = starRng.nextDouble() * w;
-      final sy = starRng.nextDouble() * h * 0.5;
-      final sr = starRng.nextDouble() * 1.2 + 0.3;
-      // Twinkle: modulate opacity by sin wave
-      final twinkle = 0.15 +
-          0.15 * math.sin(animT * math.pi * 2 + starRng.nextDouble() * 6);
-      starPaint.color = Colors.white.withOpacity(twinkle);
-      canvas.drawCircle(Offset(sx, sy), sr, starPaint);
-    }
-
-    // ── Paper clouds (origami-shaped, drifting) ───────────────────────────
-    for (final cloud in clouds) {
-      // Drift horizontally; wrap around.
-      final drift = (cloud.x + animT * cloud.speed * 4) % 1.2 - 0.1;
-      // Gentle vertical bob.
-      final bobY = cloud.y +
-          0.012 * math.sin(animT * math.pi * 2 + cloud.phase);
-      final cx = drift * w;
-      final cy = bobY * h;
-      final cloudScale = cloud.scale * w * 0.18;
-
-      _drawPaperCloud(canvas, cx, cy, cloudScale, cloud.opacity);
-    }
-
-    // ── Parallax mountain silhouettes ─────────────────────────────────────
-    // Three layers, each progressively lighter and closer (higher).
-    final silColors = [
-      AppColors.backgroundDeep,            // furthest, darkest
-      const Color(0xFF0E1630),             // mid
-      const Color(0xFF151E3E),             // nearest, lightest
-    ];
-    final silBases = [
-      0.68, // start height (fraction of h)
-      0.74,
-      0.82,
-    ];
-    final parallaxSpeeds = [0.3, 0.6, 1.0];
-
-    for (int layer = 0; layer < 3; layer++) {
-      final offset = animT * parallaxSpeeds[layer] * 80;
-      _drawMountainSilhouette(
-        canvas,
-        size,
-        baseHeight: silBases[layer],
-        color: silColors[layer],
-        parallaxOffset: offset,
-        seed: 10 + layer * 7,
-        amplitude: 0.06 + layer * 0.02,
-      );
-    }
-  }
-
-  void _drawPaperCloud(
-      Canvas canvas, double cx, double cy, double scale, double opacity) {
-    final paint = Paint()..color = Colors.white.withOpacity(opacity);
-
-    // Origami cloud: 3 overlapping ellipses with a flat bottom (paper fold)
-    // Main body
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(cx, cy),
-        width: scale * 1.8,
-        height: scale * 0.7,
-      ),
-      paint,
-    );
-    // Left puff
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(cx - scale * 0.45, cy - scale * 0.15),
-        width: scale * 1.0,
-        height: scale * 0.6,
-      ),
-      paint,
-    );
-    // Right puff
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(cx + scale * 0.4, cy - scale * 0.1),
-        width: scale * 1.1,
-        height: scale * 0.55,
-      ),
-      paint,
-    );
-    // Top puff
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(cx + scale * 0.05, cy - scale * 0.3),
-        width: scale * 0.9,
-        height: scale * 0.5,
-      ),
-      paint,
-    );
-    // Flat bottom fold (paper crease line)
-    final foldPaint = Paint()
-      ..color = Colors.white.withOpacity(opacity * 0.3)
-      ..strokeWidth = scale * 0.02
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      Offset(cx - scale * 0.7, cy + scale * 0.18),
-      Offset(cx + scale * 0.7, cy + scale * 0.18),
-      foldPaint,
-    );
-  }
-
-  void _drawMountainSilhouette(
-    Canvas canvas,
-    Size size, {
-    required double baseHeight,
-    required Color color,
-    required double parallaxOffset,
-    required int seed,
-    required double amplitude,
-  }) {
-    final w = size.width;
-    final h = size.height;
-    final rng = math.Random(seed);
-    final paint = Paint()..color = color;
-
-    final path = Path();
-    final baseY = h * baseHeight;
-    final peakAmp = h * amplitude;
-
-    path.moveTo(0, h);
-    path.lineTo(0, baseY);
-
-    // Generate peaks using deterministic random
-    final numPeaks = 12;
-    final segmentW = w / numPeaks;
-    for (int i = 0; i <= numPeaks; i++) {
-      final x = i * segmentW - (parallaxOffset % segmentW);
-      final peakHeight = rng.nextDouble() * peakAmp;
-      final isPeak = i % 2 == 0;
-      final y = isPeak ? baseY - peakHeight : baseY - peakHeight * 0.3;
-      if (i == 0) {
-        path.lineTo(x.clamp(0.0, w + segmentW), y);
-      } else {
-        // Smooth peaks with quadratic bezier
-        final ctrlX = x - segmentW * 0.5;
-        final ctrlY = y - peakHeight * 0.4;
-        path.quadraticBezierTo(ctrlX, ctrlY, x, y);
-      }
-    }
-
-    path.lineTo(w, h);
-    path.close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _SkyPainter old) => old.animT != animT;
 }
 
 // ── Glassmorphic Currency Badge ────────────────────────────────────────────────
@@ -642,30 +391,36 @@ class _ModePreviewCard extends StatelessWidget {
       width: 260,
       child: Row(
         children: [
-          // ── Left arrow ──────────────────────────────────────────────────
+          // ── Left arrow — 44×44 touch target ─────────────────────────────
           GestureDetector(
             onTap: selectedIndex > 0 ? onTapLeft : null,
-            child: Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: selectedIndex > 0
-                    ? AppColors.surface.withOpacity(0.7)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: selectedIndex > 0
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.transparent,
-                  width: 1,
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Center(
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: selectedIndex > 0
+                        ? AppColors.surface.withOpacity(0.7)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: selectedIndex > 0
+                          ? Colors.white.withOpacity(0.1)
+                          : Colors.transparent,
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.chevron_left,
+                    color: selectedIndex > 0
+                        ? AppColors.textLight
+                        : AppColors.textMuted.withOpacity(0.3),
+                    size: 22,
+                  ),
                 ),
-              ),
-              child: Icon(
-                Icons.chevron_left,
-                color: selectedIndex > 0
-                    ? AppColors.textLight
-                    : AppColors.textMuted.withOpacity(0.3),
-                size: 20,
               ),
             ),
           ),
@@ -710,8 +465,8 @@ class _ModePreviewCard extends StatelessWidget {
                     children: [
                       // Mode icon medallion
                       Container(
-                        width: 40,
-                        height: 40,
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
                           color: mode.accent,
                           borderRadius: BorderRadius.circular(12),
@@ -726,7 +481,7 @@ class _ModePreviewCard extends StatelessWidget {
                         child: Center(
                           child: PaperIcon(
                             mode.iconData,
-                            size: 22,
+                            size: 24,
                             color: Colors.white,
                           ),
                         ),
@@ -773,30 +528,36 @@ class _ModePreviewCard extends StatelessWidget {
           ),
           const SizedBox(width: 6),
 
-          // ── Right arrow ─────────────────────────────────────────────────
+          // ── Right arrow — 44×44 touch target ────────────────────────────
           GestureDetector(
             onTap: selectedIndex < modeCount - 1 ? onTapRight : null,
-            child: Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: selectedIndex < modeCount - 1
-                    ? AppColors.surface.withOpacity(0.7)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: selectedIndex < modeCount - 1
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.transparent,
-                  width: 1,
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Center(
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: selectedIndex < modeCount - 1
+                        ? AppColors.surface.withOpacity(0.7)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: selectedIndex < modeCount - 1
+                          ? Colors.white.withOpacity(0.1)
+                          : Colors.transparent,
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.chevron_right,
+                    color: selectedIndex < modeCount - 1
+                        ? AppColors.textLight
+                        : AppColors.textMuted.withOpacity(0.3),
+                    size: 22,
+                  ),
                 ),
-              ),
-              child: Icon(
-                Icons.chevron_right,
-                color: selectedIndex < modeCount - 1
-                    ? AppColors.textLight
-                    : AppColors.textMuted.withOpacity(0.3),
-                size: 20,
               ),
             ),
           ),
@@ -850,9 +611,9 @@ class _PlayButtonState extends State<_PlayButton>
     super.initState();
     _pulse = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1100),
+      duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
-    _scale = Tween<double>(begin: 1.0, end: 1.04).animate(
+    _scale = Tween<double>(begin: 1.0, end: 1.06).animate(
       CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
     );
   }
@@ -934,7 +695,7 @@ class _NavIcon extends StatelessWidget {
               label,
               style: AppTypography.caption.copyWith(
                 color: isActive ? AppColors.accent : AppColors.textMuted,
-                fontSize: 10,
+                fontSize: 11.5,
                 fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
               ),
             ),

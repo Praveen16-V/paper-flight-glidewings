@@ -73,15 +73,15 @@ class AppTypography {
 
   static const TextStyle caption = TextStyle(
     fontFamily: body,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: FontWeight.w600,
     color: AppColors.textMuted,
-    height: 1.3,
+    height: 1.35,
   );
 
   static const TextStyle overline = TextStyle(
     fontFamily: body,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: FontWeight.w800,
     letterSpacing: 1.6,
     color: AppColors.textMuted,

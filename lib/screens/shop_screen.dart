@@ -132,6 +132,43 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                               onTap: () => _buy(IapProductIds.removeAds),
                             ),
                             const SizedBox(height: 24),
+                          ] else ...[
+                            _SectionHeader(title: 'Ad-Free'),
+                            const SizedBox(height: 12),
+                            PaperCard(
+                              color: AppColors.paperGreen,
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 42,
+                                    height: 42,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.success.withOpacity(0.18),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(Icons.check_circle_rounded,
+                                        color: AppColors.success, size: 26),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Ads Removed',
+                                            style: AppTypography.bodyLarge.copyWith(
+                                                color: AppColors.paperInk, fontSize: 15)),
+                                        const SizedBox(height: 2),
+                                        Text('You\'re flying ad-free. Thank you!',
+                                            style: AppTypography.caption.copyWith(
+                                                color: AppColors.paperInkSoft)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 24),
                           ],
                           _SectionHeader(title: 'Deals'),
                           const SizedBox(height: 12),
@@ -283,7 +320,29 @@ class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title});
   final String title;
   @override
-  Widget build(BuildContext context) => Text(title.toUpperCase(), style: AppTypography.overline);
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 16,
+          decoration: BoxDecoration(
+            color: AppColors.accent,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(title.toUpperCase(), style: AppTypography.overline),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            height: 1,
+            color: Colors.white.withOpacity(0.10),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ── Ribbon tag ───────────────────────────────────────────────────────────────
@@ -506,8 +565,8 @@ class _IllustratedShopCard extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 72,
-                height: 64,
+                width: 80,
+                height: 72,
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.55),
                   borderRadius: BorderRadius.circular(12),
@@ -585,18 +644,20 @@ class _CoinPackCard extends StatelessWidget {
           borderWidth: isBest ? 1.5 : 1.2,
           child: Column(
             children: [
-              SizedBox(width: 72, height: 62, child: CustomPaint(painter: _ChestPainter(kind: pack.kind, accent: AppColors.coinGold))),
+              SizedBox(width: 80, height: 70, child: CustomPaint(painter: _ChestPainter(kind: pack.kind, accent: AppColors.coinGold))),
               const SizedBox(height: 6),
               Text(pack.label, style: AppTypography.stat.copyWith(color: AppColors.paperInk, fontSize: 17)),
               Text(pack.sublabel, style: AppTypography.caption.copyWith(color: AppColors.paperInkSoft, fontSize: 10, fontStyle: FontStyle.italic)),
-              if (pack.bonus != null) ...[
-                const SizedBox(height: 4),
+              // Always reserve bonus badge height for equal card heights
+              const SizedBox(height: 4),
+              if (pack.bonus != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(color: AppColors.success, borderRadius: BorderRadius.circular(6)),
                   child: Text(pack.bonus!, style: AppTypography.overline.copyWith(color: Colors.white, fontSize: 9, letterSpacing: 0.8)),
-                ),
-              ],
+                )
+              else
+                const SizedBox(height: 22), // same height as badge row
               const SizedBox(height: 10),
               PaperButton(label: pack.price, compact: true, expand: true, onPressed: pack.onTap),
             ],
@@ -620,28 +681,67 @@ class _EarnCard extends StatelessWidget {
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) {
-    return PaperCard(
+    return GestureDetector(
       onTap: onTap,
-      color: AppColors.paperBright,
-      elevation: 1.0,
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(color: iconColor.withOpacity(0.14), borderRadius: BorderRadius.circular(10)),
-            child: Icon(icon, color: iconColor, size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: AppTypography.bodyLarge.copyWith(color: AppColors.paperInk, fontSize: 15)),
-              Text(description, style: AppTypography.caption.copyWith(color: AppColors.paperInkSoft)),
-            ]),
-          ),
-          PaperButton(label: 'Watch', compact: true, color: AppColors.paperGreen, textColor: AppColors.paperInk, onPressed: onTap),
-        ],
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.success.withOpacity(0.35), width: 1.2),
+          boxShadow: [
+            BoxShadow(color: AppColors.success.withOpacity(0.08), blurRadius: 8, spreadRadius: 0),
+          ],
+        ),
+        child: Row(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: iconColor.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: iconColor.withOpacity(0.35)),
+                  ),
+                  child: Icon(icon, color: iconColor, size: 20),
+                ),
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.success,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text('FREE',
+                        style: AppTypography.overline.copyWith(
+                            color: Colors.white, fontSize: 7, letterSpacing: 0.8)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title,
+                    style: AppTypography.bodyLarge.copyWith(
+                        color: AppColors.textLight, fontSize: 14)),
+                Text(description,
+                    style: AppTypography.caption.copyWith(color: AppColors.textMuted)),
+              ]),
+            ),
+            PaperButton(
+                label: 'Watch',
+                compact: true,
+                color: AppColors.paperGreen,
+                textColor: AppColors.paperInk,
+                onPressed: onTap),
+          ],
+        ),
       ),
     );
   }

@@ -6,4 +6,5 @@ export 'paper_button.dart';
 export 'paper_card.dart';
 export 'paper_effects.dart';
 export 'paper_icons.dart';
+export 'sky_backdrop.dart';
 export 'stat_counter.dart';

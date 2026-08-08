@@ -63,6 +63,11 @@ class SettingsNotifier extends Notifier<SettingsModel> {
     state = SettingsModel.fromMap(state.toMap());
     await PersistenceService.instance.writeSettings(state);
   }
+
+  Future<void> resetToDefaults() async {
+    state = SettingsModel();
+    await PersistenceService.instance.writeSettings(state);
+  }
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, SettingsModel>(

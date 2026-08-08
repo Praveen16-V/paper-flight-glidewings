@@ -35,72 +35,227 @@ class SettingsScreen extends ConsumerWidget {
                 child: ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
+                    // ── Controls group ───────────────────────────────────
                     _SectionHeader(title: 'Controls'),
                     const SizedBox(height: 12),
-                    _SegmentedRow<ControlScheme>(
-                      label: 'Steering',
-                      options: const [ControlScheme.tilt, ControlScheme.joystick, ControlScheme.touchZones],
-                      labels: const ['Tilt', 'Joystick', 'Zones'],
-                      selected: settings.controlScheme,
-                      onChanged: (v) => notifier.setControlScheme(v),
+                    // Grouped controls card
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.paper,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(color: AppColors.paperInk.withOpacity(0.12), offset: const Offset(0, 4), blurRadius: 1),
+                          BoxShadow(color: Colors.black.withOpacity(0.18), offset: const Offset(0, 2), blurRadius: 6),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                            child: _SegmentedRow<ControlScheme>(
+                              label: 'Steering',
+                              options: const [ControlScheme.tilt, ControlScheme.joystick, ControlScheme.touchZones],
+                              labels: const ['Tilt', 'Joystick', 'Zones'],
+                              selected: settings.controlScheme,
+                              onChanged: (v) => notifier.setControlScheme(v),
+                            ),
+                          ),
+                          Divider(height: 1, color: AppColors.paperInkSoft.withOpacity(0.15)),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                            child: _SliderRow(
+                              label: settings.controlScheme == ControlScheme.joystick
+                                  ? 'Steering Sensitivity'
+                                  : 'Tilt Sensitivity',
+                              value: settings.tiltSensitivity,
+                              min: 0.3,
+                              max: 2.0,
+                              divisions: 17,
+                              enabled: settings.controlScheme == ControlScheme.tilt ||
+                                  settings.controlScheme == ControlScheme.joystick,
+                              onChanged: (v) => notifier.setTiltSensitivity(v),
+                              valueLabel: settings.tiltSensitivity.toStringAsFixed(1),
+                            ),
+                          ),
+                          if (settings.controlScheme == ControlScheme.joystick ||
+                              settings.controlScheme == ControlScheme.touchZones) ...[
+                            Divider(height: 1, color: AppColors.paperInkSoft.withOpacity(0.15)),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              child: _SwitchRow(
+                                label: settings.controlScheme == ControlScheme.joystick
+                                    ? 'Show joystick on screen'
+                                    : 'Show control zones on screen',
+                                value: settings.showOnScreenControls,
+                                onChanged: (v) => notifier.setShowOnScreenControls(v),
+                              ),
+                            ),
+                          ],
+                          Divider(height: 1, color: AppColors.paperInkSoft.withOpacity(0.15)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            child: _SwitchRow(
+                              label: 'Flick to use power-up',
+                              value: settings.flickToUsePowerUp,
+                              onChanged: (v) => notifier.setFlickToUsePowerUp(v),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 12),
-                    // Interactive preview — miniature phone illustrating response
                     _ControlPreview(scheme: settings.controlScheme),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
                     if (settings.controlScheme == ControlScheme.joystick)
                       _InfoBox(
                         icon: Icons.gamepad,
                         text: 'Touch anywhere — a virtual stick appears under your thumb. Slide to steer, hold to climb. Flick up or tap BOOST for the snap.',
                       ),
-                    if (settings.controlScheme == ControlScheme.joystick) const SizedBox(height: 16),
-                    _SliderRow(
-                      label: settings.controlScheme == ControlScheme.joystick ? 'Steering Sensitivity' : 'Tilt Sensitivity',
-                      value: settings.tiltSensitivity,
-                      min: 0.3,
-                      max: 2.0,
-                      divisions: 17,
-                      enabled: settings.controlScheme == ControlScheme.tilt || settings.controlScheme == ControlScheme.joystick,
-                      onChanged: (v) => notifier.setTiltSensitivity(v),
-                      valueLabel: settings.tiltSensitivity.toStringAsFixed(1),
-                    ),
-                    if (settings.controlScheme == ControlScheme.joystick || settings.controlScheme == ControlScheme.touchZones) ...[
-                      const SizedBox(height: 20),
-                      _SwitchRow(
-                        label: settings.controlScheme == ControlScheme.joystick ? 'Show joystick on screen' : 'Show control zones on screen',
-                        value: settings.showOnScreenControls,
-                        onChanged: (v) => notifier.setShowOnScreenControls(v),
-                      ),
-                      const SizedBox(height: 6),
-                      _Hint(
-                        settings.controlScheme == ControlScheme.joystick
-                            ? 'Hide the floating stick for a cleaner view — touching anywhere still steers.'
-                            : 'Hide the zone guides for a cleaner view — tapping left or right half still steers.',
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    _SwitchRow(label: 'Flick to use power-up', value: settings.flickToUsePowerUp, onChanged: (v) => notifier.setFlickToUsePowerUp(v)),
-                    const SizedBox(height: 6),
-                    const _Hint('Flick up or double-tap fires your plane\'s power-up — Dart: BOOST · Glider: Magnet · Stunt Fold: Ghost. The BOOST button always works.'),
                     const SizedBox(height: 32),
 
+                    // ── Audio group ──────────────────────────────────────
                     _SectionHeader(title: 'Audio'),
                     const SizedBox(height: 12),
-                    _SwitchRow(label: 'Sound Effects', value: settings.sfxEnabled, onChanged: (v) => notifier.setSfxEnabled(v)),
-                    const SizedBox(height: 8),
-                    _SliderRow(label: 'SFX Volume', value: settings.sfxVolume, min: 0, max: 1, divisions: 10, enabled: settings.sfxEnabled, onChanged: (v) => notifier.setSfxVolume(v), valueLabel: '${(settings.sfxVolume * 100).toInt()}%'),
-                    const SizedBox(height: 16),
-                    _SwitchRow(label: 'Music', value: settings.musicEnabled, onChanged: (v) => notifier.setMusicEnabled(v)),
-                    const SizedBox(height: 8),
-                    _SliderRow(label: 'Music Volume', value: settings.musicVolume, min: 0, max: 1, divisions: 10, enabled: settings.musicEnabled, onChanged: (v) => notifier.setMusicVolume(v), valueLabel: '${(settings.musicVolume * 100).toInt()}%'),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.paper,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(color: AppColors.paperInk.withOpacity(0.12), offset: const Offset(0, 4), blurRadius: 1),
+                          BoxShadow(color: Colors.black.withOpacity(0.18), offset: const Offset(0, 2), blurRadius: 6),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            child: _SwitchRow(
+                              label: 'Sound Effects',
+                              value: settings.sfxEnabled,
+                              onChanged: (v) => notifier.setSfxEnabled(v),
+                            ),
+                          ),
+                          Divider(height: 1, color: AppColors.paperInkSoft.withOpacity(0.15)),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                            child: _SliderRow(
+                              label: 'SFX Volume',
+                              value: settings.sfxVolume,
+                              min: 0,
+                              max: 1,
+                              divisions: 10,
+                              enabled: settings.sfxEnabled,
+                              onChanged: (v) => notifier.setSfxVolume(v),
+                              valueLabel: '${(settings.sfxVolume * 100).toInt()}%',
+                            ),
+                          ),
+                          Divider(height: 1, color: AppColors.paperInkSoft.withOpacity(0.15)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            child: _SwitchRow(
+                              label: 'Music',
+                              value: settings.musicEnabled,
+                              onChanged: (v) => notifier.setMusicEnabled(v),
+                            ),
+                          ),
+                          Divider(height: 1, color: AppColors.paperInkSoft.withOpacity(0.15)),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                            child: _SliderRow(
+                              label: 'Music Volume',
+                              value: settings.musicVolume,
+                              min: 0,
+                              max: 1,
+                              divisions: 10,
+                              enabled: settings.musicEnabled,
+                              onChanged: (v) => notifier.setMusicVolume(v),
+                              valueLabel: '${(settings.musicVolume * 100).toInt()}%',
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 32),
 
+                    // ── Haptics group ────────────────────────────────────
                     _SectionHeader(title: 'Haptics'),
                     const SizedBox(height: 12),
-                    _SwitchRow(label: 'Vibration', value: settings.hapticEnabled, onChanged: (v) => notifier.setHapticEnabled(v)),
-                    const SizedBox(height: 40),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.paper,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(color: AppColors.paperInk.withOpacity(0.12), offset: const Offset(0, 4), blurRadius: 1),
+                          BoxShadow(color: Colors.black.withOpacity(0.18), offset: const Offset(0, 2), blurRadius: 6),
+                        ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        child: _SwitchRow(
+                          label: 'Vibration',
+                          value: settings.hapticEnabled,
+                          onChanged: (v) => notifier.setHapticEnabled(v),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
 
+                    // ── Calibration tip ──────────────────────────────────
                     _CalibrationNote(scheme: settings.controlScheme),
+                    const SizedBox(height: 24),
+
+                    // ── Reset to Defaults ────────────────────────────────
+                    Center(
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.restart_alt_rounded,
+                            color: AppColors.danger, size: 16),
+                        label: Text(
+                          'Reset All Settings to Defaults',
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.danger,
+                            decoration: TextDecoration.underline,
+                            decorationColor: AppColors.danger,
+                          ),
+                        ),
+                        onPressed: () => showDialog<void>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: AppColors.paper,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18)),
+                            title: Text('Reset Settings?',
+                                style: AppTypography.title
+                                    .copyWith(color: AppColors.paperInk)),
+                            content: Text(
+                              'This will restore all controls, audio and haptic settings to their defaults.',
+                              style: AppTypography.caption
+                                  .copyWith(color: AppColors.paperInkSoft),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: Text('Cancel',
+                                    style: TextStyle(
+                                        color: AppColors.paperInkSoft)),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  notifier.resetToDefaults();
+                                  Navigator.pop(ctx);
+                                },
+                                child: Text('Reset',
+                                    style: TextStyle(
+                                        color: AppColors.danger,
+                                        fontWeight: FontWeight.w800)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),
@@ -498,14 +653,30 @@ class _CalibrationNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PaperCard(
-      color: AppColors.paperWarm,
-      padding: const EdgeInsets.all(16),
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.accent.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border(
+          left: BorderSide(color: AppColors.accent, width: 3),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.info_outline, color: AppColors.paperInkSoft, size: 18),
+          Icon(Icons.tips_and_updates_rounded,
+              color: AppColors.accent, size: 18),
           const SizedBox(width: 10),
-          Expanded(child: Text(_text, style: AppTypography.caption.copyWith(color: AppColors.paperInkSoft, height: 1.5))),
+          Expanded(
+            child: Text(
+              _text,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.textLight.withOpacity(0.85),
+                height: 1.5,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -551,19 +722,21 @@ class _SwitchRow extends StatelessWidget {
   final ValueChanged<bool> onChanged;
   @override
   Widget build(BuildContext context) {
-    return PaperCard(
-      color: AppColors.paper,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Expanded(child: Text(label, style: AppTypography.bodyLarge.copyWith(color: AppColors.paperInk, fontSize: 15))),
-        Switch(
-            value: value,
-            onChanged: onChanged,
-            activeColor: AppColors.accent,
-            trackColor: WidgetStateProperty.resolveWith(
-                (states) => states.contains(WidgetState.selected) ? AppColors.accent.withOpacity(0.4) : AppColors.paperInkSoft.withOpacity(0.3))),
-      ]),
-    );
+    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Expanded(
+        child: Text(label,
+            style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.paperInk, fontSize: 15)),
+      ),
+      Switch(
+          value: value,
+          onChanged: onChanged,
+          activeColor: AppColors.accent,
+          trackColor: WidgetStateProperty.resolveWith((states) =>
+              states.contains(WidgetState.selected)
+                  ? AppColors.accent.withOpacity(0.4)
+                  : AppColors.paperInkSoft.withOpacity(0.3))),
+    ]);
   }
 }
 
@@ -581,20 +754,31 @@ class _SliderRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Opacity(
       opacity: enabled ? 1.0 : 0.4,
-      child: PaperCard(
-        color: AppColors.paper,
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Expanded(child: Text(label, style: AppTypography.bodyLarge.copyWith(color: AppColors.paperInk, fontSize: 15))),
-            Text(valueLabel, style: AppTypography.statSmall.copyWith(color: AppColors.accentDeep, fontSize: 14)),
-          ]),
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(activeTrackColor: AppColors.accent, inactiveTrackColor: AppColors.paperInkSoft.withOpacity(0.3), thumbColor: AppColors.accent, overlayColor: AppColors.accent.withOpacity(0.2)),
-            child: Slider(value: value.clamp(min, max), min: min, max: max, divisions: divisions, onChanged: enabled ? onChanged : null),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Expanded(
+            child: Text(label,
+                style: AppTypography.bodyLarge
+                    .copyWith(color: AppColors.paperInk, fontSize: 15)),
           ),
+          Text(valueLabel,
+              style: AppTypography.statSmall
+                  .copyWith(color: AppColors.accentDeep, fontSize: 14)),
         ]),
-      ),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+              activeTrackColor: AppColors.accent,
+              inactiveTrackColor: AppColors.paperInkSoft.withOpacity(0.3),
+              thumbColor: AppColors.accent,
+              overlayColor: AppColors.accent.withOpacity(0.2)),
+          child: Slider(
+              value: value.clamp(min, max),
+              min: min,
+              max: max,
+              divisions: divisions,
+              onChanged: enabled ? onChanged : null),
+        ),
+      ]),
     );
   }
 }
@@ -631,7 +815,9 @@ class _SegmentedRow<T> extends StatelessWidget {
                   alignment: Alignment.center,
                   child: Text(labels[i],
                       style: AppTypography.bodyMedium.copyWith(
-                          color: isSelected ? AppColors.paperInk : AppColors.paperInkSoft, fontWeight: FontWeight.w700, fontSize: 13)),
+                          color: isSelected ? Colors.white : AppColors.paperInkSoft,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13)),
                 ),
               ),
             );
