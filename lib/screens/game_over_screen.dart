@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -64,7 +65,7 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
 
     _anim = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 620),
+      duration: const Duration(milliseconds: 420),
     );
     _fadeIn = CurvedAnimation(parent: _anim, curve: Curves.easeIn);
     _slideIn = Tween<Offset>(
@@ -92,44 +93,55 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
     super.dispose();
   }
 
-  Future<void> _runPostGameFlow() async {
-    final save = ref.read(saveDataProvider);
-
-    if (_result != null) {
-      await AnalyticsService.instance.logRunCompleted(
-        score: _result!.score,
-        distanceMeters: _result!.distanceMeters,
-        coinsCollected: _result!.coinsCollected,
-        nearMisses: _result!.nearMisses,
-        biome: _result!.finalBiome.name,
-        wasRevived: _result!.wasRevived,
-      );
-      if (_result!.isNewHighScore) {
-        await AnalyticsService.instance.logNewHighScore(_result!.score);
-      }
-    }
-
-    if (widget.args.mode == GameMode.classic) {
-      await AdService.instance.maybeShowInterstitial(
-        totalRuns: save.totalRuns,
-        runsSinceLastInterstitial: save.runsSinceLastInterstitial,
-        adsRemoved: save.adsRemoved,
-        onComplete: () {
-          if (mounted) {
-            setState(() => _interstitialDone = true);
-            ref.read(saveDataProvider.notifier).resetInterstitialCounter();
-          }
-        },
-      );
-    }
-
+  void _runPostGameFlow() {
+    // Reveal the flight-log card immediately so there is no black/empty beat
+    // while analytics and the interstitial decision resolve in the background.
     _anim.forward();
     // stamp fires after card settles
-    Future.delayed(const Duration(milliseconds: 620), () {
+    Future.delayed(const Duration(milliseconds: 420), () {
       if (mounted && (_result?.isNewHighScore ?? false)) {
         _stampCtrl.forward();
       }
     });
+
+    // Fire-and-forget: analytics + interstitial must never delay the UI.
+    unawaited(_backgroundPostGameTasks());
+  }
+
+  Future<void> _backgroundPostGameTasks() async {
+    final save = ref.read(saveDataProvider);
+
+    if (_result != null) {
+      try {
+        await AnalyticsService.instance.logRunCompleted(
+          score: _result!.score,
+          distanceMeters: _result!.distanceMeters,
+          coinsCollected: _result!.coinsCollected,
+          nearMisses: _result!.nearMisses,
+          biome: _result!.finalBiome.name,
+          wasRevived: _result!.wasRevived,
+        );
+        if (_result!.isNewHighScore) {
+          await AnalyticsService.instance.logNewHighScore(_result!.score);
+        }
+      } catch (_) {}
+    }
+
+    if (widget.args.mode == GameMode.classic) {
+      try {
+        await AdService.instance.maybeShowInterstitial(
+          totalRuns: save.totalRuns,
+          runsSinceLastInterstitial: save.runsSinceLastInterstitial,
+          adsRemoved: save.adsRemoved,
+          onComplete: () {
+            if (mounted) {
+              setState(() => _interstitialDone = true);
+              ref.read(saveDataProvider.notifier).resetInterstitialCounter();
+            }
+          },
+        );
+      } catch (_) {}
+    }
   }
 
   @override

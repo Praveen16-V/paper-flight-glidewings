@@ -71,9 +71,16 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
 
   @override
   void onRemove() {
+    dispose();
+    super.onRemove();
+  }
+
+  /// Releases the continuous wind and Zen-music audio players. Safe to call
+  /// multiple times. Exposed so the host game can tear audio down
+  /// deterministically on dispose instead of relying solely on onRemove.
+  void dispose() {
     _disposeWind();
     stopZenMusic();
-    super.onRemove();
   }
 
   // ── Zen ambient music ─────────────────────────────────────────────────────

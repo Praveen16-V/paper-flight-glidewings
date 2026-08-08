@@ -55,7 +55,20 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   @override
   void dispose() {
-    _game.pauseEngine();
+    // Tear down the FlameGame when this screen leaves the tree.
+    //
+    // Previously this only called pauseEngine(), which left every previous
+    // run's game — its accelerometer stream subscription (InputManager),
+    // audio players (GameFeelSystem) and whole component/world tree — alive.
+    // Because each Retry pushes a brand-new GameScreen (and therefore a
+    // brand-new PaperFlightGame), those stale instances accumulated run
+    // after run until the app hung.
+    //
+    // The game overrides onRemove() to release those resources; the
+    // GameWidget also calls onRemove/dispose when it is torn down. We call
+    // dispose() here too as a deterministic safety net — the game's
+    // _disposed guard makes this idempotent, so a double call is harmless.
+    _game.dispose();
     super.dispose();
   }
 

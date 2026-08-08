@@ -182,8 +182,18 @@ class InputManager extends Component {
 
   @override
   void onRemove() {
-    _accelSub?.cancel();
+    dispose();
     super.onRemove();
+  }
+
+  /// Cancels the accelerometer stream. Safe to call multiple times.
+  ///
+  /// Exposed (in addition to [onRemove]) so the host game can tear input down
+  /// deterministically when it is disposed — otherwise the sensor subscription
+  /// leaks across retries and the accumulating streams hang the app.
+  void dispose() {
+    _accelSub?.cancel();
+    _accelSub = null;
   }
 
   @override
