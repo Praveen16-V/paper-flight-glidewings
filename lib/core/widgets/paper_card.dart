@@ -26,6 +26,8 @@ class PaperCard extends StatelessWidget {
     this.borderWidth = 1.4,
     this.gradient,
     this.dogEar,
+    this.semanticLabel,
+    this.semanticHint,
   });
 
   final Widget child;
@@ -42,6 +44,11 @@ class PaperCard extends StatelessWidget {
   final double borderWidth;
   final Gradient? gradient;
 
+  /// Optional concise spoken summary for tappable cards. When omitted, the
+  /// visible descendants remain available to assistive technologies.
+  final String? semanticLabel;
+  final String? semanticHint;
+
   /// Optional folded-corner ribbon/badge drawn in the top-right corner.
   final DogEar? dogEar;
 
@@ -52,108 +59,112 @@ class PaperCard extends StatelessWidget {
     final r = Radius.circular(radius);
     final borderRadius = BorderRadius.all(r);
 
-    return Container(
-      margin: margin,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: borderRadius,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            decoration: BoxDecoration(
-              borderRadius: borderRadius,
-              // Paper thickness is a crisp folded edge beneath the sheet
-              // plus one soft ambient shadow — see [PaperShadows.stack].
-              boxShadow: PaperShadows.stack(
-                color: AppColors.paperInk,
-                elevation: elevation,
-                radius: radius,
-                edgeColor: edge,
+    return Semantics(
+      container: onTap != null || semanticLabel != null,
+      button: onTap != null,
+      enabled: onTap != null ? true : null,
+      label: semanticLabel,
+      hint: semanticHint,
+      child: Container(
+        margin: margin,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: borderRadius,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              decoration: BoxDecoration(
+                borderRadius: borderRadius,
+                boxShadow: PaperShadows.stack(
+                  color: AppColors.paperInk,
+                  elevation: elevation,
+                  radius: radius,
+                  edgeColor: edge,
+                ),
               ),
-            ),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                ClipRRect(
-                  borderRadius: borderRadius,
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: paper,
-                            gradient: gradient,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  ClipRRect(
+                    borderRadius: borderRadius,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: paper,
+                              gradient: gradient,
+                            ),
                           ),
                         ),
-                      ),
-                      PaperTexture(opacity: textureOpacity),
-                      // top sheen
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        top: 0,
-                        height: 28,
-                        child: Container(
+                        PaperTexture(opacity: textureOpacity),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          top: 0,
+                          height: 28,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.white.withOpacity(0.35),
+                                  Colors.white.withOpacity(0.0),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: padding,
+                          child: DefaultTextStyle(
+                            style: const TextStyle(
+                              color: AppColors.paperInk,
+                              fontFamily: 'Nunito',
+                              fontWeight: FontWeight.w600,
+                            ),
+                            child: child,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (borderColor != null && borderGradient == null)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.white.withOpacity(0.35),
-                                Colors.white.withOpacity(0.0),
-                              ],
+                            borderRadius: borderRadius,
+                            border: Border.all(
+                              color: borderColor!,
+                              width: borderWidth,
                             ),
                           ),
                         ),
                       ),
-                      Padding(
-                        padding: padding,
-                        child: DefaultTextStyle(
-                          style: const TextStyle(
-                            color: AppColors.paperInk,
-                            fontFamily: 'Nunito',
-                            fontWeight: FontWeight.w600,
-                          ),
-                          child: child,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (borderColor != null && borderGradient == null)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: borderRadius,
-                          border: Border.all(
-                            color: borderColor!,
-                            width: borderWidth,
+                    ),
+                  if (borderGradient != null)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: CustomPaint(
+                          painter: _GradientBorderPainter(
+                            gradient: borderGradient!,
+                            strokeWidth: borderWidth,
+                            radius: radius,
                           ),
                         ),
                       ),
                     ),
-                  ),
-                if (borderGradient != null)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: CustomPaint(
-                        painter: _GradientBorderPainter(
-                          gradient: borderGradient!,
-                          strokeWidth: borderWidth,
-                          radius: radius,
-                        ),
-                      ),
+                  if (dogEar != null)
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: dogEar!,
                     ),
-                  ),
-                if (dogEar != null)
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: dogEar!,
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

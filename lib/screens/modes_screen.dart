@@ -12,6 +12,7 @@ import '../core/widgets/paper_effects.dart';
 import '../core/widgets/paper_icons.dart';
 import '../models/trial_definition.dart';
 import '../providers/save_data_provider.dart';
+import '../services/analytics_service.dart';
 import '../services/daily_seed_service.dart';
 import 'game_screen.dart';
 
@@ -29,6 +30,7 @@ class _ModesScreenState extends ConsumerState<ModesScreen> {
   @override
   void initState() {
     super.initState();
+    AnalyticsService.instance.logScreenView('game_modes');
     // Live update every second for the Daily Seeded countdown clock.
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
@@ -126,6 +128,7 @@ class _ModesScreenState extends ConsumerState<ModesScreen> {
   }
 
   void _onModeTap(BuildContext context, GameMode mode) {
+    AnalyticsService.instance.logModeSelected(mode, source: 'modes_hub');
     if (mode == GameMode.daily) {
       Navigator.of(context).pushNamed(AppRoutes.dailyFlight);
     } else if (mode == GameMode.trial) {
@@ -148,6 +151,7 @@ class _HeaderBar extends StatelessWidget {
         children: [
           IconButton(
             icon: const Icon(Icons.arrow_back, color: AppColors.textLight),
+            tooltip: 'Back',
             onPressed: () => Navigator.of(context).pop(),
           ),
           Expanded(

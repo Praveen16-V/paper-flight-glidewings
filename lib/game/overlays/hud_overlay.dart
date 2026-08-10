@@ -123,7 +123,7 @@ class HudOverlay extends ConsumerWidget {
 
           // ── Active power-up icons (bottom-left) ────────────────────────
           Positioned(
-            bottom: MediaQuery.of(context).padding.bottom + 100,
+            bottom: 100,
             left: 16,
             child: _PowerUpBar(
               activePowerUps: session.activePowerUps,
@@ -140,7 +140,7 @@ class HudOverlay extends ConsumerWidget {
 
           // ── BOOST button — respects gesture-nav bottom inset ───────────
           Positioned(
-            bottom: MediaQuery.of(context).padding.bottom + 18,
+            bottom: 18,
             right: 16,
             child: _BoostButton(game: game),
           ),
@@ -149,7 +149,7 @@ class HudOverlay extends ConsumerWidget {
           if (settings.controlScheme == ControlScheme.joystick &&
               session.phase == GamePhase.playing)
             Positioned(
-              bottom: MediaQuery.of(context).padding.bottom + 110,
+              bottom: 110,
               left: 32,
               right: 32,
               child: Center(
@@ -163,8 +163,8 @@ class HudOverlay extends ConsumerWidget {
                     'MOVE THUMB TO STEER  •  HOLD TO CLIMB\nFLICK UP OR TAP BOOST',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Color(0xCCFFFFFF),
-                      fontSize: 10,
+                      color: Color(0xFFF3F6FB),
+                      fontSize: 12,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1.0,
                       height: 1.5,
@@ -176,7 +176,7 @@ class HudOverlay extends ConsumerWidget {
 
           // ── Biome label — moved lower, less intrusive ─────────────────
           Positioned(
-            bottom: MediaQuery.of(context).padding.bottom + 28,
+            bottom: 28,
             left: 0,
             right: 80, // avoid BOOST button area
             child: Center(
@@ -270,13 +270,27 @@ class _DistanceDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      '${meters.toStringAsFixed(0)} m',
-      style: const TextStyle(
-        color: AppColors.textMuted,
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 1,
+    final label = '${meters.toStringAsFixed(0)} m';
+    return Semantics(
+      label: 'Distance $label',
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.hudBackground,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFFE3EAF5),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+              shadows: [Shadow(color: Colors.black54, blurRadius: 3)],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -615,33 +629,52 @@ class _PauseButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        if (game.phase == GamePhase.playing) {
-          game.pauseRun();
-        } else if (game.phase == GamePhase.paused) {
-          game.resumeRun();
-        }
-      },
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: AppColors.hudBackground,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.white.withOpacity(0.22), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.35),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+    final paused = game.phase == GamePhase.paused;
+    final label = paused ? 'Resume flight' : 'Pause flight';
+
+    void activate() {
+      if (game.phase == GamePhase.playing) {
+        game.pauseRun();
+      } else if (game.phase == GamePhase.paused) {
+        game.resumeRun();
+      }
+    }
+
+    return Semantics(
+      button: true,
+      label: label,
+      onTap: activate,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: label,
+        child: GestureDetector(
+          excludeFromSemantics: true,
+          behavior: HitTestBehavior.opaque,
+          onTap: activate,
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xDD000000),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.45),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.45),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Icon(
-          game.phase == GamePhase.paused ? Icons.play_arrow : Icons.pause,
-          color: AppColors.textLight,
-          size: 22,
+            child: Icon(
+              paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+              color: AppColors.textLight,
+              size: 24,
+            ),
+          ),
         ),
       ),
     );
@@ -665,12 +698,18 @@ class _BoostButtonState extends State<_BoostButton>
   // Ticker drives the BOOST recharge-ring animation at 60fps.
   // Explicit `Ticker` type requires `package:flutter/scheduler.dart` (already imported).
   late final Ticker _ticker;
+  Duration _lastVisualTick = Duration.zero;
 
   @override
   void initState() {
     super.initState();
-    _ticker = createTicker((_) {
-      if (mounted) setState(() {});
+    _ticker = createTicker((elapsed) {
+      if (!mounted || widget.game.phase != GamePhase.playing) return;
+      // The ring is a small HUD affordance; 20 Hz is visually smooth and
+      // avoids rebuilding it at 120 Hz on high-refresh devices.
+      if (elapsed - _lastVisualTick < const Duration(milliseconds: 50)) return;
+      _lastVisualTick = elapsed;
+      setState(() {});
     })
       ..start();
   }
@@ -688,18 +727,28 @@ class _BoostButtonState extends State<_BoostButton>
     final hasCharges = charges > 0;
     final isPlaying = widget.game.phase == GamePhase.playing;
 
-    return Opacity(
-      opacity: isPlaying ? 1.0 : 0.35,
-      child: GestureDetector(
-        onTap: isPlaying
-            ? () {
-                final fired = widget.game.triggerSnapBoost();
-                if (fired && mounted) {
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                }
-              }
-            : null,
-        child: SizedBox(
+    void activate() {
+      final fired = widget.game.triggerSnapBoost();
+      if (fired && mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      }
+    }
+
+    return Semantics(
+      button: true,
+      enabled: isPlaying && hasCharges,
+      label: hasCharges
+          ? 'Boost, $charges ${charges == 1 ? 'charge' : 'charges'} available'
+          : 'Boost recharging, ${(progress * 100).round()} percent',
+      onTap: isPlaying && hasCharges ? activate : null,
+      excludeSemantics: true,
+      child: Opacity(
+        opacity: isPlaying ? 1.0 : 0.45,
+        child: GestureDetector(
+          excludeFromSemantics: true,
+          behavior: HitTestBehavior.opaque,
+          onTap: isPlaying ? activate : null,
+          child: SizedBox(
           width: 72,
           height: 80,
           child: Stack(
@@ -742,15 +791,15 @@ class _BoostButtonState extends State<_BoostButton>
                   children: [
                     Icon(
                       Icons.rocket_launch_rounded,
-                      color: hasCharges ? Colors.white : const Color(0xFF8A9BB8),
+                      color: hasCharges ? Colors.white : const Color(0xFFD5DCE9),
                       size: 22,
                     ),
                     const SizedBox(height: 1),
                     Text(
                       hasCharges ? 'BOOST' : 'WAIT',
                       style: TextStyle(
-                        color: hasCharges ? Colors.white : const Color(0xFF8A9BB8),
-                        fontSize: 7.5,
+                        color: hasCharges ? Colors.white : const Color(0xFFD5DCE9),
+                        fontSize: 9,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 1.0,
                       ),
@@ -788,6 +837,7 @@ class _BoostButtonState extends State<_BoostButton>
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -871,13 +921,25 @@ class _BiomeLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      biome.displayName.toUpperCase(),
-      style: const TextStyle(
-        color: AppColors.textMuted,
-        fontSize: 10,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 1.5,
+    return Semantics(
+      label: 'Current area: ${biome.displayName}',
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xC7000000),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            biome.displayName.toUpperCase(),
+            style: const TextStyle(
+              color: Color(0xFFE3EAF5),
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.4,
+            ),
+          ),
+        ),
       ),
     );
   }

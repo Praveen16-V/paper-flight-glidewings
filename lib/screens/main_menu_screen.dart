@@ -4,13 +4,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
 import '../core/constants/app_typography.dart';
+import '../core/enums/game_enums.dart';
 import '../core/widgets/currency_chip.dart';
+import '../core/widgets/how_to_play_dialog.dart';
 import '../core/widgets/paper_button.dart';
 import '../core/widgets/paper_icons.dart';
 import '../core/widgets/sky_backdrop.dart';
+import '../l10n/app_localizations.dart';
 import '../models/save_data.dart';
 import '../providers/save_data_provider.dart';
 import '../services/analytics_service.dart';
+import '../services/onboarding_service.dart';
+import 'game_screen.dart';
 import 'splash_screen.dart'; // reuse PaperPlaneIcon
 
 /// Main menu — under 2 taps from app open to flying (per GDD §11).
@@ -38,6 +43,7 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
 
   /// The currently highlighted bottom-nav tab index.
   int _activeNavIndex = -1;
+  bool _firstRunGuideScheduled = false;
 
   @override
   void initState() {
@@ -49,6 +55,18 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
     _floatY = Tween<double>(begin: -8, end: 8).animate(
       CurvedAnimation(parent: _floatAnim, curve: Curves.easeInOut),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showFirstRunGuide());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _floatAnim.stop();
+      _floatAnim.value = 0.5;
+    } else if (!_floatAnim.isAnimating) {
+      _floatAnim.repeat(reverse: true);
+    }
   }
 
   @override
@@ -60,184 +78,275 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
   @override
   Widget build(BuildContext context) {
     final save = ref.watch(saveDataProvider);
+    final strings = context.l10n;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final compact = screenHeight < 700;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          // ── Animated parallax sky backdrop ──────────────────────────────
           const Positioned.fill(child: SkyBackdrop()),
-
-          // ── Main content ────────────────────────────────────────────────
           SafeArea(
+            minimum: const EdgeInsets.only(top: 4),
             child: Column(
               children: [
-                // ── Top: glassmorphic currency strip ──────────────────────
+                // Help remains visible without competing with the currencies.
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  padding: const EdgeInsets.fromLTRB(12, 4, 16, 0),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      _GlassCurrencyBadge(
-                        glowColor: AppColors.coinGold,
-                        child: CoinChip(
-                          save.coins,
-                          iconSize: 18,
-                          fontSize: 15,
+                      Semantics(
+                        button: true,
+                        label: strings.text('menu.howToPlay'),
+                        child: IconButton(
+                          onPressed: _openGuide,
+                          tooltip: strings.text('menu.howToPlay'),
+                          constraints: const BoxConstraints(
+                            minWidth: 48,
+                            minHeight: 48,
+                          ),
+                          style: IconButton.styleFrom(
+                            backgroundColor:
+                                AppColors.surface.withOpacity(0.78),
+                            foregroundColor: AppColors.textLight,
+                            side: BorderSide(
+                              color: Colors.white.withOpacity(0.12),
+                            ),
+                          ),
+                          icon: const Icon(Icons.help_outline_rounded),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      _GlassCurrencyBadge(
-                        glowColor: AppColors.gemBlue,
-                        child: GemChip(
-                          save.gems,
-                          iconSize: 16,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // ── Centre: logo + plane ──────────────────────────────────
-                // Wrapped in a FittedBox so on short screens (or large text
-                // scales) the whole centrepiece scales down as a unit and
-                // the PLAY button is never pushed off-screen.
-                Expanded(
-                  child: Center(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AnimatedBuilder(
-                              animation: _floatY,
-                              builder: (_, __) => Transform.translate(
-                                offset: Offset(0, _floatY.value),
-                                child: PaperPlaneIcon(size: 100),
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            Text(
-                              'PAPER FLIGHT',
-                              style: AppTypography.displayMedium.copyWith(
-                                fontSize: 34,
-                                letterSpacing: 3,
-                              ),
-                            ),
-                            if (save.highScore > 0) ...[
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: AppColors.paper,
-                                  borderRadius: BorderRadius.circular(20),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.backgroundDeep.withOpacity(0.55),
-                                      offset: const Offset(0, 3),
-                                      blurRadius: 0,
-                                    ),
-                                  ],
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          reverse: true,
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _GlassCurrencyBadge(
+                                glowColor: AppColors.coinGold,
+                                child: CoinChip(
+                                  save.coins,
+                                  iconSize: 18,
+                                  fontSize: 15,
                                 ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'BEST',
-                                      style: AppTypography.overline.copyWith(
-                                        color: AppColors.paperInkSoft,
-                                        letterSpacing: 1.4,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      _fmt(save.highScore),
-                                      style: AppTypography.statSmall.copyWith(
-                                        color: AppColors.accentDeep,
-                                      ),
-                                    ),
-                                  ],
+                              ),
+                              const SizedBox(width: 8),
+                              _GlassCurrencyBadge(
+                                glowColor: AppColors.gemBlue,
+                                child: GemChip(
+                                  save.gems,
+                                  iconSize: 16,
+                                  fontSize: 14,
                                 ),
                               ),
                             ],
-                            const SizedBox(height: 32),
-
-                            // ── Mode Preview Card (replaces _ModesPill) ────
-                            _ModePreviewCard(
-                              selectedIndex: _selectedModeIndex,
-                              save: save,
-                              onTapLeft: () => setState(() {
-                                _selectedModeIndex =
-                                    (_selectedModeIndex - 1).clamp(
-                                        0, _ModePreviewCard.modeCount - 1);
-                              }),
-                              onTapRight: () => setState(() {
-                                _selectedModeIndex =
-                                    (_selectedModeIndex + 1).clamp(
-                                        0, _ModePreviewCard.modeCount - 1);
-                              }),
-                              onTapCenter: _onModeTap,
-                            ),
-                            const SizedBox(height: 20),
-
-                            // ── PLAY button ────────────────────────────────
-                            _PlayButton(onTap: _onPlay),
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ── Bottom nav bar with selected-state pills ──────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _NavIcon(
-                        icon: Icons.airplanemode_active,
-                        label: 'Hangar',
-                        isActive: _activeNavIndex == 0,
-                        onTap: () {
-                          setState(() => _activeNavIndex = 0);
-                          Navigator.pushNamed(context, AppRoutes.hangar);
-                        },
-                      ),
-                      _NavIcon(
-                        icon: Icons.storefront_outlined,
-                        label: 'Shop',
-                        isActive: _activeNavIndex == 1,
-                        onTap: () {
-                          setState(() => _activeNavIndex = 1);
-                          Navigator.pushNamed(context, AppRoutes.shop);
-                        },
-                      ),
-                      _NavIcon(
-                        icon: Icons.emoji_events_outlined,
-                        label: 'Challenges',
-                        isActive: _activeNavIndex == 2,
-                        onTap: () {
-                          setState(() => _activeNavIndex = 2);
-                          Navigator.pushNamed(
-                              context, AppRoutes.dailyChallenges);
-                        },
-                      ),
-                      _NavIcon(
-                        icon: Icons.settings_outlined,
-                        label: 'Settings',
-                        isActive: _activeNavIndex == 3,
-                        onTap: () {
-                          setState(() => _activeNavIndex = 3);
-                          Navigator.pushNamed(context, AppRoutes.settings);
-                        },
                       ),
                     ],
                   ),
+                ),
+
+                // Never scale text down to force a fit. Short displays and
+                // large accessibility text can scroll this central funnel.
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: compact ? 4 : 10,
+                        ),
+                        child: ConstrainedBox(
+                          constraints:
+                              BoxConstraints(minHeight: constraints.maxHeight),
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                AnimatedBuilder(
+                                  animation: _floatY,
+                                  builder: (_, __) => Transform.translate(
+                                    offset: Offset(0, _floatY.value),
+                                    child: PaperPlaneIcon(
+                                      size: compact ? 72 : 96,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(height: compact ? 8 : 16),
+                                Text(
+                                  strings.text('menu.title'),
+                                  textAlign: TextAlign.center,
+                                  style: AppTypography.displayMedium.copyWith(
+                                    fontSize: compact ? 29 : 34,
+                                    letterSpacing: 2.4,
+                                  ),
+                                ),
+                                if (save.highScore > 0) ...[
+                                  const SizedBox(height: 8),
+                                  Semantics(
+                                    label:
+                                        '${strings.text('menu.best')} ${save.highScore}',
+                                    child: ExcludeSemantics(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.paper,
+                                          borderRadius:
+                                              BorderRadius.circular(20),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: AppColors.backgroundDeep
+                                                  .withOpacity(0.55),
+                                              offset: const Offset(0, 3),
+                                              blurRadius: 0,
+                                            ),
+                                          ],
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              strings.text('menu.best'),
+                                              style: AppTypography.overline
+                                                  .copyWith(
+                                                color:
+                                                    AppColors.paperInkSoft,
+                                                letterSpacing: 1.4,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              _fmt(save.highScore),
+                                              style: AppTypography.statSmall
+                                                  .copyWith(
+                                                color: AppColors.accentDeep,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                SizedBox(height: compact ? 16 : 26),
+                                _ModePreviewCard(
+                                  selectedIndex: _selectedModeIndex,
+                                  save: save,
+                                  onTapLeft: () => setState(() {
+                                    _selectedModeIndex =
+                                        (_selectedModeIndex - 1)
+                                            .clamp(
+                                              0,
+                                              _ModePreviewCard.modeCount - 1,
+                                            )
+                                            .toInt();
+                                  }),
+                                  onTapRight: () => setState(() {
+                                    _selectedModeIndex =
+                                        (_selectedModeIndex + 1)
+                                            .clamp(
+                                              0,
+                                              _ModePreviewCard.modeCount - 1,
+                                            )
+                                            .toInt();
+                                  }),
+                                  onTapCenter: _onModeTap,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  strings.text('menu.allModesHint'),
+                                  style: AppTypography.caption.copyWith(
+                                    color: const Color(0xFFC4CDE0),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                SizedBox(height: compact ? 12 : 18),
+                                _PlayButton(
+                                  label: _playLabel(strings),
+                                  onTap: _onPlay,
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // A horizontal fallback protects very narrow split-screen
+                // layouts while preserving 48 px targets and full text labels.
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: EdgeInsets.fromLTRB(
+                        8,
+                        0,
+                        8,
+                        compact ? 10 : 18,
+                      ),
+                      child: ConstrainedBox(
+                        constraints:
+                            BoxConstraints(minWidth: constraints.maxWidth - 16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _NavIcon(
+                              icon: Icons.airplanemode_active,
+                              label: strings.text('menu.hangar'),
+                              isActive: _activeNavIndex == 0,
+                              onTap: () {
+                                setState(() => _activeNavIndex = 0);
+                                Navigator.pushNamed(context, AppRoutes.hangar);
+                              },
+                            ),
+                            _NavIcon(
+                              icon: Icons.storefront_outlined,
+                              label: strings.text('menu.shop'),
+                              isActive: _activeNavIndex == 1,
+                              onTap: () {
+                                setState(() => _activeNavIndex = 1);
+                                Navigator.pushNamed(context, AppRoutes.shop);
+                              },
+                            ),
+                            _NavIcon(
+                              icon: Icons.emoji_events_outlined,
+                              label: strings.text('menu.challenges'),
+                              isActive: _activeNavIndex == 2,
+                              onTap: () {
+                                setState(() => _activeNavIndex = 2);
+                                Navigator.pushNamed(
+                                  context,
+                                  AppRoutes.dailyChallenges,
+                                );
+                              },
+                            ),
+                            _NavIcon(
+                              icon: Icons.settings_outlined,
+                              label: strings.text('menu.settings'),
+                              isActive: _activeNavIndex == 3,
+                              onTap: () {
+                                setState(() => _activeNavIndex = 3);
+                                Navigator.pushNamed(
+                                  context,
+                                  AppRoutes.settings,
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -247,9 +356,54 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
     );
   }
 
+  String _playLabel(AppLocalizations strings) {
+    return strings.text(switch (_selectedModeIndex) {
+      0 => 'menu.playClassic',
+      1 => 'menu.startZen',
+      2 => 'menu.viewDaily',
+      _ => 'menu.chooseTrial',
+    });
+  }
+
+  Future<void> _showFirstRunGuide() async {
+    if (!mounted || _firstRunGuideScheduled) return;
+    _firstRunGuideScheduled = true;
+    if (OnboardingService.instance.hasCompletedTutorial) return;
+    // Do not force a newly-added tutorial on established installs. It remains
+    // available from the persistent help button.
+    if (!ref.read(saveDataProvider).isFirstSession) {
+      await OnboardingService.instance.completeTutorial();
+      return;
+    }
+    await showHowToPlayDialog(
+      context,
+      firstRun: true,
+      surface: 'first_run_menu',
+    );
+  }
+
+  void _openGuide() {
+    showHowToPlayDialog(context, surface: 'main_menu');
+  }
+
   void _onPlay() {
-    AnalyticsService.instance.logEvent('play_tapped');
-    Navigator.of(context).pushNamed(AppRoutes.game);
+    final mode = GameMode.values[_selectedModeIndex];
+    AnalyticsService.instance.logModeSelected(mode, source: 'main_menu_play');
+    switch (mode) {
+      case GameMode.classic:
+      case GameMode.zen:
+        Navigator.of(context).pushNamed(
+          AppRoutes.game,
+          arguments: GameScreenArgs(mode: mode),
+        );
+        break;
+      case GameMode.daily:
+        Navigator.of(context).pushNamed(AppRoutes.dailyFlight);
+        break;
+      case GameMode.trial:
+        Navigator.of(context).pushNamed(AppRoutes.trials);
+        break;
+    }
   }
 
   void _onModeTap() {
@@ -342,47 +496,51 @@ class _ModePreviewCard extends StatelessWidget {
 
   static const _modes = <_ModeInfo>[
     _ModeInfo(
-      name: 'Classic Flight',
-      tagline: 'Endless arcade',
+      nameKey: 'mode.classic',
       iconData: PaperIconData.glider,
       accent: AppColors.accent,
       paperColor: AppColors.paperGold,
     ),
     _ModeInfo(
-      name: 'Zen Flight',
-      tagline: 'No crashes. Just glide.',
+      nameKey: 'mode.zen',
       iconData: PaperIconData.leaf,
       accent: AppColors.success,
       paperColor: AppColors.paperGreen,
     ),
     _ModeInfo(
-      name: 'Daily Seeded',
-      tagline: 'One run a day',
+      nameKey: 'mode.daily',
       iconData: PaperIconData.calendar,
       accent: AppColors.accentAlt,
       paperColor: AppColors.paperBlue,
     ),
     _ModeInfo(
-      name: 'Precision Trial',
-      tagline: 'Earn your stars',
+      nameKey: 'mode.trial',
       iconData: PaperIconData.bullseye,
       accent: AppColors.danger,
       paperColor: AppColors.paperRose,
     ),
   ];
 
-  String _bestScoreText(int index) {
+  String _bestScoreText(BuildContext context, int index) {
+    final strings = context.l10n;
     switch (index) {
-      case 0: // Classic
-        return 'Best: ${_fmt(save.highScore)}';
-      case 1: // Zen
+      case 0:
+        return strings.text('mode.bestScore', {'score': _fmt(save.highScore)});
+      case 1:
         final d = save.zenBestDistanceMeters;
-        return d > 0 ? 'Best: ${d.toStringAsFixed(0)}m' : 'Not played yet';
-      case 2: // Daily
-        return 'Today\'s run';
-      case 3: // Trial
+        return d > 0
+            ? strings.text(
+                'mode.bestDistance',
+                {'distance': d.toStringAsFixed(0)},
+              )
+            : strings.text('mode.notPlayed');
+      case 2:
+        return strings.text('mode.todaysRun');
+      case 3:
         final total = save.trialStars.fold<int>(0, (sum, s) => sum + s);
-        return total > 0 ? '\u2605 $total earned' : 'Not started';
+        return total > 0
+            ? strings.text('mode.starsEarned', {'stars': total})
+            : strings.text('mode.notStarted');
       default:
         return '';
     }
@@ -397,50 +555,45 @@ class _ModePreviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mode = _modes[selectedIndex];
+    final strings = context.l10n;
+    final modeName = strings.text(mode.nameKey);
+    final availableWidth = MediaQuery.sizeOf(context).width - 24;
 
     return SizedBox(
-      width: 260,
+      width: availableWidth.clamp(240.0, 330.0).toDouble(),
       child: Row(
         children: [
-          // ── Left arrow — 44×44 touch target ─────────────────────────────
-          GestureDetector(
-            onTap: selectedIndex > 0 ? onTapLeft : null,
-            child: SizedBox(
-              width: 44,
-              height: 44,
-              child: Center(
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: selectedIndex > 0
-                        ? AppColors.surface.withOpacity(0.7)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: selectedIndex > 0
-                          ? Colors.white.withOpacity(0.1)
-                          : Colors.transparent,
-                      width: 1,
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.chevron_left,
-                    color: selectedIndex > 0
-                        ? AppColors.textLight
-                        : AppColors.textMuted.withOpacity(0.3),
-                    size: 22,
-                  ),
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: IconButton(
+              onPressed: selectedIndex > 0 ? onTapLeft : null,
+              tooltip: strings.text('a11y.previousMode'),
+              style: IconButton.styleFrom(
+                backgroundColor: selectedIndex > 0
+                    ? AppColors.surface.withOpacity(0.78)
+                    : Colors.transparent,
+                side: BorderSide(
+                  color: selectedIndex > 0
+                      ? Colors.white.withOpacity(0.12)
+                      : Colors.transparent,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
+              icon: const Icon(Icons.chevron_left_rounded, size: 24),
+              color: AppColors.textLight,
+              disabledColor: AppColors.textMuted.withOpacity(0.3),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
 
           // ── Centre: mode info card ──────────────────────────────────────
           Expanded(
             child: GestureDetector(
               onTap: onTapCenter,
+              behavior: HitTestBehavior.opaque,
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 transitionBuilder: (child, animation) => FadeTransition(
@@ -504,7 +657,7 @@ class _ModePreviewCard extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              mode.name,
+                              modeName,
                               style: AppTypography.bodyMedium.copyWith(
                                 color: _darken(mode.accent, 0.3),
                                 fontSize: 13,
@@ -515,7 +668,7 @@ class _ModePreviewCard extends StatelessWidget {
                             ),
                             const SizedBox(height: 1),
                             Text(
-                              _bestScoreText(selectedIndex),
+                              _bestScoreText(context, selectedIndex),
                               style: AppTypography.caption.copyWith(
                                 color: AppColors.paperInkSoft,
                                 fontSize: 10,
@@ -537,39 +690,30 @@ class _ModePreviewCard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 6),
-
-          // ── Right arrow — 44×44 touch target ────────────────────────────
-          GestureDetector(
-            onTap: selectedIndex < modeCount - 1 ? onTapRight : null,
-            child: SizedBox(
-              width: 44,
-              height: 44,
-              child: Center(
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: selectedIndex < modeCount - 1
-                        ? AppColors.surface.withOpacity(0.7)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: selectedIndex < modeCount - 1
-                          ? Colors.white.withOpacity(0.1)
-                          : Colors.transparent,
-                      width: 1,
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.chevron_right,
-                    color: selectedIndex < modeCount - 1
-                        ? AppColors.textLight
-                        : AppColors.textMuted.withOpacity(0.3),
-                    size: 22,
-                  ),
+          const SizedBox(width: 4),
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: IconButton(
+              onPressed:
+                  selectedIndex < modeCount - 1 ? onTapRight : null,
+              tooltip: strings.text('a11y.nextMode'),
+              style: IconButton.styleFrom(
+                backgroundColor: selectedIndex < modeCount - 1
+                    ? AppColors.surface.withOpacity(0.78)
+                    : Colors.transparent,
+                side: BorderSide(
+                  color: selectedIndex < modeCount - 1
+                      ? Colors.white.withOpacity(0.12)
+                      : Colors.transparent,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
+              icon: const Icon(Icons.chevron_right_rounded, size: 24),
+              color: AppColors.textLight,
+              disabledColor: AppColors.textMuted.withOpacity(0.3),
             ),
           ),
         ],
@@ -587,15 +731,13 @@ class _ModePreviewCard extends StatelessWidget {
 
 /// Immutable mode descriptor for the preview card.
 class _ModeInfo {
-  final String name;
-  final String tagline;
+  final String nameKey;
   final PaperIconData iconData;
   final Color accent;
   final Color paperColor;
 
   const _ModeInfo({
-    required this.name,
-    required this.tagline,
+    required this.nameKey,
     required this.iconData,
     required this.accent,
     required this.paperColor,
@@ -605,7 +747,8 @@ class _ModeInfo {
 // ── Play Button (unchanged) ────────────────────────────────────────────────────
 
 class _PlayButton extends StatefulWidget {
-  const _PlayButton({required this.onTap});
+  const _PlayButton({required this.label, required this.onTap});
+  final String label;
   final VoidCallback onTap;
 
   @override
@@ -630,6 +773,17 @@ class _PlayButtonState extends State<_PlayButton>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _pulse.stop();
+      _pulse.value = 0;
+    } else if (!_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    }
+  }
+
+  @override
   void dispose() {
     _pulse.dispose();
     super.dispose();
@@ -640,7 +794,8 @@ class _PlayButtonState extends State<_PlayButton>
     return ScaleTransition(
       scale: _scale,
       child: PaperButton(
-        label: 'PLAY',
+        label: widget.label,
+        semanticLabel: widget.label,
         onPressed: widget.onTap,
         color: const Color(0xFFF5A623),
       ),
@@ -665,73 +820,85 @@ class _NavIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Semantics(
+      button: true,
+      selected: isActive,
+      label: label,
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: 72,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: isActive ? AppColors.accent : AppColors.paper,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: isActive
-                        ? AppColors.accentDeep
-                        : const Color(0xFFB89E6E),
-                    offset: const Offset(0, 4),
-                    blurRadius: 0,
-                  ),
-                  if (isActive)
+      excludeSemantics: true,
+      child: GestureDetector(
+        excludeFromSemantics: true,
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: 72,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: isActive ? AppColors.accent : AppColors.paper,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
                     BoxShadow(
-                      color: AppColors.accent.withOpacity(0.35),
-                      blurRadius: 10,
-                      spreadRadius: -2,
+                      color: isActive
+                          ? AppColors.accentDeep
+                          : const Color(0xFFB89E6E),
+                      offset: const Offset(0, 4),
+                      blurRadius: 0,
                     ),
-                ],
+                    if (isActive)
+                      BoxShadow(
+                        color: AppColors.accent.withOpacity(0.35),
+                        blurRadius: 10,
+                        spreadRadius: -2,
+                      ),
+                  ],
+                ),
+                child: Icon(
+                  icon,
+                  color: isActive ? Colors.white : AppColors.paperInk,
+                  size: 22,
+                ),
               ),
-              child: Icon(
-                icon,
-                color: isActive ? Colors.white : AppColors.paperInk,
-                size: 22,
+              const SizedBox(height: 6),
+              Text(
+                label,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.caption.copyWith(
+                  color: isActive
+                      ? AppColors.accent
+                      : const Color(0xFFC4CDE0),
+                  fontSize: 11.5,
+                  fontWeight: isActive ? FontWeight.w800 : FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: AppTypography.caption.copyWith(
-                color: isActive ? AppColors.accent : AppColors.textMuted,
-                fontSize: 11.5,
-                fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+              const SizedBox(height: 4),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                width: isActive ? 28 : 0,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: isActive ? AppColors.accent : Colors.transparent,
+                  borderRadius: BorderRadius.circular(2),
+                  boxShadow: isActive
+                      ? [
+                          BoxShadow(
+                            color: AppColors.accent.withOpacity(0.5),
+                            blurRadius: 4,
+                            spreadRadius: -1,
+                          ),
+                        ]
+                      : null,
+                ),
               ),
-            ),
-            // ── Selected-state origami underline / pill indicator ──────────
-            const SizedBox(height: 4),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              width: isActive ? 28 : 0,
-              height: 3,
-              decoration: BoxDecoration(
-                color: isActive ? AppColors.accent : Colors.transparent,
-                borderRadius: BorderRadius.circular(2),
-                boxShadow: isActive
-                    ? [
-                        BoxShadow(
-                          color: AppColors.accent.withOpacity(0.5),
-                          blurRadius: 4,
-                          spreadRadius: -1,
-                        ),
-                      ]
-                    : null,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

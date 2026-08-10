@@ -184,7 +184,11 @@ class _TitleBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
       child: Row(
         children: [
-          IconButton(icon: const Icon(Icons.arrow_back, color: AppColors.textLight), onPressed: () => Navigator.of(context).pop()),
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: AppColors.textLight),
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
           Expanded(child: Text('Challenges', style: AppTypography.headline, textAlign: TextAlign.center)),
           IconButton(icon: const Icon(Icons.refresh, size: 20, color: AppColors.textLight), onPressed: onRefresh, tooltip: 'Refresh'),
         ],
