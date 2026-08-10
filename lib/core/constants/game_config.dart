@@ -272,11 +272,20 @@ abstract class GameConfig {
   static const double powerUpSpawnY = -50.0;
   static const double powerUpRecycleY = 920.0;
   static const double powerUpBaseSpawnInterval = 8.0;
-  static const double shieldDuration = 0.0; // absorbs 1 hit, no time limit
+  static const double shieldDuration = 0.0; // absorbs hits, no time limit
   static const double magnetDuration = 8.0; // seconds
   static const double ghostDuration = 4.0;  // seconds — phase through obstacles
   static const double slowMoDuration = 4.0; // seconds
   static const double coinRushDuration = 6.0; // seconds — 2× coin value + shower
+  static const double doubleScoreDuration = 6.0; // seconds — 2x distance score
+  static const double shrinkDuration = 5.0; // seconds — 0.35 hitbox
+  static const double windCallerDuration = 8.0; // seconds — calm wind & thermals
+  static const double blackHoleDuration = 1.5; // seconds — cosmic vacuum
+  static const double turboDashDuration = 2.0; // seconds — invincible thrust dash
+
+  /// Shrink micro-fold hitbox and visual scale factors.
+  static const double shrinkHitboxScale = 0.35;
+  static const double shrinkVisualScale = 0.68;
 
   /// Coin score multiplier while Coin Rush is active.
   static const double coinRushValueMultiplier = 2.0;
@@ -404,6 +413,20 @@ abstract class GameConfig {
 
   /// Origami Crane: free brush-offs against tree branches per run.
   static const int craneBranchCharges = 1;
+
+  /// Origami Butterfly: floaty fall, auto-sway, +40% thermal lift.
+  static const double butterflyFallSpeed = 0.75;
+  static const double butterflyThermalBonusMultiplier = 1.40;
+
+  /// Paper Bomber: heavy payload, starts run with 2 shield charges.
+  static const int bomberStartShieldCharges = 2;
+
+  /// Interceptor: agile handling, 0 coin attract.
+  static const double interceptorTurnSpeed = 1.25;
+
+  /// Soaring Albatross: master glider, 2x glide streak points.
+  static const double albatrossGlideStreakMultiplier = 2.0;
+  static const double albatrossGlideDecayReduction = 0.50;
 
   // ── Paper Skins ───────────────────────────────────────────────────────────
   static const List<String> skinAssetHints = [

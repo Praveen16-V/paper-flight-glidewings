@@ -68,6 +68,12 @@ class PowerUpSpawner extends Component {
         1.0, // ghost
         1.2, // slowmo
         1.0, // coin rush
+        1.1, // double score
+        1.0, // shrink
+        1.0, // wind caller
+        0.9, // decoy clone
+        0.8, // black hole
+        0.9, // turbo dash
       ],
     );
 

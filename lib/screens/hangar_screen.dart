@@ -177,11 +177,13 @@ class _PlanesTabState extends ConsumerState<_PlanesTab> {
                       final canAffordGems = save.gems >= p.unlockGemCost;
                       final canAfford = canAffordCoins && canAffordGems;
 
+                      final lvl = save.getPlaneLevel(index);
                       return _PlaneCard(
                         plane: p,
                         unlocked: unl,
                         equipped: equip,
                         selected: isSel,
+                        level: lvl,
                         canAfford: canAfford,
                         onSelect: () => setState(() => _selected = index),
                         onUnlock: () async {
@@ -229,7 +231,7 @@ class _PlanesTabState extends ConsumerState<_PlanesTab> {
 
 // ── Planes Showcase Stage ──────────────────────────────────────────────────
 
-class _PlaneShowcaseStage extends StatefulWidget {
+class _PlaneShowcaseStage extends ConsumerStatefulWidget {
   const _PlaneShowcaseStage({
     required this.plane,
     required this.unlocked,
@@ -242,10 +244,10 @@ class _PlaneShowcaseStage extends StatefulWidget {
   final int selectedIndex;
 
   @override
-  State<_PlaneShowcaseStage> createState() => _PlaneShowcaseStageState();
+  ConsumerState<_PlaneShowcaseStage> createState() => _PlaneShowcaseStageState();
 }
 
-class _PlaneShowcaseStageState extends State<_PlaneShowcaseStage>
+class _PlaneShowcaseStageState extends ConsumerState<_PlaneShowcaseStage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _floatCtrl;
 
@@ -266,7 +268,14 @@ class _PlaneShowcaseStageState extends State<_PlaneShowcaseStage>
 
   @override
   Widget build(BuildContext context) {
-    final stats = _statsForPlane(widget.plane);
+    final save = ref.watch(saveDataProvider);
+    final notifier = ref.read(saveDataProvider.notifier);
+    final level = save.getPlaneLevel(widget.selectedIndex);
+    final stats = _statsForPlane(widget.plane, level);
+    final isMax = level >= 3;
+    final nextCost = widget.plane.upgradeCost(level + 1);
+    final canAffordUpgrade = save.coins >= nextCost;
+
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
@@ -296,10 +305,10 @@ class _PlaneShowcaseStageState extends State<_PlaneShowcaseStage>
           ),
           // Stage content
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
             child: Row(
               children: [
-                // Left: floating plane + pedestal
+                // Left: floating plane + pedestal + level stars
                 Expanded(
                   flex: 5,
                   child: Column(
@@ -331,7 +340,6 @@ class _PlaneShowcaseStageState extends State<_PlaneShowcaseStage>
                                         letterSpacing: 1.1)),
                               ),
                             const Spacer(),
-                            // plane name small
                             Flexible(
                               child: Text(widget.plane.displayName.toUpperCase(),
                                   maxLines: 1,
@@ -344,7 +352,7 @@ class _PlaneShowcaseStageState extends State<_PlaneShowcaseStage>
                           ],
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Expanded(
                         child: AnimatedSwitcher(
                           duration: const Duration(milliseconds: 380),
@@ -372,26 +380,24 @@ class _PlaneShowcaseStageState extends State<_PlaneShowcaseStage>
                                     child: Opacity(
                                       opacity: widget.unlocked ? 1 : 0.38,
                                       child: CustomPaint(
-                                        size: const Size(142, 96),
+                                        size: const Size(130, 84),
                                         painter: _PlaneShowcasePainter(
                                             plane: widget.plane),
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
-                                  // Origami shadow — sharp diamond, not soft blur
+                                  const SizedBox(height: 6),
                                   Transform.scale(
                                     scale: shadowScale,
                                     child: CustomPaint(
-                                      size: const Size(78, 18),
+                                      size: const Size(74, 16),
                                       painter: _OrigamiShadowPainter(
                                           unlocked: widget.unlocked),
                                     ),
                                   ),
-                                  const SizedBox(height: 6),
-                                  // Paper pedestal
+                                  const SizedBox(height: 4),
                                   CustomPaint(
-                                    size: const Size(110, 22),
+                                    size: const Size(100, 18),
                                     painter: _PedestalPainter(),
                                   ),
                                 ],
@@ -400,89 +406,159 @@ class _PlaneShowcaseStageState extends State<_PlaneShowcaseStage>
                           ),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      // tap hint
+                      const SizedBox(height: 2),
                       Text(widget.plane.tagline,
                           textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: AppTypography.caption.copyWith(
                               color: Colors.white.withOpacity(0.55),
-                              fontSize: 10,
+                              fontSize: 9.5,
                               fontStyle: FontStyle.italic)),
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                // Right: radar + animated bars
+                const SizedBox(width: 10),
+                // Right: stats + upgrade tree box
                 Expanded(
                   flex: 5,
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                     decoration: BoxDecoration(
                       color: AppColors.paper.withOpacity(0.96),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(
                             color: Colors.black.withOpacity(0.28),
-                            blurRadius: 12,
-                            offset: const Offset(0, 6)),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5)),
                       ],
                       border: Border.all(
                           color: Colors.white.withOpacity(0.5), width: 1),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            Text('STATS',
-                                style: AppTypography.overline.copyWith(
-                                    color: AppColors.paperInkSoft,
-                                    fontSize: 10,
-                                    letterSpacing: 1.4)),
-                            const Spacer(),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.backgroundDeep,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(widget.plane.signatureActionLabel,
-                                  style: AppTypography.caption.copyWith(
-                                      color: AppColors.accent,
+                    child: SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Text('TIER ${level}/3',
+                                  style: AppTypography.overline.copyWith(
+                                      color: AppColors.paperInkSoft,
                                       fontSize: 9,
-                                      fontWeight: FontWeight.w800)),
+                                      letterSpacing: 1.2)),
+                              const SizedBox(width: 4),
+                              Row(
+                                children: List.generate(3, (i) => Icon(
+                                  i < level ? Icons.star_rounded : Icons.star_outline_rounded,
+                                  size: 13,
+                                  color: i < level ? AppColors.coinGold : AppColors.paperInkSoft.withOpacity(0.35),
+                                )),
+                              ),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 5, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: AppColors.backgroundDeep,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: Text(widget.plane.signatureActionLabel,
+                                    style: AppTypography.caption.copyWith(
+                                        color: AppColors.accent,
+                                        fontSize: 8.5,
+                                        fontWeight: FontWeight.w800)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Center(
+                            child: SizedBox(
+                              width: 105,
+                              height: 90,
+                              child: _RadarChart(values: stats, animate: true, small: true),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          _AnimatedStatBar(
+                              label: 'SPD',
+                              value: stats[0],
+                              color: const Color(0xFFFF6B6B)),
+                          const SizedBox(height: 4),
+                          _AnimatedStatBar(
+                              label: 'GLD',
+                              value: stats[1],
+                              color: const Color(0xFF4FC3F7)),
+                          const SizedBox(height: 4),
+                          _AnimatedStatBar(
+                              label: 'SHD',
+                              value: stats[2],
+                              color: const Color(0xFF56CF87)),
+                          if (widget.unlocked) ...[
+                            const SizedBox(height: 6),
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: AppColors.paperWarm,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppColors.paperInkSoft.withOpacity(0.18)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'PERK: ${widget.plane.perkForLevel(level)}',
+                                    style: AppTypography.caption.copyWith(
+                                      fontSize: 8.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.paperInk,
+                                    ),
+                                  ),
+                                  if (!isMax) ...[
+                                    const SizedBox(height: 5),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 26,
+                                      child: PaperButton(
+                                        label: 'UPGRADE (Lv ${level + 1}) • $nextCost ●',
+                                        compact: true,
+                                        color: canAffordUpgrade ? AppColors.accent : AppColors.paperInk.withOpacity(0.4),
+                                        textColor: Colors.white,
+                                        onPressed: canAffordUpgrade ? () async {
+                                          final success = await notifier.upgradePlane(widget.selectedIndex, nextCost);
+                                          if (success && context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text('${widget.plane.displayName} upgraded to Level ${level + 1}!'),
+                                                backgroundColor: AppColors.success,
+                                                duration: const Duration(seconds: 2),
+                                              ),
+                                            );
+                                          }
+                                        } : null,
+                                      ),
+                                    ),
+                                  ] else ...[
+                                    const SizedBox(height: 3),
+                                    Center(
+                                      child: Text(
+                                        '★ MAX LEVEL ★',
+                                        style: AppTypography.overline.copyWith(
+                                          fontSize: 8,
+                                          color: AppColors.accentDeep,
+                                          letterSpacing: 0.8,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 8),
-                        // Radar triangle
-                        Center(
-                          child: SizedBox(
-                            width: 120,
-                            height: 108,
-                            child: _RadarChart(values: stats, animate: true),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        _AnimatedStatBar(
-                            label: 'SPEED',
-                            value: stats[0],
-                            color: const Color(0xFFFF6B6B)),
-                        const SizedBox(height: 6),
-                        _AnimatedStatBar(
-                            label: 'GLIDE',
-                            value: stats[1],
-                            color: const Color(0xFF4FC3F7)),
-                        const SizedBox(height: 6),
-                        _AnimatedStatBar(
-                            label: 'SHIELD',
-                            value: stats[2],
-                            color: const Color(0xFF56CF87)),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -638,7 +714,7 @@ class _SkinsTabState extends ConsumerState<_SkinsTab> {
   }
 }
 
-class _SkinShowcaseStage extends StatefulWidget {
+class _SkinShowcaseStage extends ConsumerStatefulWidget {
   const _SkinShowcaseStage({
     required this.skin,
     required this.unlocked,
@@ -651,10 +727,10 @@ class _SkinShowcaseStage extends StatefulWidget {
   final int selectedIndex;
 
   @override
-  State<_SkinShowcaseStage> createState() => _SkinShowcaseStageState();
+  ConsumerState<_SkinShowcaseStage> createState() => _SkinShowcaseStageState();
 }
 
-class _SkinShowcaseStageState extends State<_SkinShowcaseStage>
+class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _floatCtrl;
   @override
@@ -891,6 +967,35 @@ class _SkinShowcaseStageState extends State<_SkinShowcaseStage>
                             style: AppTypography.caption.copyWith(
                                 color: AppColors.paperInkSoft, fontSize: 11)),
                         const SizedBox(height: 10),
+                        // Custom Skin Lab: 2-color palette + pattern stamp picker
+                        if (widget.skin == PaperSkin.customCraft && widget.unlocked) ...[
+                          Text('CUSTOM PALETTE', style: AppTypography.overline.copyWith(fontSize: 8.5, color: AppColors.paperInkSoft)),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: const [
+                              Color(0xFF4FC3F7),
+                              Color(0xFFFF80AB),
+                              Color(0xFF00E676),
+                              Color(0xFFFFD54F),
+                              Color(0xFFCE93D8),
+                            ].map((c) => Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: GestureDetector(
+                                onTap: () => ref.read(saveDataProvider.notifier).updateCustomSkin(primaryHex: c.value),
+                                child: Container(
+                                  width: 18,
+                                  height: 18,
+                                  decoration: BoxDecoration(
+                                    color: c,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 1.2),
+                                  ),
+                                ),
+                              ),
+                            )).toList(),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                         // price preview row
                         if (widget.skin.unlockCostCoins > 0 ||
                             widget.skin.unlockCostGems > 0)
@@ -943,19 +1048,82 @@ class _SkinShowcaseStageState extends State<_SkinShowcaseStage>
 // ════════════════════════════════════════════════════════════════════════════
 
 /// Speed, Glide, Shield normalized 0..1 for each plane.
-/// Tuned to make Dart / Glider / Stunt Fold instantly distinct on the radar.
-List<double> _statsForPlane(PlaneType p) {
+/// Tuned to make each plane distinct on the radar, scaling with upgrade level.
+List<double> _statsForPlane(PlaneType p, [int level = 1]) {
+  final boost = (level - 1) * 0.05;
   switch (p) {
     case PlaneType.dart:
-      return [0.68, 0.62, 0.55];
+      return [
+        (0.68 + boost).clamp(0.0, 1.0),
+        (0.62 + boost).clamp(0.0, 1.0),
+        (0.55 + boost * 0.5).clamp(0.0, 1.0),
+      ];
     case PlaneType.glider:
-      return [0.42, 0.96, 0.45];
+      return [
+        (0.42 + boost * 0.5).clamp(0.0, 1.0),
+        (0.96 + boost).clamp(0.0, 1.0),
+        (0.45 + boost).clamp(0.0, 1.0),
+      ];
     case PlaneType.stuntFold:
-      return [0.88, 0.38, 0.40];
+      return [
+        (0.88 + boost).clamp(0.0, 1.0),
+        (0.38 + boost * 0.5).clamp(0.0, 1.0),
+        (0.40 + boost).clamp(0.0, 1.0),
+      ];
     case PlaneType.crane:
-      return [0.50, 0.84, 0.78];
+      return [
+        (0.50 + boost * 0.5).clamp(0.0, 1.0),
+        (0.84 + boost).clamp(0.0, 1.0),
+        (0.78 + boost).clamp(0.0, 1.0),
+      ];
     case PlaneType.stealthJet:
-      return [0.82, 0.58, 0.90];
+      return [
+        (0.82 + boost).clamp(0.0, 1.0),
+        (0.58 + boost).clamp(0.0, 1.0),
+        (0.90 + boost).clamp(0.0, 1.0),
+      ];
+    case PlaneType.butterfly:
+      return [
+        (0.45 + boost * 0.5).clamp(0.0, 1.0),
+        (0.95 + boost).clamp(0.0, 1.0),
+        (0.60 + boost).clamp(0.0, 1.0),
+      ];
+    case PlaneType.bomber:
+      return [
+        (0.40 + boost * 0.5).clamp(0.0, 1.0),
+        (0.50 + boost * 0.5).clamp(0.0, 1.0),
+        (0.98 + boost).clamp(0.0, 1.0),
+      ];
+    case PlaneType.interceptor:
+      return [
+        (0.96 + boost).clamp(0.0, 1.0),
+        (0.48 + boost * 0.5).clamp(0.0, 1.0),
+        (0.42 + boost).clamp(0.0, 1.0),
+      ];
+    case PlaneType.albatross:
+      return [
+        (0.46 + boost * 0.5).clamp(0.0, 1.0),
+        (0.98 + boost).clamp(0.0, 1.0),
+        (0.52 + boost).clamp(0.0, 1.0),
+      ];
+    case PlaneType.biplane:
+      return [
+        (0.65 + boost).clamp(0.0, 1.0),
+        (0.75 + boost).clamp(0.0, 1.0),
+        (0.70 + boost).clamp(0.0, 1.0),
+      ];
+    case PlaneType.ninjaStar:
+      return [
+        (0.92 + boost).clamp(0.0, 1.0),
+        (0.45 + boost * 0.5).clamp(0.0, 1.0),
+        (0.50 + boost).clamp(0.0, 1.0),
+      ];
+    case PlaneType.rocket:
+      return [
+        (0.95 + boost).clamp(0.0, 1.0),
+        (0.50 + boost * 0.5).clamp(0.0, 1.0),
+        (0.75 + boost).clamp(0.0, 1.0),
+      ];
   }
 }
 
@@ -1189,6 +1357,7 @@ class _PlaneCard extends StatelessWidget {
     required this.onSelect,
     required this.onUnlock,
     required this.onEquip,
+    this.level = 1,
   });
 
   final PlaneType plane;
@@ -1196,14 +1365,13 @@ class _PlaneCard extends StatelessWidget {
   final bool equipped;
   final bool selected;
   final bool canAfford;
+  final int level;
   final VoidCallback onSelect;
   final VoidCallback onUnlock;
   final VoidCallback onEquip;
 
   @override
   Widget build(BuildContext context) {
-    // Hierarchy: EQUIPPED = vibrant green outline + check badge, distinct bg
-    // LOCKED = padlock badge + high-contrast purchase button
     final isLocked = !unlocked;
     final borderColor = equipped
         ? AppColors.success
@@ -1219,9 +1387,6 @@ class _PlaneCard extends StatelessWidget {
         PaperCard(
           onTap: () {
             onSelect();
-            if (unlocked && !equipped) {
-              // feedback: selecting also previews; equip via button
-            }
           },
           color: bg,
           elevation: equipped ? 1.6 : (selected ? 1.3 : 1.0),
@@ -1251,6 +1416,41 @@ class _PlaneCard extends StatelessWidget {
                                 ),
                               ),
                             ),
+                            if (unlocked) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 5, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: level >= 3
+                                      ? AppColors.coinGold.withOpacity(0.2)
+                                      : AppColors.paperWarm,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                      color: level >= 3
+                                          ? AppColors.coinGold
+                                          : AppColors.paperInkSoft.withOpacity(0.2)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.star_rounded,
+                                        size: 11,
+                                        color: level >= 3
+                                            ? AppColors.accentDeep
+                                            : AppColors.paperInkSoft),
+                                    const SizedBox(width: 2),
+                                    Text('Lv.$level',
+                                        style: AppTypography.overline.copyWith(
+                                            color: level >= 3
+                                                ? AppColors.accentDeep
+                                                : AppColors.paperInkSoft,
+                                            fontSize: 8,
+                                            letterSpacing: 0.8)),
+                                  ],
+                                ),
+                              ),
+                            ],
                             if (selected) ...[
                               const SizedBox(width: 6),
                               Container(
@@ -1304,8 +1504,7 @@ class _PlaneCard extends StatelessWidget {
                               .toList(),
                         ),
                         const SizedBox(height: 7),
-                        // inline mini bars for glance
-                        _MiniStatRow(plane: plane),
+                        _MiniStatRow(plane: plane, level: level),
                       ],
                     ),
                   ),
@@ -1324,7 +1523,7 @@ class _PlaneCard extends StatelessWidget {
             ],
           ),
         ),
-        // Badges overlay — unmistakable hierarchy
+        // Badges overlay
         if (equipped)
           Positioned(
             top: -6,
@@ -1376,11 +1575,13 @@ class _PlaneCard extends StatelessWidget {
 }
 
 class _MiniStatRow extends StatelessWidget {
-  const _MiniStatRow({required this.plane});
+  const _MiniStatRow({required this.plane, this.level = 1});
   final PlaneType plane;
+  final int level;
+
   @override
   Widget build(BuildContext context) {
-    final vals = _statsForPlane(plane);
+    final vals = _statsForPlane(plane, level);
     const labels = ['SPD', 'GLD', 'SHD'];
     const colors = [
       Color(0xFFFF6B6B),
@@ -1492,6 +1693,66 @@ class _PlaneMiniPainter extends CustomPainter {
         ..lineTo(w * 0.32, h / 2)
         ..lineTo(w * 0.05, h * 0.85)
         ..close();
+    } else if (plane == PlaneType.butterfly) {
+      path = Path()
+        ..moveTo(w * 0.9, h / 2)
+        ..lineTo(w * 0.3, h * 0.05)
+        ..lineTo(w * 0.1, h * 0.35)
+        ..lineTo(w * 0.35, h / 2)
+        ..lineTo(w * 0.1, h * 0.65)
+        ..lineTo(w * 0.3, h * 0.95)
+        ..close();
+    } else if (plane == PlaneType.bomber) {
+      path = Path()
+        ..moveTo(w * 0.95, h / 2)
+        ..lineTo(w * 0.45, h * 0.08)
+        ..lineTo(w * 0.1, h * 0.12)
+        ..lineTo(w * 0.2, h / 2)
+        ..lineTo(w * 0.1, h * 0.88)
+        ..lineTo(w * 0.45, h * 0.92)
+        ..close();
+    } else if (plane == PlaneType.interceptor) {
+      path = Path()
+        ..moveTo(w, h / 2)
+        ..lineTo(w * 0.55, h * 0.28)
+        ..lineTo(0, h * 0.15)
+        ..lineTo(w * 0.15, h / 2)
+        ..lineTo(0, h * 0.85)
+        ..lineTo(w * 0.55, h * 0.72)
+        ..close();
+    } else if (plane == PlaneType.albatross) {
+      path = Path()
+        ..moveTo(w, h / 2)
+        ..lineTo(w * 0.05, 0)
+        ..lineTo(w * 0.18, h / 2)
+        ..lineTo(w * 0.05, h)
+        ..close();
+    } else if (plane == PlaneType.biplane) {
+      path = Path()
+        ..moveTo(w * 0.92, h / 2)
+        ..lineTo(w * 0.2, h * 0.12)
+        ..lineTo(w * 0.2, h * 0.88)
+        ..close();
+    } else if (plane == PlaneType.ninjaStar) {
+      path = Path()
+        ..moveTo(w, h / 2)
+        ..lineTo(w * 0.65, h * 0.2)
+        ..lineTo(w / 2, 0)
+        ..lineTo(w * 0.35, h * 0.35)
+        ..lineTo(0, h / 2)
+        ..lineTo(w * 0.35, h * 0.8)
+        ..lineTo(w / 2, h)
+        ..lineTo(w * 0.65, h * 0.65)
+        ..close();
+    } else if (plane == PlaneType.rocket) {
+      path = Path()
+        ..moveTo(w, h / 2)
+        ..lineTo(w * 0.2, h * 0.22)
+        ..lineTo(w * 0.05, h * 0.05)
+        ..lineTo(w * 0.15, h / 2)
+        ..lineTo(w * 0.05, h * 0.95)
+        ..lineTo(w * 0.2, h * 0.78)
+        ..close();
     } else {
       path = Path()
         ..moveTo(w, h / 2)
@@ -1528,6 +1789,20 @@ class _PlaneMiniPainter extends CustomPainter {
         return const Color(0xFF81C784);
       case PlaneType.stealthJet:
         return const Color(0xFF90A4AE);
+      case PlaneType.butterfly:
+        return const Color(0xFFCE93D8);
+      case PlaneType.bomber:
+        return const Color(0xFF8D6E63);
+      case PlaneType.interceptor:
+        return const Color(0xFF00E5FF);
+      case PlaneType.albatross:
+        return const Color(0xFF4DB6AC);
+      case PlaneType.biplane:
+        return const Color(0xFFFFB74D);
+      case PlaneType.ninjaStar:
+        return const Color(0xFFEF5350);
+      case PlaneType.rocket:
+        return const Color(0xFF42A5F5);
     }
   }
 
@@ -1602,6 +1877,73 @@ class _PlaneShowcasePainter extends CustomPainter {
         ..lineTo(w * 0.05, h * 0.85)
         ..close();
     }
+    if (plane == PlaneType.butterfly) {
+      return Path()
+        ..moveTo(w * 0.9, h / 2)
+        ..lineTo(w * 0.3, h * 0.05)
+        ..lineTo(w * 0.1, h * 0.35)
+        ..lineTo(w * 0.35, h / 2)
+        ..lineTo(w * 0.1, h * 0.65)
+        ..lineTo(w * 0.3, h * 0.95)
+        ..close();
+    }
+    if (plane == PlaneType.bomber) {
+      return Path()
+        ..moveTo(w * 0.95, h / 2)
+        ..lineTo(w * 0.45, h * 0.08)
+        ..lineTo(w * 0.1, h * 0.12)
+        ..lineTo(w * 0.2, h / 2)
+        ..lineTo(w * 0.1, h * 0.88)
+        ..lineTo(w * 0.45, h * 0.92)
+        ..close();
+    }
+    if (plane == PlaneType.interceptor) {
+      return Path()
+        ..moveTo(w, h / 2)
+        ..lineTo(w * 0.55, h * 0.28)
+        ..lineTo(0, h * 0.15)
+        ..lineTo(w * 0.15, h / 2)
+        ..lineTo(0, h * 0.85)
+        ..lineTo(w * 0.55, h * 0.72)
+        ..close();
+    }
+    if (plane == PlaneType.albatross) {
+      return Path()
+        ..moveTo(w, h / 2)
+        ..lineTo(w * 0.05, 0)
+        ..lineTo(w * 0.18, h / 2)
+        ..lineTo(w * 0.05, h)
+        ..close();
+    }
+    if (plane == PlaneType.biplane) {
+      return Path()
+        ..moveTo(w * 0.92, h / 2)
+        ..lineTo(w * 0.2, h * 0.12)
+        ..lineTo(w * 0.2, h * 0.88)
+        ..close();
+    }
+    if (plane == PlaneType.ninjaStar) {
+      return Path()
+        ..moveTo(w, h / 2)
+        ..lineTo(w * 0.65, h * 0.2)
+        ..lineTo(w / 2, 0)
+        ..lineTo(w * 0.35, h * 0.35)
+        ..lineTo(0, h / 2)
+        ..lineTo(w * 0.35, h * 0.8)
+        ..lineTo(w / 2, h)
+        ..lineTo(w * 0.65, h * 0.65)
+        ..close();
+    }
+    if (plane == PlaneType.rocket) {
+      return Path()
+        ..moveTo(w, h / 2)
+        ..lineTo(w * 0.2, h * 0.22)
+        ..lineTo(w * 0.05, h * 0.05)
+        ..lineTo(w * 0.15, h / 2)
+        ..lineTo(w * 0.05, h * 0.95)
+        ..lineTo(w * 0.2, h * 0.78)
+        ..close();
+    }
     return Path()
       ..moveTo(w, h / 2)
       ..lineTo(0, 0)
@@ -1622,6 +1964,20 @@ class _PlaneShowcasePainter extends CustomPainter {
         return const Color(0xFF81C784);
       case PlaneType.stealthJet:
         return const Color(0xFF90A4AE);
+      case PlaneType.butterfly:
+        return const Color(0xFFCE93D8);
+      case PlaneType.bomber:
+        return const Color(0xFF8D6E63);
+      case PlaneType.interceptor:
+        return const Color(0xFF00E5FF);
+      case PlaneType.albatross:
+        return const Color(0xFF4DB6AC);
+      case PlaneType.biplane:
+        return const Color(0xFFFFB74D);
+      case PlaneType.ninjaStar:
+        return const Color(0xFFEF5350);
+      case PlaneType.rocket:
+        return const Color(0xFF42A5F5);
     }
   }
 
@@ -2092,20 +2448,22 @@ class _SkinPatternPainter extends CustomPainter {
         break;
       case PaperSkin.newspaper:
         final p = Paint()
-          ..color = const Color(0xFF5D4037).withOpacity(0.28)
+          ..color = const Color(0xFF5D4037).withOpacity(0.35)
           ..strokeWidth = 1;
-        for (double y = 6; y < size.height - 4; y += 4) {
-          canvas.drawLine(Offset(4, y), Offset(size.width - 4, y), p);
+        canvas.drawLine(Offset(4, 8), Offset(size.width - 4, 8), p..strokeWidth = 2);
+        for (double y = 14; y < size.height - 4; y += 4.5) {
+          canvas.drawLine(Offset(4, y), Offset(size.width * 0.48, y), p..strokeWidth = 0.8);
+          canvas.drawLine(Offset(size.width * 0.52, y), Offset(size.width - 4, y), p..strokeWidth = 0.8);
         }
         break;
       case PaperSkin.graphPaper:
         final p = Paint()
           ..color = const Color(0xFF0288D1).withOpacity(0.35)
           ..strokeWidth = 0.6;
-        for (double x = 6; x < size.width; x += 8) {
+        for (double x = 6; x < size.width; x += 7) {
           canvas.drawLine(Offset(x, 3), Offset(x, size.height - 3), p);
         }
-        for (double y = 5; y < size.height; y += 8) {
+        for (double y = 5; y < size.height; y += 7) {
           canvas.drawLine(Offset(4, y), Offset(size.width - 4, y), p);
         }
         break;
@@ -2122,7 +2480,7 @@ class _SkinPatternPainter extends CustomPainter {
         canvas.drawLine(Offset(12, 3), Offset(12, size.height - 3), margin);
         break;
       case PaperSkin.holographicFoil:
-        // Full-fill rainbow gradient + diagonal shimmer + sparkle dots
+      case PaperSkin.animatedHologram:
         final foil = Paint()
           ..shader = LinearGradient(
                   colors: [
@@ -2138,7 +2496,6 @@ class _SkinPatternPainter extends CustomPainter {
               .createShader(Rect.fromLTWH(0, 0, size.width, size.height))
           ..style = PaintingStyle.fill;
         canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), foil);
-        // white shimmer sweep
         final sweep = Paint()
           ..color = Colors.white.withOpacity(0.35)
           ..style = PaintingStyle.fill;
@@ -2149,35 +2506,111 @@ class _SkinPatternPainter extends CustomPainter {
           ..lineTo(size.width * 0.4, size.height)
           ..close();
         canvas.drawPath(sweepPath, sweep);
-        // sparkle dots
-        final sp = Paint()..color = Colors.white.withOpacity(0.9);
-        for (final offset in [
-          Offset(size.width * 0.2, size.height * 0.2),
-          Offset(size.width * 0.7, size.height * 0.35),
-          Offset(size.width * 0.45, size.height * 0.72),
-        ]) {
-          canvas.drawCircle(offset, 1.8, sp);
-          canvas.drawLine(Offset(offset.dx - 4, offset.dy), Offset(offset.dx + 4, offset.dy), sp..strokeWidth = 0.8..style = PaintingStyle.stroke);
-          canvas.drawLine(Offset(offset.dx, offset.dy - 4), Offset(offset.dx, offset.dy + 4), sp);
-        }
         break;
       case PaperSkin.watercolorWash:
         final wash = Paint()
-          ..color = const Color(0xFF4FC3F7).withOpacity(0.22)
+          ..color = const Color(0xFF4FC3F7).withOpacity(0.28)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
-        canvas.drawCircle(
-            Offset(size.width * 0.5, size.height * 0.5), 10, wash);
-        canvas.drawCircle(
-            Offset(size.width * 0.35, size.height * 0.4), 6, wash);
+        final washB = Paint()
+          ..color = const Color(0xFFFF80AB).withOpacity(0.25)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+        canvas.drawCircle(Offset(size.width * 0.45, size.height * 0.45), 12, wash);
+        canvas.drawCircle(Offset(size.width * 0.65, size.height * 0.6), 8, washB);
         break;
       case PaperSkin.goldLeaf:
-        final g = Paint()..color = const Color(0xFFFFD700).withOpacity(0.35);
-        canvas.drawCircle(
-            Offset(size.width * 0.3, size.height * 0.45), 2.5, g);
-        canvas.drawCircle(
-            Offset(size.width * 0.6, size.height * 0.55), 2.0, g);
-        canvas.drawCircle(
-            Offset(size.width * 0.5, size.height * 0.3), 1.6, g);
+        final g = Paint()..color = const Color(0xFFFFD700).withOpacity(0.5);
+        canvas.drawCircle(Offset(size.width * 0.3, size.height * 0.45), 2.5, g);
+        canvas.drawCircle(Offset(size.width * 0.6, size.height * 0.55), 2.0, g);
+        canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.3), 1.6, g);
+        break;
+      case PaperSkin.blueprint:
+        final bp = Paint()
+          ..color = Colors.white.withOpacity(0.4)
+          ..strokeWidth = 0.8
+          ..style = PaintingStyle.stroke;
+        canvas.drawRect(Rect.fromLTWH(6, 6, size.width - 12, size.height - 12), bp);
+        canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.5), 6, bp);
+        break;
+      case PaperSkin.receipt:
+        final b = Paint()..color = const Color(0xFF212121).withOpacity(0.35);
+        for (double x = 8; x < size.width - 8; x += 3.5) {
+          canvas.drawRect(Rect.fromLTWH(x, 10, (x * 3).toInt() % 2 == 0 ? 1.8 : 0.9, 14), b);
+        }
+        break;
+      case PaperSkin.carbonFiber:
+        final c1 = Paint()..color = const Color(0xFF424242).withOpacity(0.5)..strokeWidth = 1;
+        final c2 = Paint()..color = const Color(0xFF1E1E1E).withOpacity(0.5)..strokeWidth = 1;
+        for (double d = -size.width; d < size.width * 2; d += 4) {
+          canvas.drawLine(Offset(d, 0), Offset(d + size.height, size.height), c1);
+          canvas.drawLine(Offset(d, size.height), Offset(d + size.height, 0), c2);
+        }
+        break;
+      case PaperSkin.mangaHalftone:
+        final dot = Paint()..color = const Color(0xFF212121).withOpacity(0.25);
+        for (double x = 6; x < size.width - 6; x += 4) {
+          for (double y = 6; y < size.height - 6; y += 4) {
+            canvas.drawCircle(Offset(x, y), 0.8, dot);
+          }
+        }
+        break;
+      case PaperSkin.kraftEnvelope:
+        final red = Paint()..color = const Color(0xFFD32F2F).withOpacity(0.6)..strokeWidth = 1.5;
+        final blue = Paint()..color = const Color(0xFF1976D2).withOpacity(0.6)..strokeWidth = 1.5;
+        for (double x = 4; x < size.width - 4; x += 8) {
+          canvas.drawLine(Offset(x, 4), Offset(x + 4, 4), red);
+          canvas.drawLine(Offset(x + 4, 4), Offset(x + 8, 4), blue);
+        }
+        break;
+      case PaperSkin.prideGradient:
+        final p = Paint()
+          ..shader = LinearGradient(
+            colors: const [
+              Color(0xFFFF1744),
+              Color(0xFFFF9100),
+              Color(0xFFFFEA00),
+              Color(0xFF00E676),
+              Color(0xFF2979FF),
+              Color(0xFFAA00FF),
+            ],
+          ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+          ..style = PaintingStyle.fill;
+        canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), p);
+        break;
+      case PaperSkin.dragonScales:
+        final s = Paint()..color = const Color(0xFF00E676).withOpacity(0.4)..style = PaintingStyle.stroke..strokeWidth = 0.8;
+        for (double x = 8; x < size.width - 8; x += 6) {
+          for (double y = 8; y < size.height - 8; y += 5) {
+            final p = Path()..moveTo(x, y)..lineTo(x + 3, y + 3)..lineTo(x, y + 6)..lineTo(x - 3, y + 3)..close();
+            canvas.drawPath(p, s);
+          }
+        }
+        break;
+      case PaperSkin.snowflake:
+        final snow = Paint()..color = Colors.white.withOpacity(0.7)..strokeWidth = 0.8;
+        final c = Offset(size.width * 0.5, size.height * 0.5);
+        for (int i = 0; i < 6; i++) {
+          final ang = i * math.pi / 3;
+          canvas.drawLine(c, Offset(c.dx + math.cos(ang) * 8, c.dy + math.sin(ang) * 8), snow);
+        }
+        break;
+      case PaperSkin.pumpkin:
+        final pump = Paint()..color = const Color(0xFFFFD54F).withOpacity(0.5)..style = PaintingStyle.stroke..strokeWidth = 1;
+        canvas.drawOval(Rect.fromCenter(center: Offset(size.width * 0.5, size.height * 0.5), width: 14, height: 10), pump);
+        break;
+      case PaperSkin.cherryBlossom:
+        final pet = Paint()..color = const Color(0xFFF48FB1).withOpacity(0.6);
+        canvas.drawCircle(Offset(size.width * 0.4, size.height * 0.4), 2.5, pet);
+        canvas.drawCircle(Offset(size.width * 0.6, size.height * 0.55), 2.2, pet);
+        break;
+      case PaperSkin.lavaLamp:
+        final l1 = Paint()..color = const Color(0xFFFF4081).withOpacity(0.4)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+        final l2 = Paint()..color = const Color(0xFF00E5FF).withOpacity(0.4)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+        canvas.drawCircle(Offset(size.width * 0.4, size.height * 0.45), 7, l1);
+        canvas.drawCircle(Offset(size.width * 0.65, size.height * 0.55), 8, l2);
+        break;
+      case PaperSkin.customCraft:
+        final st = Paint()..color = Colors.white.withOpacity(0.4)..style = PaintingStyle.stroke..strokeWidth = 0.8;
+        canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.5), 5, st);
         break;
     }
   }

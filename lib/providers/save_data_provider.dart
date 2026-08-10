@@ -222,6 +222,37 @@ class SaveDataNotifier extends Notifier<SaveData> {
     });
   }
 
+  // ── Plane Upgrade Tree (3 Levels) ────────────────────────────────────────
+
+  int getPlaneLevel(int planeIndex) => state.getPlaneLevel(planeIndex);
+
+  Future<bool> upgradePlane(int planeIndex, int coinCost) async {
+    final currentLvl = getPlaneLevel(planeIndex);
+    if (currentLvl >= 3 || state.coins < coinCost) return false;
+
+    final newLevels = List<int>.from(state.planeUpgradeLevels);
+    while (newLevels.length <= planeIndex) {
+      newLevels.add(1);
+    }
+    newLevels[planeIndex] = (currentLvl + 1).clamp(1, 3);
+
+    state = await PersistenceService.instance.updateSave((s) {
+      s.coins -= coinCost;
+      s.planeUpgradeLevels = newLevels;
+      return s;
+    });
+
+    _logEconomy(
+      currency: 'coin',
+      direction: 'sink',
+      amount: coinCost,
+      balanceAfter: state.coins,
+      reason: 'plane_upgrade_lvl_${currentLvl + 1}',
+    );
+
+    return true;
+  }
+
   // ── Skin Unlocks ─────────────────────────────────────────────────────────
 
   bool isSkinUnlocked(int skinIndex) =>
@@ -262,6 +293,19 @@ class SaveDataNotifier extends Notifier<SaveData> {
     if (!isSkinUnlocked(skinIndex)) return;
     state = await PersistenceService.instance.updateSave((s) {
       s.equippedSkinIndex = skinIndex;
+      return s;
+    });
+  }
+
+  Future<void> updateCustomSkin({
+    int? primaryHex,
+    int? accentHex,
+    int? stampIndex,
+  }) async {
+    state = await PersistenceService.instance.updateSave((s) {
+      if (primaryHex != null) s.customSkinPrimaryHex = primaryHex;
+      if (accentHex != null) s.customSkinAccentHex = accentHex;
+      if (stampIndex != null) s.customSkinStamp = stampIndex;
       return s;
     });
   }

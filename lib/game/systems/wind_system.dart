@@ -84,6 +84,19 @@ class WindSystem extends Component with HasGameRef<PaperFlightGame> {
       return const LaneWind(lateralForce: 0, liftBonus: 0, type: WindType.calm, intensity: 0);
     }
 
+    try {
+      final session = gameRef.ref.read(gameSessionProvider);
+      if (session.activePowerUps.contains(PowerUpType.windCaller)) {
+        // Wind Caller power-up: disables adverse wind lanes, creates calm updrafts
+        return const LaneWind(
+          lateralForce: 0,
+          liftBonus: 80.0,
+          type: WindType.thermal,
+          intensity: 0.6,
+        );
+      }
+    } catch (_) {}
+
     final noiseVal = _noise.fbm(laneIndex * GameConfig.windNoiseLaneScale, _time, octaves: 3);
     WindType type;
     double lateral;

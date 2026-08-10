@@ -73,17 +73,38 @@ class ScoringSystem extends Component {
     if (game.phase != GamePhase.playing) return;
 
     // Combo decay gauge: continuously drains while no coins are feeding it.
+    // Albatross perk: 50%..75% slower combo decay while in glide!
     if (_comboGauge > 0) {
-      _comboGauge = (_comboGauge - _drainRate * dt)
+      var effectiveDrain = _drainRate;
+      try {
+        if (game.plane.planeType == PlaneType.albatross) {
+          final decayMult = game.plane.planeLevel >= 3 ? 0.25 : (game.plane.planeLevel == 2 ? 0.40 : 0.50);
+          effectiveDrain *= decayMult;
+        }
+      } catch (_) {}
+
+      _comboGauge = (_comboGauge - effectiveDrain * dt)
           .clamp(0.0, GameConfig.comboMax.toDouble())
           .toDouble();
     }
 
-    // Distance-based score accumulates continuously — Dart gets +15%.
+    // Distance-based score accumulates continuously — Dart gets distance bonus (+15%..+25%).
     var distScore = (game.distanceMeters * GameConfig.scorePerMeter).toInt();
     try {
+      final session = game.ref.read(gameSessionProvider);
+      if (session.activePowerUps.contains(PowerUpType.doubleScore)) {
+        distScore *= 2; // Double Score power-up: 2x distance meters score!
+      }
       if (game.plane.planeType == PlaneType.dart) {
-        distScore = (distScore * GameConfig.dartDistanceBonusMultiplier).toInt();
+        final dartBonus = game.plane.planeLevel >= 3
+            ? 1.25
+            : (game.plane.planeLevel == 2 ? 1.20 : GameConfig.dartDistanceBonusMultiplier);
+        distScore = (distScore * dartBonus).toInt();
+      } else if (game.plane.planeType == PlaneType.interceptor && game.plane.planeLevel >= 3) {
+        distScore = (distScore * 1.20).toInt();
+      } else if (game.plane.planeType == PlaneType.rocket) {
+        final rBonus = game.plane.planeLevel >= 3 ? 1.25 : (game.plane.planeLevel == 2 ? 1.15 : 1.0);
+        distScore = (distScore * rBonus).toInt();
       }
     } catch (_) {}
 
@@ -123,6 +144,13 @@ class ScoringSystem extends Component {
     return points;
   }
 
+  /// Restores [notches] to the decaying combo gauge (e.g. from a Tunnel Ring pass).
+  void awardComboNotches(double notches) {
+    _comboGauge = (_comboGauge + notches)
+        .clamp(0.0, GameConfig.comboMax.toDouble())
+        .toDouble();
+  }
+
   /// Call when the plane hits an obstacle and the hit is absorbed by the
   /// shield. Instead of resetting the combo to zero, the stunt costs half of
   /// the remaining gauge — painful at ×3.0, survivable at ×1.2.
@@ -139,13 +167,24 @@ class ScoringSystem extends Component {
     _nearMissesThisRun++;
     game.ref.read(gameSessionProvider.notifier).addNearMiss();
     var points = tier.points;
-    // Stunt Fold: +50% near-miss score
+    // Stunt Fold: +50%..+100% near-miss score
     try {
       if (game.plane.planeType == PlaneType.stuntFold) {
-        points = (points * GameConfig.stuntNearMissMultiplier).toInt();
+        final mult = game.plane.planeLevel >= 3
+            ? 2.0
+            : (game.plane.planeLevel == 2 ? 1.75 : GameConfig.stuntNearMissMultiplier);
+        points = (points * mult).toInt();
+      } else if (game.plane.planeType == PlaneType.ninjaStar) {
+        final mult = game.plane.planeLevel >= 3 ? 1.60 : (game.plane.planeLevel == 2 ? 1.45 : 1.30);
+        points = (points * mult).toInt();
       }
     } catch (_) {}
     _nearMissScoreAccumulated += points;
+    // Damage/crumple feedback on the plane model.
+    try {
+      game.plane.onNearMiss(tier);
+    } catch (_) {}
+
     final spawnPos = position ?? game.plane.position.clone();
     spawnNearMissFeedback(game, spawnPos, tier, points);
     // Juice: sharp medium click on a confirmed near-miss (Task 6).
@@ -158,10 +197,18 @@ class ScoringSystem extends Component {
   }
 
   /// Call by streak trackers (smooth glide, thermal surf) to bank flat
-  /// bonus points. Streak payouts intentionally ignore the coin combo
-  /// multiplier — they escalate on their own schedule.
+  /// bonus points. Albatross earns 2x..3x streak bonus!
   void awardStreakBonus(int points) {
-    _streakScoreAccumulated += points;
+    var finalPoints = points;
+    try {
+      if (game.plane.planeType == PlaneType.albatross) {
+        final mult = game.plane.planeLevel >= 3
+            ? 3.0
+            : (game.plane.planeLevel == 2 ? 2.5 : 2.0);
+        finalPoints = (finalPoints * mult).toInt();
+      }
+    } catch (_) {}
+    _streakScoreAccumulated += finalPoints;
   }
 
   void reset() {

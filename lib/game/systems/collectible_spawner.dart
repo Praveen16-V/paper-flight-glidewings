@@ -7,38 +7,30 @@ import '../../core/enums/game_enums.dart';
 import '../../core/utils/math_utils.dart';
 import '../../core/utils/object_pool.dart';
 import '../components/collectibles/coin_component.dart';
+import '../components/collectibles/tunnel_ring_component.dart';
 import '../paper_flight_game.dart';
 
-/// Spawns coins in lanes and clusters. Pools and recycles [CoinComponent]s.
-///
-/// Spawns coins in three patterns:
-///   - Single: one coin at a random X.
-///   - Line: 3–6 coins in a vertical column (follow one another down).
-///   - Arc: 5–8 coins in a curved arc — reward for following a wind lane.
-///
-/// Task 8: the Precision Trial Director calls [spawnCoinAt]/[spawnCoinLine]/
-/// [spawnCoinArc] directly for handcrafted courses (auto-spawning disabled),
-/// and the Daily Seeded Flight swaps [random] for a seeded generator.
+/// Spawns coins in lanes, clusters, and optional Tunnel Rings. Pools and recycles collectibles.
 class CollectibleSpawner extends Component {
   CollectibleSpawner({required this.game});
 
   final PaperFlightGame game;
 
-  /// Seed-aware RNG (daily runs). See ObstacleSpawner.random.
   math.Random random = math.Random();
-
-  /// When false (Precision Trials) no procedural coin batches spawn — the
-  /// Trial Director places every coin from the course definition.
   bool autoSpawn = true;
 
   late final ObjectPool<CoinComponent> _coinPool;
-  final List<CoinComponent> _active = [];
+  late final ObjectPool<TunnelRingComponent> _ringPool;
+  final List<CoinComponent> _activeCoins = [];
+  final List<TunnelRingComponent> _activeRings = [];
 
   double _spawnTimer = 0;
+  double _tunnelRingTimer = 0;
 
   @override
   Future<void> onLoad() async {
     _coinPool = ObjectPool(create: CoinComponent.new, initialSize: 20);
+    _ringPool = ObjectPool(create: TunnelRingComponent.new, initialSize: 4);
     await super.onLoad();
   }
 
@@ -46,19 +38,31 @@ class CollectibleSpawner extends Component {
   void update(double dt) {
     if (game.phase != GamePhase.playing) return;
     if (!autoSpawn) return;
+
     _spawnTimer += dt;
     if (_spawnTimer >= GameConfig.coinBaseSpawnInterval) {
       _spawnTimer = 0;
       _spawnBatch();
     }
+
+    _tunnelRingTimer += dt;
+    if (_tunnelRingTimer >= 9.5) {
+      _tunnelRingTimer = 0;
+      _spawnTunnelRing();
+    }
   }
 
   void reset() {
     _spawnTimer = 0;
-    for (final c in List.of(_active)) {
+    _tunnelRingTimer = 0;
+    for (final c in List.of(_activeCoins)) {
       _recycleCoin(c);
     }
-    _active.clear();
+    _activeCoins.clear();
+    for (final r in List.of(_activeRings)) {
+      _recycleRing(r);
+    }
+    _activeRings.clear();
   }
 
   // ── Spawn patterns ────────────────────────────────────────────────────────
@@ -78,16 +82,54 @@ class CollectibleSpawner extends Component {
     }
   }
 
+  void _spawnTunnelRing() {
+    final x = GameConfig.horizontalEdgeMargin +
+        40 +
+        random.nextDouble() *
+            (GameConfig.designWidth -
+                GameConfig.horizontalEdgeMargin * 2 -
+                80);
+    spawnTunnelRingAt(Vector2(x, GameConfig.coinSpawnY - 20));
+  }
+
+  /// Spawns an origami paper tunnel ring at [pos].
+  void spawnTunnelRingAt(Vector2 pos) {
+    final ring = _ringPool.acquire();
+    ring.activate(spawnPosition: pos, recycleCallback: _recycleRing);
+    game.world.add(ring);
+    _activeRings.add(ring);
+  }
+
   void _spawnSingle() {
-    spawnCoinAt(Vector2(
-      GameConfig.horizontalEdgeMargin +
-          20 +
-          random.nextDouble() *
-              (GameConfig.designWidth -
-                  GameConfig.horizontalEdgeMargin * 2 -
-                  40),
-      GameConfig.coinSpawnY,
-    ));
+    final roll = random.nextDouble();
+    final CollectibleVariant variant;
+    String letter = 'P';
+
+    if (roll < 0.06) {
+      variant = CollectibleVariant.gem3D;
+    } else if (roll < 0.18) {
+      variant = CollectibleVariant.stack5x;
+    } else if (roll < 0.28) {
+      variant = CollectibleVariant.letterTile;
+      const letters = ['P', 'A', 'P', 'E', 'R', 'F', 'L', 'I', 'G', 'H', 'T'];
+      letter = letters[random.nextInt(letters.length)];
+    } else {
+      variant = CollectibleVariant.standardCoin;
+    }
+
+    spawnCoinAt(
+      Vector2(
+        GameConfig.horizontalEdgeMargin +
+            20 +
+            random.nextDouble() *
+                (GameConfig.designWidth -
+                    GameConfig.horizontalEdgeMargin * 2 -
+                    40),
+        GameConfig.coinSpawnY,
+      ),
+      variant: variant,
+      letter: letter,
+    );
   }
 
   void _spawnLine() {
@@ -97,16 +139,20 @@ class CollectibleSpawner extends Component {
             (GameConfig.designWidth -
                 GameConfig.horizontalEdgeMargin * 2 -
                 40);
-    final count = random.nextInt(2) + 3; // 3–4 coins per line
+    final count = random.nextInt(2) + 3;
+    final isStack = random.nextDouble() < 0.20;
     for (int i = 0; i < count; i++) {
-      spawnCoinAt(Vector2(x, GameConfig.coinSpawnY - i * 36.0));
+      spawnCoinAt(
+        Vector2(x, GameConfig.coinSpawnY - i * 36.0),
+        variant: (isStack && i == 0) ? CollectibleVariant.stack5x : CollectibleVariant.standardCoin,
+      );
     }
   }
 
   void _spawnArc() {
     final centerX = GameConfig.designWidth * 0.25 +
         random.nextDouble() * GameConfig.designWidth * 0.5;
-    final count = random.nextInt(2) + 4; // 4–5 coins per arc
+    final count = random.nextInt(2) + 4;
     final radius = 50 + random.nextDouble() * 40;
     spawnCoinArc(
       centerX: centerX,
@@ -117,15 +163,23 @@ class CollectibleSpawner extends Component {
   }
 
   /// Spawns a single coin at an absolute world position.
-  void spawnCoinAt(Vector2 pos) {
+  void spawnCoinAt(
+    Vector2 pos, {
+    CollectibleVariant variant = CollectibleVariant.standardCoin,
+    String letter = 'P',
+  }) {
     final coin = _coinPool.acquire();
-    coin.activate(spawnPosition: pos, recycleCallback: _recycleCoin);
+    coin.activate(
+      spawnPosition: pos,
+      variant: variant,
+      letter: letter,
+      recycleCallback: _recycleCoin,
+    );
     game.world.add(coin);
-    _active.add(coin);
+    _activeCoins.add(coin);
   }
 
-  /// Spawns a vertical column of [count] coins spaced [spacing] px apart,
-  /// rising upward from [startY] (which is usually [GameConfig.coinSpawnY]).
+  /// Spawns a vertical column of [count] coins spaced [spacing] px apart.
   void spawnCoinLine({
     required double x,
     required double startY,
@@ -137,8 +191,7 @@ class CollectibleSpawner extends Component {
     }
   }
 
-  /// Spawns a curved arc of [count] coins centered at [centerX] (mirrors the
-  /// procedural arc used in endless mode).
+  /// Spawns a curved arc of [count] coins centered at [centerX].
   void spawnCoinArc({
     required double centerX,
     required double startY,
@@ -154,8 +207,7 @@ class CollectibleSpawner extends Component {
     }
   }
 
-  /// Rains a short vertical column of coins down at a random X. Used by the
-  /// Coin Rush power-up to flood the screen with collectibles.
+  /// Rains a short vertical column of coins down at a random X.
   void spawnCoinShower() {
     final x = GameConfig.horizontalEdgeMargin +
         25 +
@@ -170,10 +222,17 @@ class CollectibleSpawner extends Component {
   }
 
   void _recycleCoin(CoinComponent coin) {
-    _active.remove(coin);
+    _activeCoins.remove(coin);
     coin.deactivate();
     if (coin.parent != null) game.world.remove(coin);
     _coinPool.release(coin);
+  }
+
+  void _recycleRing(TunnelRingComponent ring) {
+    _activeRings.remove(ring);
+    ring.deactivate();
+    if (ring.parent != null) game.world.remove(ring);
+    _ringPool.release(ring);
   }
 
   T _weightedPick<T>(List<T> items, List<double> weights) {

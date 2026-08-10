@@ -56,8 +56,13 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
   AudioPlayer? _zenMusic;
   bool _zenMusicStarting = false;
 
-  // ── Camera easing state ───────────────────────────────────────────────────
+  // ── Camera easing & screen shake state ───────────────────────────────────
   double _zoom = 1.0;
+  double _shakeTimer = 0.0;
+  double _shakeIntensity = 0.0;
+
+  // ── Chromatic Aberration Vignette (Ghost Entry) ───────────────────────────
+  double _chromaticTimer = 0.0;
 
   // ── Streak overlay animation ──────────────────────────────────────────────
   double _streakIntensity = 0.0;
@@ -127,13 +132,15 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
 
   // ── Lifecycle hooks called by PaperFlightGame ─────────────────────────────
 
-  /// Resets transient per-run state (thermal-haptics throttle timer).
+  /// Resets transient per-run state.
   void reset() {
     _thermalHapticsTimer = 0;
+    _shakeTimer = 0;
+    _shakeIntensity = 0;
+    _chromaticTimer = 0;
   }
 
-  /// Instantly silences the wind ambient. Used where the game loop is frozen
-  /// (pause menu, crash freeze) so `update` can't ease the volume down itself.
+  /// Instantly silences the wind ambient.
   void silence() {
     _windTarget = 0;
     _windVol = 0;
@@ -153,6 +160,10 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     _updateStreakOverlay(dt, playing);
     _updateThermalHaptics(dt, playing);
 
+    if (_chromaticTimer > 0) {
+      _chromaticTimer = (_chromaticTimer - dt).clamp(0.0, 1.0);
+    }
+
     super.update(dt);
   }
 
@@ -164,14 +175,12 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     _startWindAsync();
   }
 
-  /// Starts the looping wind player. Starts muted (volume 0) and never waits
-  /// on the futures from update, so a transient audio failure is harmless.
   Future<void> _startWindAsync() async {
     try {
       final player = AudioPlayer();
       await player.setReleaseMode(ReleaseMode.loop);
       await player.setSource(AssetSource('audio/wind_loop.wav'));
-      await player.setVolume(0.0); // muted until the first update sets it
+      await player.setVolume(0.0);
       _wind = player;
       await player.resume();
     } catch (_) {
@@ -198,7 +207,6 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
       _windTarget = 0.0;
       _windRate = 1.0;
     } else {
-      // World scroll speed base..max → 0..1, plus dive (downward) speed.
       final speedFactor = ((gameRef.scrollSpeed - GameConfig.baseScrollSpeed) /
               (GameConfig.maxScrollSpeed - GameConfig.baseScrollSpeed))
           .clamp(0.0, 1.0)
@@ -208,11 +216,9 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
           .toDouble();
       final level = (0.28 + speedFactor * 0.5 + dive * 0.4).clamp(0.0, 1.0);
       _windTarget = level * volume;
-      // Faster + diving → brighter/lower wind rush.
       _windRate = 1.0 + speedFactor * 0.35 + dive * 0.25;
     }
 
-    // Smoothly glide volume & pitch toward their targets.
     _windVol = MathUtils.lerp(_windVol, _windTarget, (4.0 * dt).clamp(0.0, 1.0));
     unawaited(wind.setVolume(_windVol));
     unawaited(wind.setPlaybackRate(_windRate));
@@ -226,43 +232,47 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     _windReady = false;
   }
 
-  // ── Dynamic camera: zoom-out at high speed ────────────────────────────────
-  //
-  // Note: the viewport previously also *banked* (rotated) toward the plane's
-  // lateral velocity, which tilted the whole world with the plane. That is
-  // disabled on purpose now — the world stays perfectly level; only a subtle
-  // zoom-out at high speed remains.
+  // ── Dynamic camera: zoom-out at high speed + screen shake ────────────────
 
   void _updateCamera(double dt, bool playing) {
     final viewfinder = gameRef.camera.viewfinder;
 
     if (!playing) {
-      // Ease back to neutral when idle / paused / dying / game over.
       _zoom = MathUtils.lerp(_zoom, 1.0, (5.0 * dt).clamp(0.0, 1.0));
+      viewfinder.position = Vector2.zero();
     } else {
-      // Zoom-out: pull back once scroll speed passes the threshold.
-      final zoomTarget =
-          gameRef.scrollSpeed > GameConfig.highSpeedCameraThreshold
-              ? MathUtils
-                  .remap(
-                    gameRef.scrollSpeed,
-                    GameConfig.highSpeedCameraThreshold,
-                    GameConfig.maxScrollSpeed,
-                    1.0,
-                    GameConfig.highSpeedZoomOut,
-                  )
-                  .clamp(GameConfig.highSpeedZoomOut, 1.0)
-                  .toDouble()
-              : 1.0;
+      final isInterceptor = gameRef.plane.planeType == PlaneType.interceptor;
+      final threshold = isInterceptor ? 260.0 : GameConfig.highSpeedCameraThreshold;
+      final minZoom = isInterceptor ? 0.88 : GameConfig.highSpeedZoomOut;
+
+      final zoomTarget = gameRef.scrollSpeed > threshold
+          ? MathUtils.remap(
+              gameRef.scrollSpeed,
+              threshold,
+              GameConfig.maxScrollSpeed,
+              1.0,
+              minZoom,
+            ).clamp(minZoom, 1.0).toDouble()
+          : 1.0;
       _zoom = MathUtils.lerp(_zoom, zoomTarget, (3.0 * dt).clamp(0.0, 1.0));
+
+      // Screen shake offset calculation on impact / shield break (4px, 0.15s)
+      if (_shakeTimer > 0) {
+        _shakeTimer -= dt;
+        final f = (_shakeTimer / 0.15).clamp(0.0, 1.0);
+        final ox = (math.Random().nextDouble() * 2.0 - 1.0) * _shakeIntensity * f;
+        final oy = (math.Random().nextDouble() * 2.0 - 1.0) * _shakeIntensity * f;
+        viewfinder.position = Vector2(ox, oy);
+      } else {
+        viewfinder.position = Vector2.zero();
+      }
     }
 
-    // World never tilts — angle is pinned level.
     viewfinder.zoom = _zoom;
     viewfinder.angle = 0.0;
   }
 
-  // ── Vignette / speed streaks overlay ──────────────────────────────────────
+  // ── Vignette / speed streaks overlay + Chromatic Aberration ──────────────
 
   void _updateStreakOverlay(double dt, bool playing) {
     double target = 0;
@@ -285,13 +295,26 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
 
   @override
   void render(Canvas canvas) {
-    final inten = _streakIntensity;
-    if (inten <= 0.03) return;
-
     final w = GameConfig.designWidth;
     final h = GameConfig.designHeight;
 
-    // White motion streaks hugging the left/right edges.
+    // Chromatic aberration fringing on ghost entry
+    if (_chromaticTimer > 0) {
+      final f = (_chromaticTimer / 0.6).clamp(0.0, 1.0);
+      final cyanFringe = Paint()
+        ..color = Color.fromRGBO(0, 229, 255, 0.22 * f)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+      final magentaFringe = Paint()
+        ..color = Color.fromRGBO(224, 64, 251, 0.22 * f)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+
+      canvas.drawRect(Rect.fromLTWH(-4, 0, 12, h), cyanFringe);
+      canvas.drawRect(Rect.fromLTWH(w - 8, 0, 12, h), magentaFringe);
+    }
+
+    final inten = _streakIntensity;
+    if (inten <= 0.03) return;
+
     final streak = Paint()
       ..color = Color.fromRGBO(
           255, 255, 255, (0.08 + inten * 0.24).clamp(0.0, 0.34).toDouble())
@@ -308,7 +331,6 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
       }
     }
 
-    // Radial vignette — darkens the corners as speed/build-up rises.
     final vignette = Paint()
       ..shader = RadialGradient(
         colors: [
@@ -322,7 +344,7 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     super.render(canvas);
   }
 
-  // ── Thermal hum haptics (periodic light ticks while riding a thermal) ─────
+  // ── Thermal hum haptics ──────────────────────────────────────────────────
 
   void _updateThermalHaptics(double dt, bool playing) {
     if (!playing || !_settings().hapticEnabled) return;
@@ -337,27 +359,31 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     }
   }
 
-  // ── Public event hooks (called from scoring / game) ───────────────────────
+  // ── Public event hooks ───────────────────────────────────────────────────
 
-  /// Coin collected — light tap + ascending chime for the current combo.
   void onCoinCollected(int comboCount) {
     if (_settings().hapticEnabled) HapticFeedback.lightImpact();
     _playChimeForCombo(comboCount);
   }
 
-  /// Near-miss confirmed — sharp medium click.
   void onNearMiss() {
     if (_settings().hapticEnabled) HapticFeedback.mediumImpact();
   }
 
-  /// Obstacle crash — heavy shudder.
   void onCrash() {
     if (_settings().hapticEnabled) HapticFeedback.heavyImpact();
   }
 
-  /// Shield absorbs a hit — heavy shudder.
+  /// Shield absorbs a hit: 4px, 0.15s screen shake + heavy impact haptic!
   void onShieldBreak() {
     if (_settings().hapticEnabled) HapticFeedback.heavyImpact();
+    _shakeTimer = 0.15;
+    _shakeIntensity = 4.0;
+  }
+
+  /// Ghost power-up activated: triggers ethereal chromatic aberration fringing!
+  void onGhostActivated() {
+    _chromaticTimer = 0.60;
   }
 
   // ── Audio one-shots ───────────────────────────────────────────────────────
@@ -367,16 +393,17 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     final scale = AudioSynth.chimeScaleHz;
     final idx = (combo - 1) % scale.length;
     final brightness = (0.5 + (combo / 20.0)).clamp(0.5, 1.5).toDouble();
+    final isAtmosphere = gameRef.biomeManager.currentBiome == Biome.atmosphere;
+
     final bytes = AudioSynth.chime(
       scale[idx],
       harmonicLevel: brightness,
       volume: GameConfig.coinChimeVolume,
+      echo: isAtmosphere, // Atmospheric cavernous echo & reverb!
     );
     _playBytes(bytes, volume: _settings().sfxVolume);
   }
 
-  /// Plays a synthesized byte buffer with a short-lived player that disposes
-  /// itself on completion (mirrors the existing near-miss sting pattern).
   void _playBytes(Uint8List bytes, {double volume = 0.6}) {
     try {
       final player = AudioPlayer();
@@ -384,9 +411,7 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
         await player.dispose();
       });
       unawaited(_playBytesAsync(player, bytes, volume));
-    } catch (_) {
-      // Audio safely ignored if unsupported (tests / headless).
-    }
+    } catch (_) {}
   }
 
   Future<void> _playBytesAsync(

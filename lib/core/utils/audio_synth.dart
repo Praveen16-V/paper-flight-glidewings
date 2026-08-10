@@ -31,16 +31,21 @@ class AudioSynth {
   ];
 
   /// A soft, bell-like chime at [frequency]. [harmonicLevel] brightens the
-  /// tone (used so higher combos sound richer).
+  /// tone (used so higher combos sound richer). When [echo] is true (Atmosphere biome),
+  /// adds a cavernous cosmic reverb delay.
   static Uint8List chime(
     double frequency, {
     double harmonicLevel = 1.0,
     double volume = 0.5,
+    bool echo = false,
   }) {
-    const double dur = 0.42;
+    final double dur = echo ? 0.85 : 0.42;
     final int n = (dur * sampleRate).round();
     final samples = Float64List(n);
     final twoPi = 2 * math.pi;
+    final int delaySamples = (0.13 * sampleRate).round();
+    final int delaySamples2 = (0.26 * sampleRate).round();
+
     for (int i = 0; i < n; i++) {
       final t = i / sampleRate;
       final decay = math.exp(-t * 6.0);
@@ -49,7 +54,22 @@ class AudioSynth {
           0.40 * math.sin(twoPi * frequency * 2 * t) +
           0.16 * harmonicLevel * math.sin(twoPi * frequency * 3 * t) +
           0.06 * harmonicLevel * math.sin(twoPi * frequency * 4 * t);
-      samples[i] = s * attack * decay * volume;
+      var val = s * attack * decay * volume;
+
+      if (echo) {
+        if (i >= delaySamples) {
+          final t1 = (i - delaySamples) / sampleRate;
+          final decay1 = math.exp(-t1 * 5.0);
+          val += (math.sin(twoPi * frequency * t1) + 0.3 * math.sin(twoPi * frequency * 2 * t1)) * decay1 * volume * 0.42;
+        }
+        if (i >= delaySamples2) {
+          final t2 = (i - delaySamples2) / sampleRate;
+          final decay2 = math.exp(-t2 * 4.5);
+          val += math.sin(twoPi * frequency * t2) * decay2 * volume * 0.22;
+        }
+      }
+
+      samples[i] = val;
     }
     return _encode(samples);
   }

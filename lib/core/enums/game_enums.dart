@@ -141,6 +141,11 @@ enum ObstacleType {
   hotAirBalloon,  // dynamic floating hot air balloon with animated burner flame & wicker basket
   stormCloud,     // dynamic billowing thundercloud with electric discharge arcs & rain
   kite,           // dynamic fluttering festival kite with dynamic physics ribbon tail
+  trafficPlane,   // oncoming paper airplane traffic flying opposite direction
+  fireworks,      // ascending firework rocket bursting into popping star bursts
+  weatherBalloon, // satellite dish & tethered weather probe balloon cluster
+  clothesline,    // backyard clothesline with fluttering paper dolls & clothespins
+  windsock,       // aviation windsock cone pointing in direction of local wind
 }
 
 extension ObstacleLabel on ObstacleType {
@@ -164,6 +169,16 @@ extension ObstacleLabel on ObstacleType {
         return 'Thundercloud';
       case ObstacleType.kite:
         return 'Festival Kite';
+      case ObstacleType.trafficPlane:
+        return 'Air Traffic';
+      case ObstacleType.fireworks:
+        return 'Fireworks Burst';
+      case ObstacleType.weatherBalloon:
+        return 'Weather Cluster';
+      case ObstacleType.clothesline:
+        return 'Paper Clothesline';
+      case ObstacleType.windsock:
+        return 'Airfield Windsock';
     }
   }
 
@@ -187,6 +202,16 @@ extension ObstacleLabel on ObstacleType {
         return 'storm_cloud';
       case ObstacleType.kite:
         return 'kite';
+      case ObstacleType.trafficPlane:
+        return 'traffic_plane';
+      case ObstacleType.fireworks:
+        return 'fireworks';
+      case ObstacleType.weatherBalloon:
+        return 'weather_balloon';
+      case ObstacleType.clothesline:
+        return 'clothesline';
+      case ObstacleType.windsock:
+        return 'windsock';
     }
   }
 
@@ -200,11 +225,17 @@ extension ObstacleLabel on ObstacleType {
 // ── Power-ups ─────────────────────────────────────────────────────────────────
 
 enum PowerUpType {
-  shield,
-  magnet,
-  ghost,
-  slowMo,
-  coinRush,
+  shield,      // absorbs hits
+  magnet,      // pulls coins
+  ghost,       // phase through obstacles
+  slowMo,      // time slows down
+  coinRush,    // 2x coin value + coin shower
+  doubleScore, // 2x distance meters score (jet exhaust flame)
+  shrink,      // compact micro-fold hitbox 0.35
+  windCaller,  // calm adverse wind, compass & thermals
+  decoyClone,  // 2 ghost decoy planes absorb next 2 hits
+  blackHole,   // cosmic vortex vacuums coins + small obstacles
+  turboDash,   // short invincible blazing thrust dash
 }
 
 extension PowerUpLabel on PowerUpType {
@@ -220,6 +251,18 @@ extension PowerUpLabel on PowerUpType {
         return 'Slow-Mo';
       case PowerUpType.coinRush:
         return 'Coin Rush';
+      case PowerUpType.doubleScore:
+        return 'Double Score';
+      case PowerUpType.shrink:
+        return 'Shrink Fold';
+      case PowerUpType.windCaller:
+        return 'Wind Caller';
+      case PowerUpType.decoyClone:
+        return 'Decoy Clones';
+      case PowerUpType.blackHole:
+        return 'Black Hole';
+      case PowerUpType.turboDash:
+        return 'Turbo Dash';
     }
   }
 
@@ -235,6 +278,18 @@ extension PowerUpLabel on PowerUpType {
         return 'slowmo';
       case PowerUpType.coinRush:
         return 'coin_rush';
+      case PowerUpType.doubleScore:
+        return 'double_score';
+      case PowerUpType.shrink:
+        return 'shrink';
+      case PowerUpType.windCaller:
+        return 'wind_caller';
+      case PowerUpType.decoyClone:
+        return 'decoy_clone';
+      case PowerUpType.blackHole:
+        return 'black_hole';
+      case PowerUpType.turboDash:
+        return 'turbo_dash';
     }
   }
 }
@@ -242,11 +297,18 @@ extension PowerUpLabel on PowerUpType {
 // ── Plane Types ───────────────────────────────────────────────────────────────
 
 enum PlaneType {
-  dart,       // starter, balanced + distance bonus
-  glider,     // wider turn radius, gentle drift — coin earner + thermals
-  stuntFold,  // tighter turn radius, slightly higher fall speed — skill plane
-  crane,      // origami crane — forgives one tree branch per run
-  stealthJet, // stealth jet — tiny hitbox, fast dive recovery
+  dart,        // starter, balanced + distance bonus
+  glider,      // wider turn radius, gentle drift — coin earner + thermals
+  stuntFold,   // tighter turn radius, slightly higher fall speed — skill plane
+  crane,       // origami crane — forgives tree branches
+  stealthJet,  // stealth jet — tiny hitbox, fast dive recovery
+  butterfly,   // origami butterfly — fall 0.75, auto-sway, extra thermal time
+  bomber,      // paper bomber — slow, starts with 2 shield charges
+  interceptor, // interceptor — turn 1.25, camera zoom out, no coin attract
+  albatross,   // albatross — endless glide combo bonus
+  biplane,     // classic biplane — dual wings, steady cruising
+  ninjaStar,   // origami shuriken — ultra-snappy turns
+  rocket,      // paper rocket — streamlined high-speed needle
 }
 
 extension PlaneLabel on PlaneType {
@@ -262,6 +324,20 @@ extension PlaneLabel on PlaneType {
         return 'Origami Crane';
       case PlaneType.stealthJet:
         return 'Stealth Jet';
+      case PlaneType.butterfly:
+        return 'Origami Butterfly';
+      case PlaneType.bomber:
+        return 'Paper Bomber';
+      case PlaneType.interceptor:
+        return 'Interceptor';
+      case PlaneType.albatross:
+        return 'Soaring Albatross';
+      case PlaneType.biplane:
+        return 'Classic Biplane';
+      case PlaneType.ninjaStar:
+        return 'Origami Shuriken';
+      case PlaneType.rocket:
+        return 'Paper Rocket';
     }
   }
 
@@ -277,6 +353,20 @@ extension PlaneLabel on PlaneType {
         return 'crane';
       case PlaneType.stealthJet:
         return 'stealth_jet';
+      case PlaneType.butterfly:
+        return 'butterfly';
+      case PlaneType.bomber:
+        return 'bomber';
+      case PlaneType.interceptor:
+        return 'interceptor';
+      case PlaneType.albatross:
+        return 'albatross';
+      case PlaneType.biplane:
+        return 'biplane';
+      case PlaneType.ninjaStar:
+        return 'ninja_star';
+      case PlaneType.rocket:
+        return 'rocket';
     }
   }
 
@@ -288,11 +378,25 @@ extension PlaneLabel on PlaneType {
       case PlaneType.glider:
         return 'Floats longer, attracts coins, +20% thermal';
       case PlaneType.stuntFold:
-        return 'Snappy turns, double snap, +50% near-miss';
+        return 'Snappy turns, 2× snap, +50% near-miss';
       case PlaneType.crane:
         return 'Graceful — 1 free tree branch brush-off';
       case PlaneType.stealthJet:
-        return 'Slim hitbox, dives recover instantly';
+        return 'Slim hitbox (0.42), dives recover instantly';
+      case PlaneType.butterfly:
+        return 'Flutters gracefully — fall 0.75, auto-sway, +40% thermal';
+      case PlaneType.bomber:
+        return 'Heavy fortress — spawns with 2 shield charges';
+      case PlaneType.interceptor:
+        return 'Agile turn 1.25 — camera zoom-out, 0 coin attract';
+      case PlaneType.albatross:
+        return 'Master glider — 2× streak, endless glide combo';
+      case PlaneType.biplane:
+        return 'Dual paper wings — rock-steady balance, smooth arcs';
+      case PlaneType.ninjaStar:
+        return 'Ultra-snappy turns, fast snap burst recharge';
+      case PlaneType.rocket:
+        return 'High-speed streamlined dart, rapid dive penetration';
     }
   }
 
@@ -303,27 +407,69 @@ extension PlaneLabel on PlaneType {
         return ['+15% distance score', 'Balanced handling', 'BOOST burst'];
       case PlaneType.glider:
         return [
-          'Weak coin attraction',
-          'Wider glide arc',
-          '+20% thermal float',
+          'Weak coin attract (95px @ 140px/s)',
+          'Glide gravity 0.80',
+          '1.2× thermal float',
         ];
       case PlaneType.stuntFold:
         return [
-          'Snappy turns',
+          'Turn 1.15 / Fall 1.10',
           '2× snap recharge',
           '+50% near-miss score',
         ];
       case PlaneType.crane:
         return [
-          '1 free tree brush-off / run',
-          'Gentle fall curve',
+          '1 free tree branch brush-off',
+          'Turn 0.95 / Fall 0.88',
           'Forgives organic branches',
         ];
       case PlaneType.stealthJet:
         return [
-          'Smaller hitbox (~24% tighter)',
-          'Faster dive recovery',
-          'Enhanced wind control',
+          'Tiny hitbox (0.42)',
+          'Dive gravity 0.88 recovery',
+          'Wind control 1.08',
+        ];
+      case PlaneType.butterfly:
+        return [
+          'Floaty fall rate (0.75)',
+          'Aerodynamic auto-sway',
+          '+40% thermal lift bonus',
+        ];
+      case PlaneType.bomber:
+        return [
+          'Starts with 2 shield charges',
+          'Heavy sturdy paper frame',
+          'Turn 0.80 / Fall 1.15',
+        ];
+      case PlaneType.interceptor:
+        return [
+          'High turn speed (1.25)',
+          'Camera zooms out at speed',
+          'No passive coin attraction',
+        ];
+      case PlaneType.albatross:
+        return [
+          'Endless glide combo bonus',
+          '2× clean glide streak points',
+          '50% slower combo decay in glide',
+        ];
+      case PlaneType.biplane:
+        return [
+          'Dual paper wings',
+          'Balanced stability',
+          'Extra coin magnet',
+        ];
+      case PlaneType.ninjaStar:
+        return [
+          'Ultra-snappy turns (1.25)',
+          'Fast snap recharge',
+          '+30% near-miss',
+        ];
+      case PlaneType.rocket:
+        return [
+          'High speed cruise (1.15)',
+          'Streamlined needle hitbox (0.40)',
+          'Instant dive recovery',
         ];
     }
   }
@@ -341,23 +487,48 @@ extension PlaneLabel on PlaneType {
         return 1800;
       case PlaneType.stealthJet:
         return 3000;
+      case PlaneType.butterfly:
+        return 2000;
+      case PlaneType.bomber:
+        return 2500;
+      case PlaneType.interceptor:
+        return 3200;
+      case PlaneType.albatross:
+        return 3800;
+      case PlaneType.biplane:
+        return 2600;
+      case PlaneType.ninjaStar:
+        return 3500;
+      case PlaneType.rocket:
+        return 4200;
     }
   }
 
-  /// Gem cost to unlock (premium planes may require gems alongside coins).
+  /// Gem cost to unlock.
   int get unlockGemCost {
     switch (this) {
       case PlaneType.dart:
       case PlaneType.glider:
       case PlaneType.stuntFold:
       case PlaneType.crane:
+      case PlaneType.butterfly:
+      case PlaneType.albatross:
         return 0;
+      case PlaneType.bomber:
+        return 2;
       case PlaneType.stealthJet:
+      case PlaneType.interceptor:
         return 5;
+      case PlaneType.biplane:
+        return 2;
+      case PlaneType.ninjaStar:
+        return 6;
+      case PlaneType.rocket:
+        return 10;
     }
   }
 
-  /// Stat deltas vs. baseline — small and cosmetic-leaning per GDD.
+  /// Base turn speed multiplier.
   double get turnSpeedMultiplier {
     switch (this) {
       case PlaneType.dart:
@@ -369,10 +540,25 @@ extension PlaneLabel on PlaneType {
       case PlaneType.crane:
         return 0.95; // graceful, slightly soft
       case PlaneType.stealthJet:
-        return 1.10; // responsive but not twitchy
+        return 1.10; // responsive
+      case PlaneType.butterfly:
+        return 0.90; // soft flutter turns
+      case PlaneType.bomber:
+        return 0.80; // heavy deliberate turns
+      case PlaneType.interceptor:
+        return 1.25; // ultra agile
+      case PlaneType.albatross:
+        return 0.82; // wide sweeping turns
+      case PlaneType.biplane:
+        return 1.00; // steady cruiser
+      case PlaneType.ninjaStar:
+        return 1.25; // ultra snappy
+      case PlaneType.rocket:
+        return 1.15; // high response
     }
   }
 
+  /// Base fall speed multiplier.
   double get fallSpeedMultiplier {
     switch (this) {
       case PlaneType.dart:
@@ -384,48 +570,300 @@ extension PlaneLabel on PlaneType {
       case PlaneType.crane:
         return 0.88; // lightest — hangs in air
       case PlaneType.stealthJet:
-        return 1.05; // recovers quickly, not plummeting
+        return 1.05; // recovers quickly
+      case PlaneType.butterfly:
+        return 0.75; // floaty butterfly fall
+      case PlaneType.bomber:
+        return 1.15; // heavy payload fall
+      case PlaneType.interceptor:
+        return 1.10; // streamlined dive
+      case PlaneType.albatross:
+        return 0.82; // dynamic soaring
+      case PlaneType.biplane:
+        return 0.95; // steady cruiser
+      case PlaneType.ninjaStar:
+        return 1.12; // quick drop
+      case PlaneType.rocket:
+        return 1.18; // fast dive
     }
   }
 
-  /// Per-plane hitbox scale override (null → use global default).
+  /// Per-plane hitbox scale override (null -> use global default 0.55).
   double? get hitboxScaleOverride {
     switch (this) {
       case PlaneType.stealthJet:
-        return GameConfig.stealthHitboxScale;
+        return GameConfig.stealthHitboxScale; // 0.42
+      case PlaneType.rocket:
+        return 0.40;
+      case PlaneType.interceptor:
+        return 0.44;
       default:
         return null;
     }
   }
 }
 
-/// Signature power-up each plane carries, fired by the flick-up / double-tap
-/// gesture when the "flick to use power-up" setting is enabled.
-///
-/// The trigger is generic — the gesture no longer hard-wires to the paper-snap
-/// BOOST burst; each plane activates its own action instead.
-extension PlanePowerUp on PlaneType {
-  /// True when this plane's signature action is the paper-snap BOOST burst
-  /// (charge-based, no timer) rather than a timed power-up.
-  bool get usesBoostAsSignatureAction => this == PlaneType.dart || this == PlaneType.crane;
+/// Upgrade tree definitions per plane across 3 levels.
+extension PlaneUpgradeInfo on PlaneType {
+  /// Coin cost to upgrade to [toLevel] (2 or 3).
+  int upgradeCost(int toLevel) {
+    if (toLevel == 2) {
+      switch (this) {
+        case PlaneType.dart:
+          return 600;
+        case PlaneType.glider:
+          return 750;
+        case PlaneType.stuntFold:
+          return 900;
+        case PlaneType.crane:
+          return 1000;
+        case PlaneType.stealthJet:
+          return 1200;
+        case PlaneType.butterfly:
+          return 850;
+        case PlaneType.bomber:
+          return 950;
+        case PlaneType.interceptor:
+          return 1100;
+        case PlaneType.albatross:
+          return 1000;
+        case PlaneType.biplane:
+          return 800;
+        case PlaneType.ninjaStar:
+          return 1100;
+        case PlaneType.rocket:
+          return 1300;
+      }
+    } else if (toLevel == 3) {
+      switch (this) {
+        case PlaneType.dart:
+          return 1400;
+        case PlaneType.glider:
+          return 1750;
+        case PlaneType.stuntFold:
+          return 2000;
+        case PlaneType.crane:
+          return 2200;
+        case PlaneType.stealthJet:
+          return 2500;
+        case PlaneType.butterfly:
+          return 1900;
+        case PlaneType.bomber:
+          return 2100;
+        case PlaneType.interceptor:
+          return 2400;
+        case PlaneType.albatross:
+          return 2200;
+        case PlaneType.biplane:
+          return 1800;
+        case PlaneType.ninjaStar:
+          return 2300;
+        case PlaneType.rocket:
+          return 2600;
+      }
+    }
+    return 0;
+  }
 
-  /// The timed power-up this plane carries. Only meaningful when
-  /// [usesBoostAsSignatureAction] is false (the dart/crane fall back to BOOST).
+  /// Short description of the perk unlocked at [level] (1..3).
+  String perkForLevel(int level) {
+    switch (this) {
+      case PlaneType.dart:
+        switch (level) {
+          case 1:
+            return '+15% distance score';
+          case 2:
+            return '+20% distance score & +5% turn speed';
+          case 3:
+          default:
+            return '+25% distance score & +15% BOOST impulse';
+        }
+      case PlaneType.glider:
+        switch (level) {
+          case 1:
+            return '95px coin attract @ 140px/s, 1.2× thermal float';
+          case 2:
+            return '125px coin attract @ 180px/s, 1.35× thermal float';
+          case 3:
+          default:
+            return '160px coin attract @ 220px/s, 1.5× thermal float';
+        }
+      case PlaneType.stuntFold:
+        switch (level) {
+          case 1:
+            return '2× snap recharge, +50% near-miss score';
+          case 2:
+            return '2.5× snap recharge, +75% near-miss score';
+          case 3:
+          default:
+            return '3× snap recharge, +100% near-miss & 3rd snap slot';
+        }
+      case PlaneType.crane:
+        switch (level) {
+          case 1:
+            return '1 free tree branch brush-off / run';
+          case 2:
+            return '1 brush-off, +15% glide duration, softer recovery';
+          case 3:
+          default:
+            return '2 free tree branch brush-offs / run';
+        }
+      case PlaneType.stealthJet:
+        switch (level) {
+          case 1:
+            return '0.42 hitbox scale, 0.88 dive recovery, 1.08 wind control';
+          case 2:
+            return '0.40 hitbox scale, 0.82 dive recovery, 1.15 wind control';
+          case 3:
+          default:
+            return '0.38 ultra-slim hitbox, instant dive recovery';
+        }
+      case PlaneType.butterfly:
+        switch (level) {
+          case 1:
+            return '0.75 fall speed, auto-sway, +40% thermal lift';
+          case 2:
+            return '0.72 fall speed, +50% thermal lift, +15% sway weave';
+          case 3:
+          default:
+            return '0.68 ultra-float fall, +65% thermal lift bonus';
+        }
+      case PlaneType.bomber:
+        switch (level) {
+          case 1:
+            return 'Spawns with 2 shield charges every run';
+          case 2:
+            return '2 shield charges, +10% turn speed & blast recovery';
+          case 3:
+          default:
+            return 'Spawns with 3 fortified shield charges / run';
+        }
+      case PlaneType.interceptor:
+        switch (level) {
+          case 1:
+            return '1.25 turn speed, camera zoom-out, 0 coin attract';
+          case 2:
+            return '1.30 turn speed, faster snap recharge';
+          case 3:
+          default:
+            return '1.35 ultra-agility, +20% high-speed distance score';
+        }
+      case PlaneType.albatross:
+        switch (level) {
+          case 1:
+            return '2× glide streak points, 50% slower combo decay in glide';
+          case 2:
+            return '2.5× glide streak points, 60% slower combo decay';
+          case 3:
+          default:
+            return '3× glide streak points, 75% slower combo decay in glide';
+        }
+      case PlaneType.biplane:
+        switch (level) {
+          case 1:
+            return 'Dual paper wings, steady cruise, +10% coin magnet';
+          case 2:
+            return 'Turn 1.05, +20% coin magnet, +10% glide float';
+          case 3:
+          default:
+            return 'Turn 1.10, starts with 1 free shield every run';
+        }
+      case PlaneType.ninjaStar:
+        switch (level) {
+          case 1:
+            return '1.25 turn agility, fast snap recharge, +30% near-miss';
+          case 2:
+            return '1.30 turn agility, 2.5× snap recharge, +45% near-miss';
+          case 3:
+          default:
+            return '1.35 ultra-agility, 3× snap recharge, +60% near-miss';
+        }
+      case PlaneType.rocket:
+        switch (level) {
+          case 1:
+            return '1.15 speed, 0.40 needle hitbox, instant dive recovery';
+          case 2:
+            return '1.20 speed, 0.38 hitbox, +15% distance score';
+          case 3:
+          default:
+            return '1.25 speed, 0.36 hitbox, +25% distance score, super boost';
+        }
+    }
+  }
+
+  /// Turn speed multiplier scaled by upgrade [level] (1..3).
+  double turnSpeedForLevel(int level) {
+    final base = turnSpeedMultiplier;
+    switch (level) {
+      case 2:
+        return base * 1.05;
+      case 3:
+        return base * 1.10;
+      case 1:
+      default:
+        return base;
+    }
+  }
+
+  /// Fall speed multiplier scaled by upgrade [level] (1..3).
+  double fallSpeedForLevel(int level) {
+    final base = fallSpeedMultiplier;
+    switch (level) {
+      case 2:
+        return base * 0.96;
+      case 3:
+        return base * 0.92;
+      case 1:
+      default:
+        return base;
+    }
+  }
+
+  /// Hitbox scale override scaled by upgrade [level] (1..3).
+  double? hitboxScaleForLevel(int level) {
+    final base = hitboxScaleOverride;
+    if (base == null) return null;
+    switch (level) {
+      case 2:
+        return (base - 0.02).clamp(0.35, 0.55);
+      case 3:
+        return (base - 0.04).clamp(0.35, 0.55);
+      case 1:
+      default:
+        return base;
+    }
+  }
+}
+
+/// Signature power-up each plane carries.
+extension PlanePowerUp on PlaneType {
+  /// True when this plane's signature action is the paper-snap BOOST burst.
+  bool get usesBoostAsSignatureAction =>
+      this == PlaneType.dart ||
+      this == PlaneType.crane ||
+      this == PlaneType.rocket;
+
+  /// The timed power-up this plane carries.
   PowerUpType get signaturePowerUp {
     switch (this) {
       case PlaneType.dart:
       case PlaneType.crane:
-        // Unused (fires BOOST burst) — kept for exhaustiveness.
+      case PlaneType.rocket:
         return PowerUpType.magnet;
       case PlaneType.glider:
-        // Coin-earner: pull nearby coins toward the plane.
+      case PlaneType.albatross:
         return PowerUpType.magnet;
       case PlaneType.stuntFold:
-        // Skill plane: phase through obstacles.
+      case PlaneType.ninjaStar:
         return PowerUpType.ghost;
       case PlaneType.stealthJet:
-        // Speed plane: briefly slow the world to thread gaps.
+      case PlaneType.interceptor:
         return PowerUpType.slowMo;
+      case PlaneType.butterfly:
+        return PowerUpType.coinRush;
+      case PlaneType.bomber:
+      case PlaneType.biplane:
+        return PowerUpType.shield;
     }
   }
 
@@ -439,13 +877,26 @@ extension PlanePowerUp on PlaneType {
 // ── Paper Skins ───────────────────────────────────────────────────────────────
 
 enum PaperSkin {
-  plain,          // default white
-  newspaper,      // newspaper print
-  graphPaper,     // light blue grid
-  notebookDoodle, // ruled paper + doodles
-  holographicFoil,// iridescent foil
-  watercolorWash, // pastel wash
-  goldLeaf,       // metallic gold
+  plain,            // default white / gold
+  newspaper,        // newspaper print with lorem squiggles
+  graphPaper,       // light blue grid & drafting coordinates
+  notebookDoodle,   // ruled paper + doodles & margins
+  holographicFoil,  // iridescent foil with diagonal sweep
+  watercolorWash,   // soft pastel watercolor wash with dynamic bleed
+  goldLeaf,         // metallic gold with sparkling TTL flecks & rim glow
+  blueprint,        // technical CAD blueprint line art
+  receipt,          // ticket stub with perforated edge & barcode
+  carbonFiber,      // dark carbon fiber weave twill
+  mangaHalftone,    // manga comic screentone halftone dots & speedlines
+  kraftEnvelope,    // kraft envelope with airmail border & postal stamp
+  prideGradient,    // animated pride spectrum rainbow wave
+  dragonScales,     // origami dragon emerald/ruby faceted scale pattern
+  snowflake,        // winter seasonal icy snowflake crystal paper
+  pumpkin,          // autumn seasonal harvest pumpkin paper with leaf stamps
+  cherryBlossom,    // spring seasonal sakura blossom paper with falling petals
+  lavaLamp,         // animated glowing neon liquid magma blobs
+  animatedHologram, // premium animated 360° hue-rotating holographic prism
+  customCraft,      // player custom dual-tone craft paper with pattern stamps
 }
 
 extension PaperSkinLabel on PaperSkin {
@@ -465,6 +916,32 @@ extension PaperSkinLabel on PaperSkin {
         return 'Watercolor Wash';
       case PaperSkin.goldLeaf:
         return 'Gold Leaf';
+      case PaperSkin.blueprint:
+        return 'Blueprint CAD';
+      case PaperSkin.receipt:
+        return 'Receipt Stub';
+      case PaperSkin.carbonFiber:
+        return 'Carbon Fiber';
+      case PaperSkin.mangaHalftone:
+        return 'Manga Halftone';
+      case PaperSkin.kraftEnvelope:
+        return 'Kraft Envelope';
+      case PaperSkin.prideGradient:
+        return 'Pride Spectrum';
+      case PaperSkin.dragonScales:
+        return 'Dragon Scales';
+      case PaperSkin.snowflake:
+        return 'Winter Snowflake';
+      case PaperSkin.pumpkin:
+        return 'Harvest Pumpkin';
+      case PaperSkin.cherryBlossom:
+        return 'Cherry Blossom';
+      case PaperSkin.lavaLamp:
+        return 'Lava Lamp';
+      case PaperSkin.animatedHologram:
+        return 'Prism Hologram';
+      case PaperSkin.customCraft:
+        return 'Custom Craft';
     }
   }
 
@@ -473,17 +950,43 @@ extension PaperSkinLabel on PaperSkin {
       case PaperSkin.plain:
         return 'Classic white — clean and crisp';
       case PaperSkin.newspaper:
-        return 'Vintage newsprint with headlines';
+        return 'Vintage newsprint with headlines & columns';
       case PaperSkin.graphPaper:
-        return 'Engineer\'s blue grid';
+        return 'Engineer\'s blue technical drafting grid';
       case PaperSkin.notebookDoodle:
-        return 'Ruled lines + margin doodles';
+        return 'Ruled lines, margin rule + hand-drawn star';
       case PaperSkin.holographicFoil:
-        return 'Shimmering iridescent foil';
+        return 'Moving diagonal iridescent rainbow shimmer';
       case PaperSkin.watercolorWash:
-        return 'Soft pastel watercolor';
+        return 'Soft pastel watercolor wash with dynamic bleed';
       case PaperSkin.goldLeaf:
-        return 'Luxurious metallic gold';
+        return 'Luxurious gold leaf with sparkling flecks';
+      case PaperSkin.blueprint:
+        return 'Technical blue CAD schematic & compass line art';
+      case PaperSkin.receipt:
+        return 'Perforated register ticket stub with barcode';
+      case PaperSkin.carbonFiber:
+        return 'Woven dark carbon twill with specular weave';
+      case PaperSkin.mangaHalftone:
+        return 'Manga comic screen-tone dots & speedlines';
+      case PaperSkin.kraftEnvelope:
+        return 'Natural kraft paper with airmail chevrons & stamp';
+      case PaperSkin.prideGradient:
+        return 'Animated rainbow pride spectrum wave';
+      case PaperSkin.dragonScales:
+        return 'Origami dragon jade & ruby faceted scale mosaic';
+      case PaperSkin.snowflake:
+        return 'Winter seasonal crystalline snowflake paper';
+      case PaperSkin.pumpkin:
+        return 'Autumn harvest pumpkin paper with leaf stamps';
+      case PaperSkin.cherryBlossom:
+        return 'Spring seasonal sakura petals & blossom twig';
+      case PaperSkin.lavaLamp:
+        return 'Animated hypnotic glowing neon liquid magma blobs';
+      case PaperSkin.animatedHologram:
+        return 'Premium 360° hue-rotating rainbow prism foil';
+      case PaperSkin.customCraft:
+        return 'Player custom dual-tone craft paper + pattern stamps';
     }
   }
 
@@ -497,12 +1000,37 @@ extension PaperSkinLabel on PaperSkin {
         return 600;
       case PaperSkin.notebookDoodle:
         return 900;
-      case PaperSkin.holographicFoil:
-        return 2000;
+      case PaperSkin.receipt:
+        return 800;
+      case PaperSkin.customCraft:
+        return 1000;
+      case PaperSkin.kraftEnvelope:
+        return 1100;
       case PaperSkin.watercolorWash:
         return 1200;
+      case PaperSkin.snowflake:
+      case PaperSkin.pumpkin:
+        return 1300;
+      case PaperSkin.blueprint:
+        return 1400;
+      case PaperSkin.mangaHalftone:
+        return 1500;
+      case PaperSkin.prideGradient:
+        return 1600;
+      case PaperSkin.cherryBlossom:
+        return 1700;
+      case PaperSkin.carbonFiber:
+        return 1800;
+      case PaperSkin.holographicFoil:
+        return 2000;
+      case PaperSkin.dragonScales:
+        return 2400;
+      case PaperSkin.lavaLamp:
+        return 2800;
       case PaperSkin.goldLeaf:
         return 3000;
+      case PaperSkin.animatedHologram:
+        return 3200;
     }
   }
 
@@ -512,12 +1040,28 @@ extension PaperSkinLabel on PaperSkin {
       case PaperSkin.newspaper:
       case PaperSkin.graphPaper:
       case PaperSkin.notebookDoodle:
+      case PaperSkin.receipt:
+      case PaperSkin.customCraft:
+      case PaperSkin.kraftEnvelope:
+      case PaperSkin.watercolorWash:
+      case PaperSkin.snowflake:
+      case PaperSkin.pumpkin:
+      case PaperSkin.blueprint:
+      case PaperSkin.mangaHalftone:
+      case PaperSkin.prideGradient:
+      case PaperSkin.cherryBlossom:
         return 0;
+      case PaperSkin.carbonFiber:
+        return 2;
       case PaperSkin.holographicFoil:
         return 3;
-      case PaperSkin.watercolorWash:
-        return 0;
+      case PaperSkin.dragonScales:
+        return 4;
+      case PaperSkin.lavaLamp:
+        return 5;
       case PaperSkin.goldLeaf:
+        return 8;
+      case PaperSkin.animatedHologram:
         return 8;
     }
   }
@@ -539,6 +1083,32 @@ extension PaperSkinLabel on PaperSkin {
         return 0xFFB2EBF2;
       case PaperSkin.goldLeaf:
         return 0xFFFFD700;
+      case PaperSkin.blueprint:
+        return 0xFF0D47A1;
+      case PaperSkin.receipt:
+        return 0xFFF5F5F0;
+      case PaperSkin.carbonFiber:
+        return 0xFF212121;
+      case PaperSkin.mangaHalftone:
+        return 0xFFFAFAFA;
+      case PaperSkin.kraftEnvelope:
+        return 0xFFD7CCC8;
+      case PaperSkin.prideGradient:
+        return 0xFFFF80AB;
+      case PaperSkin.dragonScales:
+        return 0xFF2E7D32;
+      case PaperSkin.snowflake:
+        return 0xFFE1F5FE;
+      case PaperSkin.pumpkin:
+        return 0xFFE65100;
+      case PaperSkin.cherryBlossom:
+        return 0xFFFCE4EC;
+      case PaperSkin.lavaLamp:
+        return 0xFF4A148C;
+      case PaperSkin.animatedHologram:
+        return 0xFFE040FB;
+      case PaperSkin.customCraft:
+        return 0xFF4FC3F7;
     }
   }
 }

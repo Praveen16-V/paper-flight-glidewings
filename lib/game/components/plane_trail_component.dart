@@ -1,59 +1,54 @@
 import 'dart:collection';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flame/components.dart';
+import 'package:flutter/painting.dart';
 
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../core/utils/math_utils.dart';
 import '../paper_flight_game.dart';
+import 'plane_component.dart';
 
 /// Soft fading wispy ribbon that trails behind the paper plane.
 ///
-/// Samples the plane's absolute world position every [GameConfig.trailSampleInterval]
-/// seconds and keeps the most recent [GameConfig.trailLength] samples.
-///
-/// Rendered as a series of line segments drawn behind the plane body.
-/// Each segment fades from [GameConfig.trailHeadAlpha] at the head to
-/// fully transparent at the tail. Stroke width tapers from
-/// [GameConfig.trailHeadWidth] to [GameConfig.trailTailWidth].
-///
-/// The trail is a child of [PlaneComponent] — it is added first in [onLoad]
-/// so Flame draws it before the plane body (children render before parent).
-/// Because positions are stored in absolute (world) coordinates, the render
-/// method temporarily transforms the canvas back to world space.
+/// Features:
+///   - Trail wind interaction (trail bends and drifts with WindSystem lateral forces).
+///   - Per-power-up dynamic color override (Turbo Dash flame, Ghost phasing cyan, Double Score fire, Coin Rush gold).
+///   - Per-plane signature trail geometry:
+///     - Stealth Jet: thin grey dashed supersonic wake (#90A4AE).
+///     - Glider: double wavy wingtip vapor ribbons from port and starboard wingtips.
+///   - Per-skin customized palettes.
+///   - Exposes [recentPositions] for Ghost after-image rendering.
 class PlaneTrailComponent extends Component
     with HasGameRef<PaperFlightGame> {
   PlaneTrailComponent({required this.plane});
 
-  /// Reference to the parent plane for position sampling.
   final PositionComponent plane;
 
   final Queue<Vector2> _positions = Queue<Vector2>();
   double _sampleTimer = 0.0;
+  double _animTime = 0.0;
 
-  // ── Update ─────────────────────────────────────────────────────────────────
+  /// Exposes recorded trail positions for Ghost after-image rendering.
+  List<Vector2> get recentPositions => _positions.toList();
 
   @override
   void update(double dt) {
-    // Only record and render while the game is actively playing.
     if (gameRef.phase != GamePhase.playing) return;
 
+    _animTime += dt;
     _sampleTimer += dt;
     if (_sampleTimer >= GameConfig.trailSampleInterval) {
       _sampleTimer = 0.0;
-      // Capture absolute position so the trail stays fixed in world space
-      // even as the parent component moves.
       _positions.addLast(plane.absolutePosition.clone());
 
-      // Trim to the configured history length.
       while (_positions.length > GameConfig.trailLength) {
         _positions.removeFirst();
       }
     }
   }
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   @override
   void render(Canvas canvas) {
@@ -62,57 +57,109 @@ class PlaneTrailComponent extends Component
     final positions = _positions.toList();
     final count = positions.length;
 
-    // PlaneTrailComponent is a child of PlaneComponent. Flame has already
-    // applied the parent's transform to the canvas before calling render():
-    //   1. Translated to plane.position (top-left of bounding box)
-    //   2. Rotated by plane.angle around the anchor (centre)
-    //   3. Scaled by plane.scale
-    //
-    // Trail positions are stored in world (absolute) space. To draw them
-    // correctly we must undo the parent transform so we render in world space.
-    //
-    // The parent PlaneComponent uses anchor = Anchor.center, so Flame
-    // translates to (position - size/2) before rotating around size/2.
-    // We reverse: un-rotate around (size.x/2, size.y/2), then un-translate.
-    final parentPos = plane.position;   // top-left after anchor offset
+    final parentPos = plane.position;
     final parentAngle = plane.angle;
     final halfW = plane.size.x / 2;
     final halfH = plane.size.y / 2;
 
+    final PlaneComponent? pc = plane is PlaneComponent ? (plane as PlaneComponent) : null;
+    final PaperSkin skin = pc?.paperSkin ?? PaperSkin.plain;
+    final PlaneType pType = pc?.planeType ?? PlaneType.dart;
+
+    final session = gameRef.ref.read(gameSessionProvider);
+    final bool isTurboDash = session.activePowerUps.contains(PowerUpType.turboDash);
+    final bool isGhost = session.activePowerUps.contains(PowerUpType.ghost);
+    final bool isDoubleScore = session.activePowerUps.contains(PowerUpType.doubleScore);
+    final bool isCoinRush = session.activePowerUps.contains(PowerUpType.coinRush);
+
     canvas.save();
 
-    // Undo parent rotation (rotate back around the sprite centre).
     canvas.translate(halfW, halfH);
     canvas.rotate(-parentAngle);
     canvas.translate(-halfW, -halfH);
-
-    // Undo parent translation (move origin back to world 0,0).
-    // Flame places the canvas origin at position - size/2 for center-anchored
-    // components, so we translate by -(position - size/2).
     canvas.translate(-parentPos.x + halfW, -parentPos.y + halfH);
 
-    for (int i = 1; i < count; i++) {
-      // Head = most recent sample (last in queue = highest index).
-      // headFraction: 0 at tail, 1 at head.
-      final headFraction = i / (count - 1);
+    // ── 1. Glider Double Wingtip Vapor Trails ────────────────────────────────
+    if (pType == PlaneType.glider || pType == PlaneType.albatross) {
+      for (final wingOffset in [-16.0, 16.0]) {
+        for (int i = 1; i < count; i++) {
+          final headFraction = i / (count - 1);
+          final alpha = (GameConfig.trailHeadAlpha * 0.85 * headFraction).clamp(0.0, 1.0);
+          final wave = math.sin(_animTime * 6.0 + i * 0.4) * 2.0;
 
+          // Trail wind interaction
+          final normX = (positions[i].x / GameConfig.designWidth).clamp(0.0, 1.0);
+          final lane = gameRef.windSystem.laneForNormX(normX);
+          final wind = gameRef.windSystem.windAt(lane);
+          final windDrift = wind.lateralForce * (1.0 - headFraction) * 0.20;
+
+          final Color segColor = isTurboDash
+              ? const Color(0xFFFF5722)
+              : (isGhost
+                  ? const Color(0xFF00E5FF)
+                  : _getSegmentColor(skin, headFraction, i));
+
+          final paint = Paint()
+            ..color = segColor.withOpacity(alpha)
+            ..strokeWidth = MathUtils.lerp(0.4, 1.8, headFraction)
+            ..strokeCap = StrokeCap.round
+            ..style = PaintingStyle.stroke;
+
+          final p1 = Offset(positions[i - 1].x + wingOffset + wave + windDrift, positions[i - 1].y);
+          final p2 = Offset(positions[i].x + wingOffset + wave + windDrift, positions[i].y);
+          canvas.drawLine(p1, p2, paint);
+        }
+      }
+      canvas.restore();
+      return;
+    }
+
+    // ── 2. Standard & Stealth Jet Trail ──────────────────────────────────────
+    final isStealth = pType == PlaneType.stealthJet;
+
+    for (int i = 1; i < count; i++) {
+      if (isStealth && i % 2 == 0) continue;
+
+      final headFraction = i / (count - 1);
       final alpha = (GameConfig.trailHeadAlpha * headFraction).clamp(0.0, 1.0);
-      final strokeWidth = MathUtils.lerp(
-        GameConfig.trailTailWidth,
-        GameConfig.trailHeadWidth,
-        headFraction,
-      );
+      final strokeWidth = isStealth
+          ? 1.4
+          : MathUtils.lerp(
+              GameConfig.trailTailWidth,
+              GameConfig.trailHeadWidth,
+              headFraction,
+            );
+
+      // Trail wind interaction
+      final normX = (positions[i].x / GameConfig.designWidth).clamp(0.0, 1.0);
+      final lane = gameRef.windSystem.laneForNormX(normX);
+      final wind = gameRef.windSystem.windAt(lane);
+      final windDrift = wind.lateralForce * (1.0 - headFraction) * 0.22;
+
+      final Color segColor;
+      if (isTurboDash) {
+        segColor = (i % 2 == 0) ? const Color(0xFFFF3D00) : const Color(0xFFFFD54F);
+      } else if (isGhost) {
+        segColor = const Color(0xFF00E5FF);
+      } else if (isDoubleScore) {
+        segColor = const Color(0xFFFF5722);
+      } else if (isCoinRush) {
+        segColor = const Color(0xFFFFD700);
+      } else if (isStealth) {
+        segColor = const Color(0xFF90A4AE);
+      } else {
+        segColor = _getSegmentColor(skin, headFraction, i);
+      }
 
       final paint = Paint()
-        ..color = Color.fromRGBO(255, 255, 255, alpha)
+        ..color = segColor.withOpacity(alpha)
         ..strokeWidth = strokeWidth
         ..strokeCap = StrokeCap.round
         ..style = PaintingStyle.stroke;
 
-      // Positions are already in world space — draw directly.
       canvas.drawLine(
-        Offset(positions[i - 1].x, positions[i - 1].y),
-        Offset(positions[i].x, positions[i].y),
+        Offset(positions[i - 1].x + windDrift, positions[i - 1].y),
+        Offset(positions[i].x + windDrift, positions[i].y),
         paint,
       );
     }
@@ -120,9 +167,61 @@ class PlaneTrailComponent extends Component
     canvas.restore();
   }
 
-  // ── Public API ─────────────────────────────────────────────────────────────
+  Color _getSegmentColor(PaperSkin skin, double headFraction, int index) {
+    switch (skin) {
+      case PaperSkin.plain:
+        return const Color(0xFFFFFFFF);
+      case PaperSkin.goldLeaf:
+        final sparkle = 0.85 + 0.15 * math.sin(_animTime * 12.0 + index * 0.8);
+        return Color.lerp(const Color(0xFFFFD700), const Color(0xFFFFF9C4), sparkle)!;
+      case PaperSkin.watercolorWash:
+        final t = (math.sin(headFraction * math.pi * 3.0 + _animTime * 4.0) * 0.5 + 0.5);
+        return Color.lerp(const Color(0xFF80DEEA), const Color(0xFFFF80AB), t)!;
+      case PaperSkin.holographicFoil:
+      case PaperSkin.animatedHologram:
+        final hue = (headFraction * 260.0 + _animTime * 90.0) % 360.0;
+        return HSLColor.fromAHSL(1.0, hue, 0.85, 0.65).toColor();
+      case PaperSkin.prideGradient:
+        const rainbow = [
+          Color(0xFFFF1744),
+          Color(0xFFFF9100),
+          Color(0xFFFFEA00),
+          Color(0xFF00E676),
+          Color(0xFF2979FF),
+          Color(0xFFAA00FF),
+        ];
+        return rainbow[(index + (_animTime * 8.0).toInt()) % rainbow.length];
+      case PaperSkin.blueprint:
+        return const Color(0xFF00E5FF);
+      case PaperSkin.receipt:
+        return const Color(0xFFE0E0E0);
+      case PaperSkin.carbonFiber:
+        return const Color(0xFF616161);
+      case PaperSkin.mangaHalftone:
+        return (index % 2 == 0) ? const Color(0xFFFFFFFF) : const Color(0xFF212121);
+      case PaperSkin.kraftEnvelope:
+        return const Color(0xFFD7CCC8);
+      case PaperSkin.dragonScales:
+        final t = (math.sin(_animTime * 6.0 + index) * 0.5 + 0.5);
+        return Color.lerp(const Color(0xFF00E676), const Color(0xFFFFD600), t)!;
+      case PaperSkin.snowflake:
+        return const Color(0xFF80D8FF);
+      case PaperSkin.pumpkin:
+        return const Color(0xFFFF6D00);
+      case PaperSkin.cherryBlossom:
+        return const Color(0xFFF48FB1);
+      case PaperSkin.lavaLamp:
+        final t = (math.sin(_animTime * 3.5 + index * 0.5) * 0.5 + 0.5);
+        return Color.lerp(const Color(0xFFE040FB), const Color(0xFF00E5FF), t)!;
+      case PaperSkin.graphPaper:
+        return const Color(0xFF0288D1);
+      case PaperSkin.notebookDoodle:
+        return const Color(0xFF4FC3F7);
+      case PaperSkin.customCraft:
+        return const Color(0xFF80D8FF);
+    }
+  }
 
-  /// Clears all stored trail positions. Call on reset and revive.
   void clear() {
     _positions.clear();
     _sampleTimer = 0.0;
