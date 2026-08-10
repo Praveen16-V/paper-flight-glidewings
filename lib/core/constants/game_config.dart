@@ -1,10 +1,12 @@
+import 'dart:math' as math;
+
 /// Central tuning knobs for all gameplay systems.
 /// Adjust here — never hard-code magic numbers in components.
 abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-flight-5';
+  static const String balanceVersion = '2026.08-flight-6';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -179,6 +181,53 @@ abstract class GameConfig {
   /// Nose-up pitch bias (radians) added while glide arc is active and
   /// the plane is still moving upward — gives that "float" moment.
   static const double glideNoseUpBias = 0.09;
+
+  // ── Stall / Spin Recovery ────────────────────────────────────────────────
+  /// Stalls only arm after the onboarding-speed opening, so a new run's first
+  /// lift or BOOST burst cannot surprise the player before they have space.
+  static const double stallArmDistanceMeters = 140.0;
+
+  /// Forward world speed below which an over-pitched fold can lose lift.
+  static const double stallLowAirspeedThreshold = 190.0;
+
+  /// Extreme effective angle of attack required to build a stall (radians).
+  static const double stallAngleOfAttackThreshold = 0.98;
+
+  /// Small additional pitch demand while the player is holding lift.
+  static const double stallHoldingPitchBias = 18.0;
+
+  /// Computes effective angle of attack from forward world speed and vertical
+  /// air motion. This deliberately does not use render bank angle: a hard bank
+  /// is safe, while an over-pitched, slow climb is the stall risk.
+  static double angleOfAttackFor({
+    required double forwardAirspeed,
+    required double verticalVelocity,
+    required bool holdingLift,
+  }) {
+    final forward = math.max(1.0, forwardAirspeed).toDouble();
+    final climb = math.max(0.0, -verticalVelocity).toDouble();
+    final commandBias = holdingLift ? stallHoldingPitchBias : 0.0;
+    return math.atan2(climb + commandBias, forward);
+  }
+
+  /// Time spent above the stall threshold before the spin begins.
+  static const double stallBuildUpDuration = 0.55;
+
+  /// How quickly the warning gauge drains once the pilot unloads the wing.
+  static const double stallRiskDecayPerSecond = 1.9;
+
+  /// A short grace window after a snap burst; sustained high-angle climbing
+  /// afterwards can still stall, but the ability never self-punishes on tap.
+  static const double stallSnapGraceSeconds = 0.36;
+
+  /// Spin dynamics and the deliberate counter-steer recovery input.
+  static const double spinAngularVelocity = 9.5;
+  static const double spinGravityMultiplier = 1.75;
+  static const double spinLateralAcceleration = 240.0;
+  static const double spinRecoveryInputThreshold = 0.42;
+  static const double spinRecoveryDuration = 0.58;
+  static const double spinRecoveryDecayPerSecond = 0.85;
+  static const double spinRecoveryVerticalKick = -42.0;
 
   // ── Wing Squish Effect ────────────────────────────────────────────────────
 

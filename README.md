@@ -95,7 +95,7 @@ lib/
 ├── game/
 │   ├── paper_flight_game.dart    # FlameGame root — scroll engine, crash, revive
 │   ├── components/
-│   │   ├── plane_component.dart  # 2-axis physics, hitbox, shield/revive anims
+│   │   ├── plane_component.dart  # 2-axis physics, stall/spin recovery, hitbox, shield/revive anims
 │   │   ├── background/
 │   │   │   └── parallax_background.dart  # 3-layer parallax, biome sky gradients
 │   │   ├── obstacles/
@@ -175,6 +175,7 @@ No magic numbers anywhere else — change one value and it propagates everywhere
 Key knobs to adjust during playtesting:
 - `baseScrollSpeed` / `scrollSpeedPerMeter` / `PlaneType.speedCurveMultiplier` — overall and per-airframe speed ramps
 - `liftForce` / `gravity` — hold/release feel
+- `stallAngleOfAttackThreshold` / `spinRecoveryDuration` — extreme-climb risk and recovery commitment
 - `turnMomentumResponsePerSecond` / `wingLoadingResponseExponent` — how quickly light vs. heavy folds bank and recover
 - `maxWindForce` / `turbulencePocketMinDuration` / `turbulencePocketMaxDuration` — gust challenge level and local-cell lifetime
 - `wingFlexForceForFullStrength` / `wingFlexCrosswindNoiseBoost` — visual wing bend sensitivity in gusts
