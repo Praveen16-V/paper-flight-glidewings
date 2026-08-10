@@ -52,12 +52,12 @@ class TurbulencePocket {
     required this.normX,
     required this.radius,
     required this.ttl,
-    required this.duration,
-    required this.intensity,
-    required this.lateralForce,
-    required this.shiftFrequency,
+    double? duration,
+    this.intensity = GameConfig.turbulencePocketMinIntensity,
+    this.lateralForce = 0.0,
+    this.shiftFrequency = GameConfig.turbulencePocketMinShiftHz,
     this.sourceObstacle,
-  });
+  }) : duration = duration ?? ttl;
 
   /// Centre of the cell as a fraction of design width.
   final double normX;
