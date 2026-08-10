@@ -159,6 +159,18 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
     state = state.copyWith(runTimeSeconds: seconds);
   }
 
+  /// Batches the two continuously changing HUD values into one provider
+  /// notification, avoiding back-to-back rebuilds every telemetry tick.
+  void updateFlightMetrics({
+    required double distanceMeters,
+    required double runTimeSeconds,
+  }) {
+    state = state.copyWith(
+      distanceMeters: distanceMeters,
+      runTimeSeconds: runTimeSeconds,
+    );
+  }
+
   void updateTrialTime(double seconds) {
     state = state.copyWith(trialTimeLeft: seconds);
   }

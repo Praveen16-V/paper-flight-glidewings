@@ -73,14 +73,14 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
       case IapProductIds.removeAds:
         await notifier.setAdsRemoved();
       case IapProductIds.coins1000:
-        await notifier.addCoins(1000);
+        await notifier.addCoins(1000, reason: 'iap_coins_1000');
       case IapProductIds.coins5000:
-        await notifier.addCoins(5000);
+        await notifier.addCoins(5000, reason: 'iap_coins_5000');
       case IapProductIds.gems50:
-        await notifier.addGems(50);
+        await notifier.addGems(50, reason: 'iap_gems_50');
       case IapProductIds.starterPack:
-        await notifier.addCoins(500);
-        await notifier.addGems(25);
+        await notifier.addCoins(500, reason: 'iap_starter_pack');
+        await notifier.addGems(25, reason: 'iap_starter_pack');
         await notifier.setAdsRemoved();
       case IapProductIds.planeBundle:
         for (int i = 0; i < 3; i++) {
@@ -259,7 +259,9 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
       placement: AdPlacement.mysteryChest,
       onRewarded: () async {
         final coins = 50 + (DateTime.now().millisecond % 100);
-        await ref.read(saveDataProvider.notifier).addCoins(coins);
+        await ref
+            .read(saveDataProvider.notifier)
+            .addCoins(coins, reason: 'rewarded_mystery_chest');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text('Mystery Chest: +$coins coins!'),
@@ -305,7 +307,11 @@ class _TitleBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(8, 8, 16, 4),
       child: Row(
         children: [
-          IconButton(icon: const Icon(Icons.arrow_back, color: AppColors.textLight), onPressed: () => Navigator.of(context).pop()),
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: AppColors.textLight),
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
           Expanded(child: Text('Shop', style: AppTypography.headline, textAlign: TextAlign.center)),
           CoinChip(coins, iconSize: 16, fontSize: 14),
           const SizedBox(width: 10),

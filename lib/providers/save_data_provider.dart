@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/enums/game_enums.dart';
 import '../models/save_data.dart';
 import '../models/challenge_definitions.dart';
+import '../services/analytics_service.dart';
 import '../services/persistence_service.dart';
 
 /// Notifier that owns the canonical SaveData state.
@@ -24,35 +26,63 @@ class SaveDataNotifier extends Notifier<SaveData> {
 
   // ── Currency ────────────────────────────────────────────────────────────
 
-  Future<void> addCoins(int amount) async {
+  Future<void> addCoins(int amount, {String reason = 'unspecified'}) async {
     state = await PersistenceService.instance.updateSave((s) {
       s.coins += amount;
       s.totalCoinsCollected += amount;
       return s;
     });
+    _logEconomy(
+      currency: 'coin',
+      direction: 'source',
+      amount: amount,
+      balanceAfter: state.coins,
+      reason: reason,
+    );
   }
 
-  Future<void> spendCoins(int amount) async {
+  Future<void> spendCoins(int amount, {String reason = 'unspecified'}) async {
     if (state.coins < amount) return;
     state = await PersistenceService.instance.updateSave((s) {
       s.coins -= amount;
       return s;
     });
+    _logEconomy(
+      currency: 'coin',
+      direction: 'sink',
+      amount: amount,
+      balanceAfter: state.coins,
+      reason: reason,
+    );
   }
 
-  Future<void> addGems(int amount) async {
+  Future<void> addGems(int amount, {String reason = 'unspecified'}) async {
     state = await PersistenceService.instance.updateSave((s) {
       s.gems += amount;
       return s;
     });
+    _logEconomy(
+      currency: 'gem',
+      direction: 'source',
+      amount: amount,
+      balanceAfter: state.gems,
+      reason: reason,
+    );
   }
 
-  Future<void> spendGems(int amount) async {
+  Future<void> spendGems(int amount, {String reason = 'unspecified'}) async {
     if (state.gems < amount) return;
     state = await PersistenceService.instance.updateSave((s) {
       s.gems -= amount;
       return s;
     });
+    _logEconomy(
+      currency: 'gem',
+      direction: 'sink',
+      amount: amount,
+      balanceAfter: state.gems,
+      reason: reason,
+    );
   }
 
   // ── Scores / Stats ───────────────────────────────────────────────────────
@@ -81,6 +111,19 @@ class SaveDataNotifier extends Notifier<SaveData> {
       s.isFirstSession = false;
       return s;
     });
+    _logEconomy(
+      currency: 'coin',
+      direction: 'source',
+      amount: coinsEarned,
+      balanceAfter: state.coins,
+      reason: 'classic_run',
+    );
+    unawaited(
+      AnalyticsService.instance.setProgressionProperties(
+        lifetimeRuns: state.totalRuns,
+        highScore: state.highScore,
+      ),
+    );
     return newHighScore;
   }
 
@@ -152,6 +195,20 @@ class SaveDataNotifier extends Notifier<SaveData> {
         }
         return s;
       });
+      _logEconomy(
+        currency: 'coin',
+        direction: 'sink',
+        amount: cost,
+        balanceAfter: state.coins,
+        reason: 'plane_unlock',
+      );
+      _logEconomy(
+        currency: 'gem',
+        direction: 'sink',
+        amount: gemCost,
+        balanceAfter: state.gems,
+        reason: 'plane_unlock',
+      );
       return true;
     }
     return false;
@@ -182,6 +239,20 @@ class SaveDataNotifier extends Notifier<SaveData> {
         }
         return s;
       });
+      _logEconomy(
+        currency: 'coin',
+        direction: 'sink',
+        amount: coinCost,
+        balanceAfter: state.coins,
+        reason: 'skin_unlock',
+      );
+      _logEconomy(
+        currency: 'gem',
+        direction: 'sink',
+        amount: gemCost,
+        balanceAfter: state.gems,
+        reason: 'skin_unlock',
+      );
       return true;
     }
     return false;
@@ -234,6 +305,13 @@ class SaveDataNotifier extends Notifier<SaveData> {
       s.lastDailyLoginMs = now.millisecondsSinceEpoch;
       return s;
     });
+    _logEconomy(
+      currency: 'coin',
+      direction: 'source',
+      amount: reward,
+      balanceAfter: state.coins,
+      reason: 'daily_login',
+    );
     return reward;
   }
 
@@ -525,6 +603,20 @@ class SaveDataNotifier extends Notifier<SaveData> {
       return s;
     });
 
+    _logEconomy(
+      currency: 'coin',
+      direction: 'source',
+      amount: def.rewardCoins,
+      balanceAfter: state.coins,
+      reason: '${period.name}_challenge',
+    );
+    _logEconomy(
+      currency: 'gem',
+      direction: 'source',
+      amount: def.rewardGems,
+      balanceAfter: state.gems,
+      reason: '${period.name}_challenge',
+    );
     return (def.rewardCoins, def.rewardGems);
   }
 
@@ -548,6 +640,25 @@ class SaveDataNotifier extends Notifier<SaveData> {
       }
     }
     return totalCoins + totalGems * 100;
+  }
+
+  void _logEconomy({
+    required String currency,
+    required String direction,
+    required int amount,
+    required int balanceAfter,
+    required String reason,
+  }) {
+    if (amount <= 0) return;
+    unawaited(
+      AnalyticsService.instance.logEconomyTransaction(
+        currency: currency,
+        direction: direction,
+        amount: amount,
+        balanceAfter: balanceAfter,
+        reason: reason,
+      ),
+    );
   }
 }
 

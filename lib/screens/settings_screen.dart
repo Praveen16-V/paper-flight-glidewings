@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_typography.dart';
 import '../core/enums/game_enums.dart';
+import '../core/widgets/how_to_play_dialog.dart';
 import '../core/widgets/paper_card.dart';
 import '../providers/settings_provider.dart';
 
@@ -628,9 +629,29 @@ class _TitleBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(8, 8, 16, 4),
       child: Row(
         children: [
-          IconButton(icon: const Icon(Icons.arrow_back, color: AppColors.textLight), onPressed: () => Navigator.of(context).pop()),
-          Expanded(child: Text('Settings', textAlign: TextAlign.center, style: AppTypography.headline)),
-          const SizedBox(width: 48),
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: AppColors.textLight),
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: Text(
+              'Settings',
+              textAlign: TextAlign.center,
+              style: AppTypography.headline,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(
+              Icons.help_outline_rounded,
+              color: AppColors.textLight,
+            ),
+            tooltip: 'How to play',
+            onPressed: () => showHowToPlayDialog(
+              context,
+              surface: 'settings',
+            ),
+          ),
         ],
       ),
     );

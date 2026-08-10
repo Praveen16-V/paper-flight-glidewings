@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import 'paper_icons.dart';
@@ -29,23 +30,28 @@ class CoinChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        PaperIcon(PaperIconData.coin, size: iconSize, color: color),
-        SizedBox(width: spacing),
-        Text(
-          '$amount',
-          style: style ??
-              TextStyle(
-                fontFamily: AppTypography.mono,
-                fontWeight: FontWeight.w700,
-                fontSize: fontSize,
-                color: color,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
+    return Semantics(
+      label: context.l10n.text('a11y.coins', {'amount': amount}),
+      child: ExcludeSemantics(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PaperIcon(PaperIconData.coin, size: iconSize, color: color),
+            SizedBox(width: spacing),
+            Text(
+              '$amount',
+              style: style ??
+                  TextStyle(
+                    fontFamily: AppTypography.mono,
+                    fontWeight: FontWeight.w700,
+                    fontSize: fontSize,
+                    color: color,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -71,23 +77,28 @@ class GemChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        PaperIcon(PaperIconData.gem, size: iconSize, color: color),
-        SizedBox(width: spacing),
-        Text(
-          '$amount',
-          style: style ??
-              TextStyle(
-                fontFamily: AppTypography.mono,
-                fontWeight: FontWeight.w700,
-                fontSize: fontSize,
-                color: color,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
+    return Semantics(
+      label: context.l10n.text('a11y.gems', {'amount': amount}),
+      child: ExcludeSemantics(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PaperIcon(PaperIconData.gem, size: iconSize, color: color),
+            SizedBox(width: spacing),
+            Text(
+              '$amount',
+              style: style ??
+                  TextStyle(
+                    fontFamily: AppTypography.mono,
+                    fontWeight: FontWeight.w700,
+                    fontSize: fontSize,
+                    color: color,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

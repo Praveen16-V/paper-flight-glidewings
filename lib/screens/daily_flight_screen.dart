@@ -12,6 +12,7 @@ import '../core/widgets/paper_card.dart';
 import '../core/widgets/paper_icons.dart';
 import '../core/widgets/stat_counter.dart';
 import '../providers/save_data_provider.dart';
+import '../services/analytics_service.dart';
 import '../services/daily_leaderboard_service.dart';
 import '../services/daily_seed_service.dart';
 import 'game_screen.dart';
@@ -34,6 +35,7 @@ class _DailyFlightScreenState extends ConsumerState<DailyFlightScreen> {
   @override
   void initState() {
     super.initState();
+    AnalyticsService.instance.logScreenView('daily_flight');
     _loadBoard();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
@@ -314,11 +316,18 @@ class _DailyFlightScreenState extends ConsumerState<DailyFlightScreen> {
                       : AppColors.paperInk,
                   onPressed: attemptUsed
                       ? null
-                      : () => Navigator.of(context).pushNamed(
+                      : () {
+                          AnalyticsService.instance.logModeSelected(
+                            GameMode.daily,
+                            source: 'daily_preflight',
+                          );
+                          Navigator.of(context).pushNamed(
                             AppRoutes.game,
                             arguments: const GameScreenArgs(
-                                mode: GameMode.daily),
-                          ),
+                              mode: GameMode.daily,
+                            ),
+                          );
+                        },
                 ),
               ),
             ],
@@ -341,6 +350,7 @@ class _BackBar extends StatelessWidget {
         children: [
           IconButton(
             icon: const Icon(Icons.arrow_back, color: AppColors.textLight),
+            tooltip: 'Back',
             onPressed: () => Navigator.of(context).pop(),
           ),
           Expanded(

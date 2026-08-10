@@ -55,7 +55,6 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
   late Animation<double> _stampRotate;
 
   bool _doubleCoinsUsed = false;
-  bool _interstitialDone = false;
   RunResult? _result;
 
   @override
@@ -114,11 +113,16 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
     if (_result != null) {
       try {
         await AnalyticsService.instance.logRunCompleted(
+          mode: widget.args.mode,
           score: _result!.score,
           distanceMeters: _result!.distanceMeters,
+          durationSeconds: _result!.runDurationSeconds,
           coinsCollected: _result!.coinsCollected,
           nearMisses: _result!.nearMisses,
+          maxCombo: _result!.maxCombo,
+          powerUpsUsed: _result!.powerUpsUsed,
           biome: _result!.finalBiome.name,
+          crashCause: _result!.crashCause,
           wasRevived: _result!.wasRevived,
         );
         if (_result!.isNewHighScore) {
@@ -129,17 +133,16 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
 
     if (widget.args.mode == GameMode.classic) {
       try {
-        await AdService.instance.maybeShowInterstitial(
-          totalRuns: save.totalRuns,
-          runsSinceLastInterstitial: save.runsSinceLastInterstitial,
+        final wasShown = await AdService.instance.maybeShowInterstitial(
+          totalRuns: _result?.lifetimeRunNumber ?? save.totalRuns,
+          runsSinceLastInterstitial:
+              _result?.runsSinceLastInterstitial ??
+                  save.runsSinceLastInterstitial,
           adsRemoved: save.adsRemoved,
-          onComplete: () {
-            if (mounted) {
-              setState(() => _interstitialDone = true);
-              ref.read(saveDataProvider.notifier).resetInterstitialCounter();
-            }
-          },
         );
+        if (wasShown && mounted) {
+          ref.read(saveDataProvider.notifier).resetInterstitialCounter();
+        }
       } catch (_) {}
     }
   }
@@ -262,19 +265,13 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
       onRewarded: () async {
         if (mounted && _result != null) {
           setState(() => _doubleCoinsUsed = true);
-          await ref.read(saveDataProvider.notifier).addCoins(_result!.coinsCollected);
-          // reflect doubled in local result
+          await ref.read(saveDataProvider.notifier).addCoins(
+                _result!.coinsCollected,
+                reason: 'rewarded_double_coins',
+              );
+          // Reflect the bonus without dropping telemetry fields from the run.
           setState(() {
-            _result = RunResult(
-              score: _result!.score,
-              distanceMeters: _result!.distanceMeters,
-              coinsCollected: _result!.coinsCollected,
-              nearMisses: _result!.nearMisses,
-              finalBiome: _result!.finalBiome,
-              isNewHighScore: _result!.isNewHighScore,
-              wasRevived: _result!.wasRevived,
-              doubleCoinsApplied: true,
-            );
+            _result = _result!.copyWith(doubleCoinsApplied: true);
           });
         }
       },

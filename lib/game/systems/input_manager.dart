@@ -161,8 +161,10 @@ class InputManager extends Component {
   // Tilt calibration baseline (set on first active run frame).
   double _tiltBaseline = 0.0;
   bool _tiltCalibrated = false;
+  bool _awaitingTiltCalibrationSample = false;
 
   StreamSubscription<AccelerometerEvent>? _accelSub;
+  bool _sensorLifecycleActive = false;
 
   ControlScheme _controlScheme = ControlScheme.tilt;
 
@@ -176,7 +178,9 @@ class InputManager extends Component {
 
   @override
   Future<void> onLoad() async {
-    _startSensorStream();
+    // The host starts sensors only when the selected scheme actually needs
+    // them. Joystick/touch players should not keep a native accelerometer
+    // stream alive for the entire run.
     await super.onLoad();
   }
 
@@ -192,8 +196,24 @@ class InputManager extends Component {
   /// deterministically when it is disposed — otherwise the sensor subscription
   /// leaks across retries and the accumulating streams hang the app.
   void dispose() {
-    _accelSub?.cancel();
-    _accelSub = null;
+    _sensorLifecycleActive = false;
+    _cancelSensorStream();
+  }
+
+  /// Suspends native sensor work while paused/backgrounded.
+  void pauseSensors() {
+    _sensorLifecycleActive = false;
+    _cancelSensorStream();
+  }
+
+  /// Restarts sensing only for the tilt scheme.
+  void resumeSensors() {
+    _sensorLifecycleActive = true;
+    if (_controlScheme == ControlScheme.tilt) {
+      _awaitingTiltCalibrationSample = true;
+      _tiltCalibrated = false;
+      _startSensorStream();
+    }
   }
 
   @override
@@ -206,6 +226,11 @@ class InputManager extends Component {
 
   void updateControlScheme(ControlScheme scheme) {
     _controlScheme = scheme;
+    if (scheme == ControlScheme.tilt && _sensorLifecycleActive) {
+      _startSensorStream();
+    } else if (scheme != ControlScheme.tilt) {
+      _cancelSensorStream();
+    }
     // Reset transient steering state when switching schemes.
     _filteredTilt = 0.0;
     _touchLeft = false;
@@ -281,8 +306,10 @@ class InputManager extends Component {
   void onDragCancel() => onDragEnd();
 
   void calibrateTilt() {
-    _tiltBaseline = _rawTilt;
-    _tiltCalibrated = true;
+    // Calibrate from the next native sample rather than a stale value retained
+    // across an app pause or control-scheme change.
+    _awaitingTiltCalibrationSample = true;
+    _tiltCalibrated = false;
   }
 
   void reset() {
@@ -300,6 +327,7 @@ class InputManager extends Component {
     _joystickDelta = null;
     _joystickStartTime = null;
     _tiltCalibrated = false;
+    _awaitingTiltCalibrationSample = false;
   }
 
   // ── Sensor Stream ─────────────────────────────────────────────────────────
@@ -310,13 +338,28 @@ class InputManager extends Component {
   double get currentSensitivity => _sensitivity;
 
   void _startSensorStream() {
+    if (_accelSub != null || !_sensorLifecycleActive ||
+        _controlScheme != ControlScheme.tilt) {
+      return;
+    }
     _accelSub = accelerometerEventStream(
       samplingPeriod: SensorInterval.gameInterval,
     ).listen((event) {
       _rawTilt = -event.x;
+      if (_awaitingTiltCalibrationSample || !_tiltCalibrated) {
+        _tiltBaseline = _rawTilt;
+        _tiltCalibrated = true;
+        _awaitingTiltCalibrationSample = false;
+      }
     }, onError: (_) {
       _rawTilt = 0.0;
     });
+  }
+
+  void _cancelSensorStream() {
+    _accelSub?.cancel();
+    _accelSub = null;
+    _rawTilt = 0;
   }
 
   void _updateHorizontalFromScheme() {
@@ -355,10 +398,11 @@ class InputManager extends Component {
       return;
     }
 
-    // Tilt scheme.
-    if (!_tiltCalibrated) {
-      _tiltBaseline = _rawTilt;
-      _tiltCalibrated = true;
+    // Tilt scheme. Wait for a fresh native sample after resume/calibration so a
+    // stale zero cannot make the plane lurch sideways on the first frame.
+    if (!_tiltCalibrated || _awaitingTiltCalibrationSample) {
+      _filteredTilt = MathUtils.lowPass(_filteredTilt, 0.0, 0.2);
+      return;
     }
 
     final adjusted = (_rawTilt - _tiltBaseline) * _sensitivity;

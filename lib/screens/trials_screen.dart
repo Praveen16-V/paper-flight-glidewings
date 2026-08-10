@@ -11,6 +11,7 @@ import '../core/widgets/paper_card.dart';
 import '../core/widgets/paper_icons.dart';
 import '../models/trial_definition.dart';
 import '../providers/save_data_provider.dart';
+import '../services/analytics_service.dart';
 import 'game_screen.dart';
 
 /// Precision Trials hub — connected flight-path map across folded-paper islands.
@@ -29,6 +30,7 @@ class _TrialsScreenState extends ConsumerState<TrialsScreen>
   @override
   void initState() {
     super.initState();
+    AnalyticsService.instance.logScreenView('precision_trials');
     _dashCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -212,10 +214,23 @@ class _FlightMap extends StatelessWidget {
                       index: i,
                       isLeft: i.isEven,
                       onTap: nodes[i].unlocked
-                          ? () => Navigator.of(context).pushNamed(
+                          ? () {
+                              AnalyticsService.instance.logModeSelected(
+                                GameMode.trial,
+                                source: 'trial_map',
+                              );
+                              AnalyticsService.instance.logEvent(
+                                'trial_selected',
+                                params: {'trial_id': nodes[i].trial.id},
+                              );
+                              Navigator.of(context).pushNamed(
                                 AppRoutes.game,
-                                arguments: GameScreenArgs(mode: GameMode.trial, trialId: nodes[i].trial.id),
-                              )
+                                arguments: GameScreenArgs(
+                                  mode: GameMode.trial,
+                                  trialId: nodes[i].trial.id,
+                                ),
+                              );
+                            }
                           : null,
                     ),
                   ),
@@ -696,6 +711,7 @@ class _TitleBar extends StatelessWidget {
         children: [
           IconButton(
             icon: const Icon(Icons.arrow_back, color: AppColors.textLight),
+            tooltip: 'Back',
             onPressed: () => Navigator.of(context).pop(),
           ),
           Expanded(

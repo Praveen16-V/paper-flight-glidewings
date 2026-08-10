@@ -1,6 +1,19 @@
 /// Central tuning knobs for all gameplay systems.
 /// Adjust here — never hard-code magic numbers in components.
 abstract class GameConfig {
+  /// Stable identifier attached to gameplay, economy, ad, and performance
+  /// telemetry. Increment this whenever a tuning cohort changes so dashboards
+  /// never compare unlike balance curves as if they were one population.
+  static const String balanceVersion = '2026.08-baseline-1';
+
+  /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
+  /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
+  /// rebuilding at device refresh rate.
+  static const double hudUpdateIntervalSeconds = 0.1;
+
+  /// Live settings/equipment are sampled outside the per-frame hot path.
+  static const double runtimeStateSyncIntervalSeconds = 0.5;
+
   // ── Viewport ─────────────────────────────────────────────────────────────
   /// Design resolution width (logical pixels). Flame scales to device.
   static const double designWidth = 390.0;

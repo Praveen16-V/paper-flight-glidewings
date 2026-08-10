@@ -6,14 +6,21 @@ import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
 import '../core/constants/app_typography.dart';
 import '../core/enums/game_enums.dart';
+import '../core/widgets/how_to_play_dialog.dart';
+import '../core/widgets/mode_intro_overlay.dart';
 import '../core/widgets/paper_button.dart';
 import '../core/widgets/paper_card.dart';
 import '../core/widgets/paper_icons.dart';
 import '../core/widgets/stat_counter.dart';
 import '../game/paper_flight_game.dart';
 import '../game/overlays/hud_overlay.dart';
+import '../l10n/app_localizations.dart';
 import '../models/run_result.dart';
 import '../providers/game_session_provider.dart';
+import '../providers/settings_provider.dart';
+import '../services/analytics_service.dart';
+import '../services/frame_performance_monitor.dart';
+import '../services/onboarding_service.dart';
 import 'game_over_screen.dart';
 import 'trial_results_screen.dart';
 
@@ -39,9 +46,13 @@ class GameScreen extends ConsumerStatefulWidget {
   ConsumerState<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends ConsumerState<GameScreen> {
+class _GameScreenState extends ConsumerState<GameScreen>
+    with WidgetsBindingObserver {
   late PaperFlightGame _game;
+  late FramePerformanceMonitor _performanceMonitor;
   bool _started = false;
+  bool _startScheduled = false;
+  bool _showModeIntro = false;
 
   /// A game-over session can continue publishing HUD timer updates while the
   /// results route is being pushed (for example, when a timed power-up is
@@ -53,15 +64,39 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _game = PaperFlightGame(
       ref: ref,
       mode: widget.args.mode,
       trialId: widget.args.trialId,
     );
+    _performanceMonitor = FramePerformanceMonitor(
+      mode: widget.args.mode,
+      trialId: widget.args.trialId,
+    );
+    _showModeIntro =
+        !OnboardingService.instance.hasSeenModeTip(widget.args.mode);
+    if (_showModeIntro) {
+      AnalyticsService.instance.logOnboarding(
+        action: 'mode_tip_shown',
+        surface: 'game_preflight',
+        mode: widget.args.mode,
+      );
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (_started && !_resultsNavigationStarted &&
+        (_game.phase == GamePhase.playing ||
+            _game.phase == GamePhase.paused)) {
+      _game.abandonRun(reason: 'game_screen_disposed');
+    }
+    _performanceMonitor.stop(
+      outcome: _resultsNavigationStarted ? 'completed' : 'abandoned',
+    );
+
     // Do NOT manually call _game.dispose() here.
     //
     // Flutter disposes parent StatefulWidget (GameScreen) BEFORE its children
@@ -80,6 +115,21 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) return;
+    if (_started && _game.phase == GamePhase.playing) {
+      _game.pauseRun();
+      AnalyticsService.instance.logEvent(
+        'game_auto_paused',
+        params: {
+          'mode': widget.args.mode.name,
+          'lifecycle_state': state.name,
+        },
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     // Watch for the playing -> gameOver edge. The game can still publish
     // provider changes after it enters gameOver (power-up countdowns are the
@@ -93,6 +143,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       }
 
       _resultsNavigationStarted = true;
+      _performanceMonitor.stop(outcome: _performanceOutcome(next));
       if (next.mode == GameMode.trial && next.trialOutcome != null) {
         _navigateToTrialResults(next.trialOutcome!);
         return;
@@ -121,11 +172,24 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             ),
           ),
 
-          // ── Flutter HUD ────────────────────────────────────────────────
-          HudOverlay(game: _game),
+          // Keep the idle canvas clean while the one-time pre-flight card is
+          // visible. The Daily attempt is not consumed until Start is tapped.
+          if (!_showModeIntro && _started) HudOverlay(game: _game),
+          if (!_showModeIntro && _started) _PauseOverlay(game: _game),
 
-          // ── Pause overlay ──────────────────────────────────────────────
-          _PauseOverlay(game: _game),
+          if (_showModeIntro)
+            ModeIntroOverlay(
+              mode: widget.args.mode,
+              controlScheme: ref.watch(settingsProvider).controlScheme,
+              detail: widget.args.mode == GameMode.trial
+                  ? _game.trial?.objective
+                  : null,
+              onStart: _dismissModeIntroAndStart,
+              onOpenGuide: () => showHowToPlayDialog(
+                context,
+                surface: 'mode_intro_${widget.args.mode.name}',
+              ),
+            ),
         ],
       ),
     );
@@ -134,13 +198,43 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_started) {
+    if (!_showModeIntro) _scheduleRunStart();
+  }
+
+  void _scheduleRunStart() {
+    if (_started || _startScheduled) return;
+    _startScheduled = true;
+    // Delay one frame so GameWidget has mounted its canvas and systems.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startScheduled = false;
+      if (!mounted || _started || _showModeIntro) return;
       _started = true;
-      // Delay one frame so GameWidget has time to mount the canvas.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _game.startRun();
-      });
+      _game.startRun();
+      _performanceMonitor.start();
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _dismissModeIntroAndStart() async {
+    await OnboardingService.instance.markModeTipSeen(widget.args.mode);
+    AnalyticsService.instance.logOnboarding(
+      action: 'mode_tip_completed',
+      surface: 'game_preflight',
+      mode: widget.args.mode,
+    );
+    if (!mounted) return;
+    setState(() => _showModeIntro = false);
+    _scheduleRunStart();
+  }
+
+  String _performanceOutcome(GameSessionState session) {
+    if (session.mode == GameMode.trial) {
+      return session.trialOutcome?.completed == true
+          ? 'trial_completed'
+          : 'trial_failed';
     }
+    if (session.mode == GameMode.zen) return 'zen_completed';
+    return 'crashed';
   }
 
   void _navigateToGameOver(RunResult result, GameMode mode) {
@@ -232,6 +326,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
 class _PauseOverlay extends ConsumerWidget {
   const _PauseOverlay({required this.game});
+
   final PaperFlightGame game;
 
   @override
@@ -242,62 +337,84 @@ class _PauseOverlay extends ConsumerWidget {
     final isZen = game.mode == GameMode.zen;
 
     return Container(
-      color: Colors.black.withOpacity(0.62),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: PaperCard(
-            color: AppColors.paper,
-            elevation: 2,
-            padding: const EdgeInsets.fromLTRB(24, 26, 24, 22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  isZen ? 'PAUSED • ZEN' : 'PAUSED',
-                  style: AppTypography.displayMedium
-                      .copyWith(color: AppColors.paperInk, letterSpacing: 3),
+      color: Colors.black.withOpacity(0.68),
+      child: SafeArea(
+        minimum: const EdgeInsets.all(16),
+        child: Center(
+          child: SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: PaperCard(
+                color: AppColors.paper,
+                elevation: 2,
+                padding: const EdgeInsets.fromLTRB(24, 26, 24, 22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      isZen ? 'PAUSED • ZEN' : 'PAUSED',
+                      style: AppTypography.displayMedium.copyWith(
+                        color: AppColors.paperInk,
+                        letterSpacing: 3,
+                      ),
+                    ),
+                    const SizedBox(height: 26),
+                    PaperButton(
+                      label: 'Resume',
+                      expand: true,
+                      icon: const Icon(Icons.play_arrow, size: 20),
+                      onPressed: () => game.resumeRun(),
+                    ),
+                    const SizedBox(height: 12),
+                    PaperButton(
+                      label: context.l10n.text('pause.howToPlay'),
+                      expand: true,
+                      color: AppColors.paperBlue,
+                      icon: const Icon(Icons.help_outline_rounded, size: 20),
+                      onPressed: () => showHowToPlayDialog(
+                        context,
+                        surface: 'pause_${game.mode.name}',
+                      ),
+                    ),
+                    if (isZen) ...[
+                      const SizedBox(height: 12),
+                      PaperButton(
+                        label: 'End Zen Flight',
+                        expand: true,
+                        color: AppColors.paperGreen,
+                        icon: const PaperIcon(
+                          PaperIconData.leaf,
+                          size: 18,
+                          color: AppColors.paperInk,
+                        ),
+                        onPressed: () => game.endZenFlight(),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    PaperButton(
+                      label: 'Quit',
+                      expand: true,
+                      color: AppColors.paperWarm,
+                      textColor: AppColors.paperInk,
+                      icon: const Icon(Icons.home, size: 20),
+                      onPressed: () {
+                        if (isZen) {
+                          game.endZenFlight();
+                          return;
+                        }
+                        game.abandonRun(reason: 'pause_menu_quit');
+                        final exitRoute = switch (game.mode) {
+                          GameMode.daily => AppRoutes.dailyFlight,
+                          GameMode.trial => AppRoutes.trials,
+                          GameMode.classic || GameMode.zen =>
+                            AppRoutes.mainMenu,
+                        };
+                        Navigator.of(context).pushReplacementNamed(exitRoute);
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 26),
-                PaperButton(
-                  label: 'Resume',
-                  expand: true,
-                  icon: const Icon(Icons.play_arrow, size: 20),
-                  onPressed: () => game.resumeRun(),
-                ),
-                if (isZen) ...[
-                  const SizedBox(height: 12),
-                  PaperButton(
-                    label: 'End Zen Flight',
-                    expand: true,
-                    color: AppColors.paperGreen,
-                    icon: PaperIcon(PaperIconData.leaf,
-                        size: 18, color: AppColors.paperInk),
-                    onPressed: () => game.endZenFlight(),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                PaperButton(
-                  label: 'Quit',
-                  expand: true,
-                  color: AppColors.paperWarm,
-                  textColor: AppColors.paperInk,
-                  icon: const Icon(Icons.home, size: 20),
-                  onPressed: () {
-                    if (isZen) {
-                      game.endZenFlight();
-                      return;
-                    }
-                    game.resumeRun();
-                    final exitRoute = switch (game.mode) {
-                      GameMode.daily => AppRoutes.dailyFlight,
-                      GameMode.trial => AppRoutes.trials,
-                      GameMode.classic || GameMode.zen => AppRoutes.mainMenu,
-                    };
-                    Navigator.of(context).pushReplacementNamed(exitRoute);
-                  },
-                ),
-              ],
+              ),
             ),
           ),
         ),

@@ -18,6 +18,7 @@ import '../models/trial_definition.dart';
 import '../providers/game_session_provider.dart';
 import '../providers/save_data_provider.dart';
 import '../providers/settings_provider.dart';
+import '../services/analytics_service.dart';
 import '../services/daily_leaderboard_service.dart';
 import '../services/daily_seed_service.dart';
 import 'components/background/parallax_background.dart';
@@ -159,6 +160,12 @@ class PaperFlightGame extends FlameGame
   int _buildingGapsPassedThisRun = 0;
   bool _powerUpUsedThisRun = false;
   int _powerUpsUsedThisRun = 0;
+  String _lastCrashCause = 'unknown';
+
+  // Flutter/provider synchronization is intentionally outside the 60/120 Hz
+  // hot path. The Flame world still updates every frame.
+  double _hudUpdateAccumulator = 0;
+  double _runtimeStateSyncAccumulator = 0;
 
   // Crane free brush-off charges remaining this run.
   int _craneChargesRemaining = 0;
@@ -314,27 +321,12 @@ class PaperFlightGame extends FlameGame
 
   @override
   void update(double dt) {
-    // Keep input manager in sync with live settings (allows mid-run
-    // sensitivity change if settings are altered via debug overlay).
-    try {
-      final settings = ref.read(settingsProvider);
-      if (settings.controlScheme != inputManager.currentScheme) {
-        inputManager.updateControlScheme(settings.controlScheme);
-      }
-      if ((settings.tiltSensitivity - inputManager.currentSensitivity).abs() > 0.001) {
-        inputManager.updateSensitivity(settings.tiltSensitivity);
-      }
-      inputManager.updateGesturePowerUp(settings.flickToUsePowerUp);
-      _syncOnScreenControlsVisibility(settings);
-      // Sync plane skin/type if changed from hangar mid-session
-      try {
-        final save = ref.read(saveDataProvider);
-        final pType = PlaneType.values[save.equippedPlaneIndex.clamp(0, PlaneType.values.length - 1)];
-        final pSkin = PaperSkin.values[save.equippedSkinIndex.clamp(0, PaperSkin.values.length - 1)];
-        if (pType != plane.planeType) plane.syncHitboxForPlaneType(pType);
-        if (pSkin != plane.paperSkin) plane.syncSkin(pSkin);
-      } catch (_) {}
-    } catch (_) {}
+    _runtimeStateSyncAccumulator += dt;
+    if (_runtimeStateSyncAccumulator >=
+        GameConfig.runtimeStateSyncIntervalSeconds) {
+      _runtimeStateSyncAccumulator = 0;
+      _syncRuntimeState();
+    }
 
     final session = ref.read(gameSessionProvider);
     final scaledDt = dt * _timeScale;
@@ -386,27 +378,55 @@ class PaperFlightGame extends FlameGame
       }
     }
 
-    // ── Challenge tracking (Task 7) — classic runs only ────────────────────
-    if (mode.isEconomyRun) {
+    // Track run-shape metrics in both score modes. Only Classic persists these
+    // values into challenge progress at finalization.
+    if (mode == GameMode.classic || mode == GameMode.daily) {
       _trackChallengeProgress();
     }
 
     // ── Task 8: per-mode bookkeeping ───────────────────────────────────────
-    _runTimeSeconds += scaledDt;
+    _runTimeSeconds += dt;
     if (mode == GameMode.zen && _zenBounceCooldown > 0) {
       _zenBounceCooldown -= scaledDt;
     }
 
-    // Push distance + run time to provider for HUD (throttled — every 5
-    // frames approx).
-    if ((_distanceMeters * 10).toInt() % 5 == 0) {
-      ref
-          .read(gameSessionProvider.notifier)
-          .updateDistance(_distanceMeters);
-      ref
-          .read(gameSessionProvider.notifier)
-          .updateRunTime(_runTimeSeconds);
+    // Publish a compact HUD snapshot at 10 Hz. The previous distance-modulo
+    // condition could fire on several consecutive high-refresh frames and
+    // rebuild the entire Flutter overlay far more often than intended.
+    _hudUpdateAccumulator += dt;
+    if (_hudUpdateAccumulator >= GameConfig.hudUpdateIntervalSeconds) {
+      _hudUpdateAccumulator = 0;
+      final notifier = ref.read(gameSessionProvider.notifier);
+      notifier.updateFlightMetrics(
+        distanceMeters: _distanceMeters,
+        runTimeSeconds: _runTimeSeconds,
+      );
     }
+  }
+
+  void _syncRuntimeState() {
+    try {
+      final settings = ref.read(settingsProvider);
+      if (settings.controlScheme != inputManager.currentScheme) {
+        inputManager.updateControlScheme(settings.controlScheme);
+      }
+      if ((settings.tiltSensitivity - inputManager.currentSensitivity).abs() >
+          0.001) {
+        inputManager.updateSensitivity(settings.tiltSensitivity);
+      }
+      inputManager.updateGesturePowerUp(settings.flickToUsePowerUp);
+      _syncOnScreenControlsVisibility(settings);
+
+      final save = ref.read(saveDataProvider);
+      final pType = PlaneType.values[save.equippedPlaneIndex
+          .clamp(0, PlaneType.values.length - 1)
+          .toInt()];
+      final pSkin = PaperSkin.values[save.equippedSkinIndex
+          .clamp(0, PaperSkin.values.length - 1)
+          .toInt()];
+      if (pType != plane.planeType) plane.syncHitboxForPlaneType(pType);
+      if (pSkin != plane.paperSkin) plane.syncSkin(pSkin);
+    } catch (_) {}
   }
 
   void _trackChallengeProgress() {
@@ -498,6 +518,9 @@ class PaperFlightGame extends FlameGame
     _timeScale = 1.0;
     _coinRushShowerTimer = 0;
     _runTimeSeconds = 0;
+    _hudUpdateAccumulator = 0;
+    _runtimeStateSyncAccumulator = 0;
+    _lastCrashCause = 'unknown';
     _zenBounceCooldown = 0;
     _phase = GamePhase.playing;
     _isReviving = false;
@@ -556,6 +579,7 @@ class PaperFlightGame extends FlameGame
       _craneChargesRemaining = (pType == PlaneType.crane) ? GameConfig.craneBranchCharges : 0;
     } catch (_) {}
     inputManager.reset();
+    inputManager.resumeSensors();
 
     plane.reset();
     obstacleSpawner.reset();
@@ -581,6 +605,16 @@ class PaperFlightGame extends FlameGame
     }
 
     ref.read(gameSessionProvider.notifier).startRun(mode: mode, trialId: trialId);
+
+    final saveAtStart = ref.read(saveDataProvider);
+    unawaited(
+      AnalyticsService.instance.logRunStarted(
+        mode: mode,
+        controlScheme: inputManager.currentScheme,
+        lifetimeRunNumber: saveAtStart.totalRuns + 1,
+        trialId: trialId,
+      ),
+    );
   }
 
   /// Called by PlaneComponent when it hits an obstacle or falls off-screen.
@@ -598,9 +632,11 @@ class PaperFlightGame extends FlameGame
 
     // ── Precision Trial (Task 8): one hit ends the attempt.
     if (mode == GameMode.trial) {
+      _lastCrashCause = obstacleType?.name ?? 'out_of_bounds';
       _phase = GamePhase.dying;
       spawnCrashFeedback(this, plane.position);
       pauseEngine();
+      inputManager.pauseSensors();
       gameFeelSystem.onCrash();
       gameFeelSystem.silence();
       Future.delayed(
@@ -649,9 +685,11 @@ class PaperFlightGame extends FlameGame
       return;
     }
 
+    _lastCrashCause = obstacleType?.name ?? 'out_of_bounds';
     _phase = GamePhase.dying;
     spawnCrashFeedback(this, plane.position);
     pauseEngine();
+    inputManager.pauseSensors();
     gameFeelSystem.onCrash();
     gameFeelSystem.silence();
 
@@ -723,6 +761,13 @@ class PaperFlightGame extends FlameGame
     gameFeelSystem.stopZenMusic();
     _phase = GamePhase.gameOver;
     pauseEngine();
+    inputManager.pauseSensors();
+    unawaited(
+      AnalyticsService.instance.logZenCompleted(
+        distanceMeters: _distanceMeters,
+        durationSeconds: _runTimeSeconds,
+      ),
+    );
     try {
       ref.read(saveDataProvider.notifier).recordZenRun(_distanceMeters);
     } catch (_) {}
@@ -759,6 +804,18 @@ class PaperFlightGame extends FlameGame
 
     final stars = completed ? director.evaluateStars() : 0;
     final coins = ref.read(gameSessionProvider).coinsThisRun;
+    inputManager.pauseSensors();
+    unawaited(
+      AnalyticsService.instance.logTrialOutcome(
+        trialId: def.id,
+        completed: completed,
+        timedOut: timedOut,
+        stars: stars,
+        durationSeconds: director.timeUsedSeconds,
+        coinsCollected: coins,
+        totalCoins: def.countCoins(),
+      ),
+    );
 
     // Compute the new-best flag synchronously from the in-memory save so the
     // results screen can celebrate without waiting for disk. The matching
@@ -795,10 +852,34 @@ class PaperFlightGame extends FlameGame
     }
   }
 
+  /// Ends an in-progress run without awarding economy/progression and records
+  /// the missing half of the death-rate funnel (players who quit before a
+  /// crash). Safe to call from widget disposal.
+  void abandonRun({required String reason}) {
+    if (_phase != GamePhase.playing && _phase != GamePhase.paused) return;
+    final session = ref.read(gameSessionProvider);
+    unawaited(
+      AnalyticsService.instance.logRunAbandoned(
+        mode: mode,
+        distanceMeters: _distanceMeters,
+        durationSeconds: _runTimeSeconds,
+        score: session.score,
+        reason: reason,
+      ),
+    );
+    _phase = GamePhase.idle;
+    inputManager.pauseSensors();
+    gameFeelSystem.silence();
+    try {
+      pauseEngine();
+    } catch (_) {}
+  }
+
   void pauseRun() {
     if (_phase != GamePhase.playing) return;
     _phase = GamePhase.paused;
     pauseEngine();
+    inputManager.pauseSensors();
     gameFeelSystem.silence();
     ref.read(gameSessionProvider.notifier).pause();
   }
@@ -806,6 +887,8 @@ class PaperFlightGame extends FlameGame
   void resumeRun() {
     if (_phase != GamePhase.paused) return;
     _phase = GamePhase.playing;
+    inputManager.resumeSensors();
+    inputManager.calibrateTilt();
     resumeEngine();
     ref.read(gameSessionProvider.notifier).resume();
   }
@@ -951,9 +1034,9 @@ class PaperFlightGame extends FlameGame
     // authoritative pre-run high score) so the results screen can show the
     // NEW BEST stamp without waiting for disk. The matching write to storage
     // happens in the background below.
-    final preRunHighScore = ref.read(saveDataProvider).highScore;
+    final preRunSave = ref.read(saveDataProvider);
     final isNewHighScore =
-        mode != GameMode.daily && session.score > preRunHighScore;
+        mode != GameMode.daily && session.score > preRunSave.highScore;
 
     final result = RunResult(
       score: session.score,
@@ -963,6 +1046,13 @@ class PaperFlightGame extends FlameGame
       isNewHighScore: isNewHighScore,
       finalBiome: session.currentBiome,
       wasRevived: wasRevived,
+      runDurationSeconds: _runTimeSeconds,
+      crashCause: _lastCrashCause,
+      maxCombo: _maxComboThisRun,
+      powerUpsUsed: _powerUpsUsedThisRun,
+      lifetimeRunNumber: preRunSave.totalRuns + 1,
+      runsSinceLastInterstitial:
+          preRunSave.runsSinceLastInterstitial + 1,
     );
 
     // Trigger the game-over transition immediately so the results screen starts

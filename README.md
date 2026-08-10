@@ -135,7 +135,8 @@ lib/
 
 ## Game modes (Task 8)
 
-Reachable from **MORE MODES** under the PLAY button:
+Select a mode on the main-menu carousel and use its mode-aware CTA, or tap the
+preview card to open the full modes hub:
 
 | Mode | What it is | Economy |
 |---|---|---|
@@ -178,3 +179,41 @@ Key knobs to adjust during playtesting:
 - `comboDrainDuration` / `comboHitRetentionFraction` — combo decay gauge pace & shield-hit penalty
 - `cleanFlightBasePoints` / `thermalSurfBasePoints` — Clean Flight streak payouts
 - `interstitialFrequencyCap` — ad cadence (increase to reduce friction)
+
+Do not tune these values from intuition alone. Every gameplay event includes
+`GameConfig.balanceVersion`; see [docs/telemetry_playtesting.md](docs/telemetry_playtesting.md)
+for the event dictionary, cohort workflow, guardrails, and physical-device matrix.
+
+---
+
+## Onboarding, accessibility, and localization
+
+- New installs receive a four-page **How to Play** guide covering controls,
+  scoring, power-ups, and the economy/mode loops. It can be reopened from the
+  main menu, Settings, or the pause card.
+- Each mode has a one-time pre-flight explanation. The Daily warning appears
+  before its irreversible one-attempt flag is consumed.
+- Tutorial state is stored in the existing Hive settings box by
+  `OnboardingService`, keeping it independent from save-file schema changes.
+- The main funnel scrolls instead of shrinking text on short screens, preserves
+  48 dp minimum controls, honors reduced-motion preferences, and keeps narrow
+  layouts horizontally reachable.
+- Shared paper buttons/cards and HUD actions expose semantic button labels;
+  dynamic HUD copy uses higher-contrast backplates and safe-area offsets are not
+  double-applied.
+- `AppLocalizations` provides a stable localization key layer with English and
+  Spanish support for the first-run/main-menu funnel. Continue extracting legacy
+  screen copy behind the same layer before adding another locale.
+
+## Runtime stability and profiling
+
+- Game-to-HUD state is batched at 10 Hz rather than publishing on adjacent game
+  frames; settings/equipment sync is sampled outside the per-frame hot path.
+- Tilt sensors run only for the tilt scheme and are suspended on pause,
+  background, and teardown. Returning to the game calibrates from a fresh
+  sensor sample and remains user-paused after an interruption.
+- `FramePerformanceMonitor` records one bounded aggregate per run (average and
+  p95 total/build/raster time plus slow/frozen-frame counts).
+- Rewarded/interstitial native objects are single-use and disposed on every
+  terminal callback. Interstitial counters reset only after an ad was actually
+  shown, not after capped or unavailable checks.
