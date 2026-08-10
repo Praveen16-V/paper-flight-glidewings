@@ -1,8 +1,8 @@
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
+import 'package:flutter/material.dart';
 
 import '../../../core/constants/game_config.dart';
 import '../../../core/enums/game_enums.dart';
@@ -223,7 +223,7 @@ class PowerUpComponent extends PositionComponent
       ..color = const Color(0xFFFFD54F).withOpacity(0.85)
       ..strokeWidth = 1.6
       ..style = PaintingStyle.stroke;
-    canvas.drawLine(Offset(0, -r), const Offset(0, r), goldRibbon);
+    canvas.drawLine(Offset(0, -r), Offset(0, r), goldRibbon);
     canvas.drawLine(Offset(-r * 0.86, -r * 0.5), Offset(r * 0.86, r * 0.5), goldRibbon);
 
     // 4. Power-Up Icon Symbol

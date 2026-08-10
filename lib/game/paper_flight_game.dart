@@ -169,9 +169,11 @@ class PaperFlightGame extends FlameGame
 
   // Crane free brush-off charges remaining this run.
   int _craneChargesRemaining = 0;
+  int get craneChargesRemaining => _craneChargesRemaining;
 
   // Extra shield charges (e.g. Paper Bomber starting shield).
   int _shieldChargesRemaining = 0;
+  int get shieldChargesRemaining => _shieldChargesRemaining;
 
   // Decoy clone charges remaining.
   int _decoyCloneCharges = 0;

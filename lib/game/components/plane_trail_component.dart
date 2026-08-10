@@ -8,6 +8,7 @@ import 'package:flutter/painting.dart';
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../core/utils/math_utils.dart';
+import '../../providers/game_session_provider.dart';
 import '../paper_flight_game.dart';
 import 'plane_component.dart';
 
@@ -171,6 +172,8 @@ class PlaneTrailComponent extends Component
     switch (skin) {
       case PaperSkin.plain:
         return const Color(0xFFFFFFFF);
+      case PaperSkin.newspaper:
+        return const Color(0xFFE8E0D0);
       case PaperSkin.goldLeaf:
         final sparkle = 0.85 + 0.15 * math.sin(_animTime * 12.0 + index * 0.8);
         return Color.lerp(const Color(0xFFFFD700), const Color(0xFFFFF9C4), sparkle)!;
