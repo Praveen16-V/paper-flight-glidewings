@@ -4,7 +4,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-flight-1';
+  static const String balanceVersion = '2026.08-flight-2';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -202,6 +202,31 @@ abstract class GameConfig {
 
   /// Turbulence pocket control reduction (0–1, fraction of input ignored).
   static const double turbulenceControlReduction = 0.35;
+
+  // ── Micro-biome Turbulence Pockets ───────────────────────────────────────
+  /// Natural pockets persist long enough to be read and corrected for, rather
+  /// than behaving like a single-frame random gust.
+  static const double turbulencePocketMinDuration = 5.0;
+  static const double turbulencePocketMaxDuration = 10.0;
+
+  /// Pockets are narrow, local weather cells expressed as a fraction of screen
+  /// width. A pilot can fly around one, but cannot simply ignore its gusts.
+  static const double turbulencePocketMinRadius = 0.09;
+  static const double turbulencePocketMaxRadius = 0.16;
+  static const int turbulencePocketMaxActive = 2;
+
+  /// Spawn pacing is driven by obstacle events. The cooldown prevents a dense
+  /// obstacle sequence from layering several cells into an unreadable wall.
+  static const double turbulencePocketSpawnCooldown = 3.25;
+  static const double turbulencePocketBaseSpawnChance = 0.28;
+  static const double turbulencePocketStormSpawnChance = 0.58;
+
+  /// Strength and direction-change rate for the cell's rapidly shifting wind.
+  /// The signed force cycles through opposing gusts at this many cycles/second.
+  static const double turbulencePocketMinIntensity = 0.62;
+  static const double turbulencePocketMaxIntensity = 0.94;
+  static const double turbulencePocketMinShiftHz = 1.6;
+  static const double turbulencePocketMaxShiftHz = 2.8;
 
   // ── Obstacles ────────────────────────────────────────────────────────────
   /// Minimum vertical gap between spawned obstacles (px).

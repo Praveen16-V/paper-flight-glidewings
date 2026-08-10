@@ -1595,9 +1595,12 @@ class PlaneComponent extends PositionComponent
 
     // ── Horizontal Physics ────────────────────────────────────────────────────
 
-    final controlMult = wind.isInTurbulence(normX)
-        ? (1.0 - GameConfig.turbulenceControlReduction)
-        : 1.0;
+    // A turbulence pocket contributes its own fast-reversing local gust and
+    // scales steering authority by distance from the cell core. Lane wind stays
+    // underneath it, so a pilot has to actively correct for both weather layers.
+    final turbulence = wind.turbulenceAt(normX);
+    final controlMult = turbulence?.controlMultiplier ?? 1.0;
+    final turbulenceForce = turbulence?.lateralForce ?? 0.0;
     double biomeControl = wind.profile.control;
     if (planeType == PlaneType.stealthJet) {
       final wBonus = planeLevel >= 3 ? 1.20 : (planeLevel == 2 ? 1.15 : 1.08);
@@ -1628,7 +1631,8 @@ class PlaneComponent extends PositionComponent
     // reversal. The same state machine is used by tilt, touch zones, and stick.
     _velocityX = input.resolveTurnMomentum(
       planeType: planeType,
-      desiredVelocity: targetVX + laneWind.lateralForce,
+      desiredVelocity:
+          targetVX + laneWind.lateralForce + turbulenceForce,
       hasSteeringInput:
           input.horizontalInput.abs() > GameConfig.turnMomentumInputDeadZone,
       dt: dt,

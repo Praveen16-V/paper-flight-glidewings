@@ -149,6 +149,18 @@ class ObstacleSpawner extends Component {
 
     game.world.add(obs);
     _active.add(obs);
+
+    // Local weather is seeded by a real obstacle event rather than a detached
+    // global timer. Gate obstacles use their planned corridor as the anchor so
+    // a cell appears beside the route instead of arbitrarily at world x = 0.
+    final isGate = chosen == ObstacleType.powerLine ||
+        chosen == ObstacleType.building ||
+        chosen == ObstacleType.clothesline;
+    game.windSystem.spawnTurbulenceAlongsideObstacle(
+      anchorX: isGate ? _safeCorridorX : spawnX,
+      safeCorridorX: _safeCorridorX,
+      obstacleType: chosen,
+    );
     return true;
   }
 

@@ -117,16 +117,110 @@ class AtmosphereComponent extends PositionComponent with HasGameRef<PaperFlightG
   }
 
   void _drawTurbulence(Canvas canvas) {
-    final ring = Paint()..style = PaintingStyle.stroke..strokeWidth = 1.4;
     for (final pocket in gameRef.windSystem.turbulencePockets) {
       final x = pocket.normX * size.x;
-      final r = pocket.radius * size.x;
-      final pulse = .45 + sin(_time * 7 + x) * .15;
-      ring.color = Color.fromRGBO(196, 228, 244, pulse.clamp(.12, .7).toDouble());
-      for (var i = 0; i < 3; i++) {
-        final rr = r * (.38 + i * .23) + sin(_time * 4 + i) * 3;
-        canvas.drawArc(Rect.fromCircle(center: Offset(x, size.y * (.35 + i * .16)), radius: rr), _time * 2 + i, pi * 1.35, false, ring);
+      final radius = pocket.radius * size.x;
+      final forceFraction =
+          (pocket.lateralForce.abs() / GameConfig.maxWindForce)
+              .clamp(0.0, 1.0)
+              .toDouble();
+      final direction = pocket.lateralForce == 0
+          ? 1.0
+          : pocket.lateralForce.sign;
+      final life = pocket.lifeFraction;
+      final pulse = .66 + sin(_time * pocket.shiftFrequency * pi + x) * .22;
+      final alpha = (0.10 + pocket.intensity * 0.18) * pulse * life;
+      final centerY = size.y * .54;
+
+      // A translucent local weather cell makes the gameplay boundary legible
+      // before the gust is felt. The cross-hatched swirls distinguish it from
+      // an ordinary lane wind without relying only on colour.
+      final field = Paint()
+        ..shader = RadialGradient(
+          colors: [
+            Color.fromRGBO(128, 222, 234, alpha.clamp(0.0, .34).toDouble()),
+            Color.fromRGBO(156, 39, 176, (alpha * .45).clamp(0.0, .16).toDouble()),
+            const Color(0x00000000),
+          ],
+          stops: const [0.0, 0.62, 1.0],
+        ).createShader(
+          Rect.fromCenter(
+            center: Offset(x, centerY),
+            width: radius * 3.1,
+            height: size.y * .92,
+          ),
+        );
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(x, centerY),
+          width: radius * 3.1,
+          height: size.y * .92,
+        ),
+        field,
+      );
+
+      final swirl = Paint()
+        ..color = Color.fromRGBO(
+          213,
+          246,
+          255,
+          (0.30 + pocket.intensity * .40) * life,
+        )
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.25
+        ..strokeCap = StrokeCap.round;
+      final arrow = Paint()
+        ..color = Color.fromRGBO(
+          255,
+          241,
+          118,
+          (0.38 + forceFraction * .45) * life,
+        )
+        ..style = PaintingStyle.fill;
+
+      for (var i = 0; i < 4; i++) {
+        final y = centerY - 118 + i * 78;
+        final wave = sin(_time * 6.5 + i * 1.9) * 5;
+        final arcRadius = radius * (.42 + i * .12) + wave;
+        final start = direction > 0 ? 0.18 : pi + 0.18;
+        canvas.drawArc(
+          Rect.fromCenter(
+            center: Offset(x, y),
+            width: arcRadius * 2,
+            height: arcRadius * 1.18,
+          ),
+          start,
+          pi * 1.34,
+          false,
+          swirl,
+        );
+
+        // The chevron flips direction with the live physics force, so players
+        // can read each rapid wind reversal rather than treating it as random.
+        final progress = ((_time * (36 + pocket.shiftFrequency * 12) + i * 53) %
+                (radius * 1.7)) /
+            (radius * 1.7);
+        final arrowX = x + (progress - .5) * radius * 1.7 * direction;
+        final arrowPath = Path()
+          ..moveTo(arrowX + direction * 5, y)
+          ..lineTo(arrowX - direction * 3, y - 3.5)
+          ..lineTo(arrowX - direction * 3, y + 3.5)
+          ..close();
+        canvas.drawPath(arrowPath, arrow);
       }
+
+      final boundary = Paint()
+        ..color = Color.fromRGBO(196, 228, 244, (.24 + alpha).clamp(0.0, .54).toDouble())
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.1;
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(x, centerY),
+          width: radius * 2.15,
+          height: size.y * .79,
+        ),
+        boundary,
+      );
     }
   }
 
