@@ -588,7 +588,18 @@ class _PowerUpIcon extends StatelessWidget {
     ));
   }
 
-  double _duration(PowerUpType type) => switch (type) { PowerUpType.magnet => GameConfig.magnetDuration, PowerUpType.ghost => GameConfig.ghostDuration, PowerUpType.slowMo => GameConfig.slowMoDuration, PowerUpType.coinRush => GameConfig.coinRushDuration, _ => 1 };
+  double _duration(PowerUpType type) => switch (type) {
+        PowerUpType.magnet => GameConfig.magnetDuration,
+        PowerUpType.ghost => GameConfig.ghostDuration,
+        PowerUpType.slowMo => GameConfig.slowMoDuration,
+        PowerUpType.coinRush => GameConfig.coinRushDuration,
+        PowerUpType.doubleScore => GameConfig.doubleScoreDuration,
+        PowerUpType.shrink => GameConfig.shrinkDuration,
+        PowerUpType.windCaller => GameConfig.windCallerDuration,
+        PowerUpType.blackHole => GameConfig.blackHoleDuration,
+        PowerUpType.turboDash => GameConfig.turboDashDuration,
+        _ => 1.0,
+      };
 
   Color _colorForType(PowerUpType type) {
     switch (type) {
@@ -602,6 +613,18 @@ class _PowerUpIcon extends StatelessWidget {
         return const Color(0xFF00695C);
       case PowerUpType.coinRush:
         return const Color(0xFFC77800);
+      case PowerUpType.doubleScore:
+        return const Color(0xFFE64A19);
+      case PowerUpType.shrink:
+        return const Color(0xFF7B1FA2);
+      case PowerUpType.windCaller:
+        return const Color(0xFF0097A7);
+      case PowerUpType.decoyClone:
+        return const Color(0xFF5C6BC0);
+      case PowerUpType.blackHole:
+        return const Color(0xFF311B92);
+      case PowerUpType.turboDash:
+        return const Color(0xFFFF3D00);
     }
   }
 
@@ -617,6 +640,18 @@ class _PowerUpIcon extends StatelessWidget {
         return Icons.timer_rounded;
       case PowerUpType.coinRush:
         return Icons.monetization_on_rounded;
+      case PowerUpType.doubleScore:
+        return Icons.flash_on_rounded;
+      case PowerUpType.shrink:
+        return Icons.compress_rounded;
+      case PowerUpType.windCaller:
+        return Icons.explore_rounded;
+      case PowerUpType.decoyClone:
+        return Icons.content_copy_rounded;
+      case PowerUpType.blackHole:
+        return Icons.donut_large_rounded;
+      case PowerUpType.turboDash:
+        return Icons.rocket_launch_rounded;
     }
   }
 }
@@ -858,7 +893,7 @@ class _BoostRingPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2 - 4;
     const gap = 0.22;
-    final totalArc = (2 * 3.1415926535 - gap * maxCharges) / maxCharges;
+    final totalArc = (2 * math.pi - gap * maxCharges) / maxCharges;
 
     // Background track
     final bgPaint = Paint()
@@ -868,15 +903,20 @@ class _BoostRingPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
     canvas.drawCircle(center, radius, bgPaint);
 
+    // State color: 0 = Red pulse, 1 = Amber breathing, Max = Shimmering Gold
+    final Color stateColor = charges == 0
+        ? const Color(0xFFFF5252)
+        : (charges < maxCharges ? const Color(0xFFFFA000) : const Color(0xFFFFD700));
+
     for (int i = 0; i < maxCharges; i++) {
-      final start = -3.1415926535 / 2 + i * (totalArc + gap);
+      final start = -math.pi / 2 + i * (totalArc + gap);
       double sweep = totalArc;
       Paint? segPaint;
       bool draw = true;
 
       if (i < charges) {
         segPaint = Paint()
-          ..color = const Color(0xFFF5A623)
+          ..color = stateColor
           ..style = PaintingStyle.stroke
           ..strokeWidth = 3.5
           ..strokeCap = StrokeCap.round;
@@ -886,7 +926,7 @@ class _BoostRingPainter extends CustomPainter {
         } else {
           sweep = totalArc * progress.clamp(0.0, 1.0);
           segPaint = Paint()
-            ..color = const Color(0xFFF5A623).withOpacity(0.5 + 0.35 * progress)
+            ..color = stateColor.withOpacity(0.5 + 0.35 * progress)
             ..style = PaintingStyle.stroke
             ..strokeWidth = 3.5
             ..strokeCap = StrokeCap.round;

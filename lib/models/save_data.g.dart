@@ -48,13 +48,17 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
       dailyAttemptUsed: fields[27] as bool? ?? false,
       trialStars: (fields[28] as List?)?.cast<int>() ?? [],
       zenBestDistanceMeters: (fields[29] as num?)?.toDouble() ?? 0,
+      planeUpgradeLevels: (fields[30] as List?)?.cast<int>() ?? List.filled(16, 1),
+      customSkinPrimaryHex: (fields[31] as num?)?.toInt() ?? 0xFF4FC3F7,
+      customSkinAccentHex: (fields[32] as num?)?.toInt() ?? 0xFFFFD54F,
+      customSkinStamp: (fields[33] as num?)?.toInt() ?? 0,
     );
   }
 
   @override
   void write(BinaryWriter writer, SaveData obj) {
     writer
-      ..writeByte(30)
+      ..writeByte(34)
       ..writeByte(0)
       ..write(obj.coins)
       ..writeByte(1)
@@ -114,7 +118,15 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
       ..writeByte(28)
       ..write(obj.trialStars)
       ..writeByte(29)
-      ..write(obj.zenBestDistanceMeters);
+      ..write(obj.zenBestDistanceMeters)
+      ..writeByte(30)
+      ..write(obj.planeUpgradeLevels)
+      ..writeByte(31)
+      ..write(obj.customSkinPrimaryHex)
+      ..writeByte(32)
+      ..write(obj.customSkinAccentHex)
+      ..writeByte(33)
+      ..write(obj.customSkinStamp);
   }
 
   @override

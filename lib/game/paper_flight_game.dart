@@ -170,6 +170,13 @@ class PaperFlightGame extends FlameGame
   // Crane free brush-off charges remaining this run.
   int _craneChargesRemaining = 0;
 
+  // Extra shield charges (e.g. Paper Bomber starting shield).
+  int _shieldChargesRemaining = 0;
+
+  // Decoy clone charges remaining.
+  int _decoyCloneCharges = 0;
+  int get decoyCloneCharges => _decoyCloneCharges;
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
@@ -224,10 +231,12 @@ class PaperFlightGame extends FlameGame
     final save = ref.read(saveDataProvider);
     final planeType = PlaneType.values[save.equippedPlaneIndex.clamp(0, PlaneType.values.length - 1)];
     final skin = PaperSkin.values[save.equippedSkinIndex.clamp(0, PaperSkin.values.length - 1)];
+    final planeLvl = save.getPlaneLevel(save.equippedPlaneIndex);
     plane = PlaneComponent(
       game: this,
       planeType: planeType,
       paperSkin: skin,
+      planeLevel: planeLvl,
     );
     world.add(plane);
 
@@ -424,8 +433,10 @@ class PaperFlightGame extends FlameGame
       final pSkin = PaperSkin.values[save.equippedSkinIndex
           .clamp(0, PaperSkin.values.length - 1)
           .toInt()];
+      final pLvl = save.getPlaneLevel(save.equippedPlaneIndex);
       if (pType != plane.planeType) plane.syncHitboxForPlaneType(pType);
       if (pSkin != plane.paperSkin) plane.syncSkin(pSkin);
+      if (pLvl != plane.planeLevel) plane.syncLevel(pLvl);
     } catch (_) {}
   }
 
@@ -574,9 +585,26 @@ class PaperFlightGame extends FlameGame
       final save = ref.read(saveDataProvider);
       final pType = PlaneType.values[save.equippedPlaneIndex.clamp(0, PlaneType.values.length - 1)];
       final pSkin = PaperSkin.values[save.equippedSkinIndex.clamp(0, PaperSkin.values.length - 1)];
+      final pLvl = save.getPlaneLevel(save.equippedPlaneIndex);
       plane.syncHitboxForPlaneType(pType);
       plane.syncSkin(pSkin);
-      _craneChargesRemaining = (pType == PlaneType.crane) ? GameConfig.craneBranchCharges : 0;
+      plane.syncLevel(pLvl);
+
+      // Crane branch brush-off charges (1 at L1/L2, 2 at L3)
+      _craneChargesRemaining = (pType == PlaneType.crane)
+          ? (pLvl >= 3 ? 2 : GameConfig.craneBranchCharges)
+          : 0;
+
+      // Paper Bomber starting shield charges (2 at L1/L2, 3 at L3) / Biplane L3
+      if (pType == PlaneType.bomber) {
+        _shieldChargesRemaining = pLvl >= 3 ? 3 : 2;
+        ref.read(gameSessionProvider.notifier).activatePowerUp(PowerUpType.shield);
+      } else if (pType == PlaneType.biplane && pLvl >= 3) {
+        _shieldChargesRemaining = 1;
+        ref.read(gameSessionProvider.notifier).activatePowerUp(PowerUpType.shield);
+      } else {
+        _shieldChargesRemaining = 0;
+      }
     } catch (_) {}
     inputManager.reset();
     inputManager.resumeSensors();
@@ -653,9 +681,22 @@ class PaperFlightGame extends FlameGame
       return;
     }
 
-    // Ghost: the plane phases straight through every obstacle.
-    if (session.activePowerUps.contains(PowerUpType.ghost)) {
+    // Ghost or Turbo Dash: the plane phases straight through every obstacle.
+    if (session.activePowerUps.contains(PowerUpType.ghost) ||
+        session.activePowerUps.contains(PowerUpType.turboDash)) {
       plane.playGhostPhaseAnimation();
+      return;
+    }
+
+    // Decoy Clones: absorb the next 2 obstacle hits.
+    if (_decoyCloneCharges > 0) {
+      _decoyCloneCharges--;
+      plane.playGhostPhaseAnimation();
+      gameFeelSystem.onShieldBreak();
+      scoringSystem.onObstacleHit();
+      if (_decoyCloneCharges <= 0) {
+        ref.read(gameSessionProvider.notifier).deactivatePowerUp(PowerUpType.decoyClone);
+      }
       return;
     }
 
@@ -675,14 +716,22 @@ class PaperFlightGame extends FlameGame
       return;
     }
 
-    // Shield absorbs the hit — the combo gauge keeps half of itself instead
-    // of facing the old instant wipe (Combo Decay design).
-    if (session.shieldActive) {
-      ref.read(gameSessionProvider.notifier).consumeShield();
-      scoringSystem.onObstacleHit();
-      plane.playShieldHitAnimation();
-      gameFeelSystem.onShieldBreak();
-      return;
+    // Shield absorbs the hit — handles multi-hit shields (Bomber 2..3 hits).
+    if (session.shieldActive || _shieldChargesRemaining > 0) {
+      if (_shieldChargesRemaining > 1) {
+        _shieldChargesRemaining--;
+        plane.playShieldHitAnimation();
+        gameFeelSystem.onShieldBreak();
+        scoringSystem.onObstacleHit();
+        return;
+      } else {
+        _shieldChargesRemaining = 0;
+        ref.read(gameSessionProvider.notifier).consumeShield();
+        scoringSystem.onObstacleHit();
+        plane.playShieldHitAnimation();
+        gameFeelSystem.onShieldBreak();
+        return;
+      }
     }
 
     _lastCrashCause = obstacleType?.name ?? 'out_of_bounds';
@@ -948,8 +997,9 @@ class PaperFlightGame extends FlameGame
     final notifier = ref.read(gameSessionProvider.notifier);
     switch (type) {
       case PowerUpType.shield:
-        // Absorbs exactly one hit — no timer; consumed on impact.
+        // Absorbs hits — no timer; consumed on impact.
         notifier.activatePowerUp(PowerUpType.shield);
+        _shieldChargesRemaining = math.max(_shieldChargesRemaining, 1);
       case PowerUpType.magnet:
         notifier.activatePowerUp(PowerUpType.magnet);
         notifier.setPowerUpTimer(PowerUpType.magnet, GameConfig.magnetDuration);
@@ -960,9 +1010,10 @@ class PaperFlightGame extends FlameGame
           },
         );
       case PowerUpType.ghost:
-        // Phase through every obstacle — the big "fly through the wall" moment.
+        // Phase through every obstacle + chromatic aberration entry!
         notifier.activatePowerUp(PowerUpType.ghost);
         notifier.setPowerUpTimer(PowerUpType.ghost, GameConfig.ghostDuration);
+        gameFeelSystem.onGhostActivated();
         Future.delayed(
           Duration(milliseconds: (GameConfig.ghostDuration * 1000).toInt()),
           () {
@@ -982,6 +1033,54 @@ class PaperFlightGame extends FlameGame
           Duration(milliseconds: (GameConfig.coinRushDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.coinRush);
+          },
+        );
+      case PowerUpType.doubleScore:
+        notifier.activatePowerUp(PowerUpType.doubleScore);
+        notifier.setPowerUpTimer(PowerUpType.doubleScore, GameConfig.doubleScoreDuration);
+        Future.delayed(
+          Duration(milliseconds: (GameConfig.doubleScoreDuration * 1000).toInt()),
+          () {
+            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.doubleScore);
+          },
+        );
+      case PowerUpType.shrink:
+        notifier.activatePowerUp(PowerUpType.shrink);
+        notifier.setPowerUpTimer(PowerUpType.shrink, GameConfig.shrinkDuration);
+        Future.delayed(
+          Duration(milliseconds: (GameConfig.shrinkDuration * 1000).toInt()),
+          () {
+            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.shrink);
+          },
+        );
+      case PowerUpType.windCaller:
+        notifier.activatePowerUp(PowerUpType.windCaller);
+        notifier.setPowerUpTimer(PowerUpType.windCaller, GameConfig.windCallerDuration);
+        Future.delayed(
+          Duration(milliseconds: (GameConfig.windCallerDuration * 1000).toInt()),
+          () {
+            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.windCaller);
+          },
+        );
+      case PowerUpType.decoyClone:
+        _decoyCloneCharges = 2;
+        notifier.activatePowerUp(PowerUpType.decoyClone);
+      case PowerUpType.blackHole:
+        notifier.activatePowerUp(PowerUpType.blackHole);
+        notifier.setPowerUpTimer(PowerUpType.blackHole, GameConfig.blackHoleDuration);
+        Future.delayed(
+          Duration(milliseconds: (GameConfig.blackHoleDuration * 1000).toInt()),
+          () {
+            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.blackHole);
+          },
+        );
+      case PowerUpType.turboDash:
+        notifier.activatePowerUp(PowerUpType.turboDash);
+        notifier.setPowerUpTimer(PowerUpType.turboDash, GameConfig.turboDashDuration);
+        Future.delayed(
+          Duration(milliseconds: (GameConfig.turboDashDuration * 1000).toInt()),
+          () {
+            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.turboDash);
           },
         );
     }

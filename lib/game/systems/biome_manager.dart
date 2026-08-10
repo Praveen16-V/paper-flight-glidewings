@@ -81,26 +81,36 @@ class BiomeManager extends Component {
       case Biome.backyard:
         return const {
           ObstacleType.treeBranch: 1.2,
+          ObstacleType.clothesline: 1.1,
           ObstacleType.kite: 1.0,
-          ObstacleType.bird: 0.7,
+          ObstacleType.bird: 0.8,
+          ObstacleType.windsock: 0.6,
+          ObstacleType.trafficPlane: 0.4,
           ObstacleType.powerLine: 0.3,
           ObstacleType.hotAirBalloon: 0.2,
           ObstacleType.building: 0.0,
           ObstacleType.drone: 0.0,
           ObstacleType.windTurbine: 0.0,
           ObstacleType.stormCloud: 0.0,
+          ObstacleType.fireworks: 0.0,
+          ObstacleType.weatherBalloon: 0.0,
         }[type] ?? 0.0;
       case Biome.city:
         return const {
           ObstacleType.building: 1.2,
           ObstacleType.powerLine: 1.1,
           ObstacleType.drone: 0.9,
+          ObstacleType.trafficPlane: 0.8,
           ObstacleType.bird: 0.7,
           ObstacleType.treeBranch: 0.3,
+          ObstacleType.windsock: 0.3,
           ObstacleType.kite: 0.2,
           ObstacleType.hotAirBalloon: 0.1,
+          ObstacleType.clothesline: 0.1,
           ObstacleType.windTurbine: 0.0,
           ObstacleType.stormCloud: 0.0,
+          ObstacleType.fireworks: 0.0,
+          ObstacleType.weatherBalloon: 0.0,
         }[type] ?? 0.0;
       case Biome.storm:
         return const {
@@ -109,10 +119,15 @@ class BiomeManager extends Component {
           ObstacleType.windTurbine: 0.8,
           ObstacleType.building: 0.7,
           ObstacleType.drone: 0.6,
+          ObstacleType.windsock: 0.5,
+          ObstacleType.trafficPlane: 0.4,
           ObstacleType.treeBranch: 0.3,
           ObstacleType.bird: 0.2,
           ObstacleType.kite: 0.1,
           ObstacleType.hotAirBalloon: 0.0,
+          ObstacleType.clothesline: 0.0,
+          ObstacleType.fireworks: 0.0,
+          ObstacleType.weatherBalloon: 0.0,
         }[type] ?? 0.0;
       case Biome.mountain:
         return const {
@@ -120,35 +135,50 @@ class BiomeManager extends Component {
           ObstacleType.bird: 1.2,
           ObstacleType.hotAirBalloon: 0.9,
           ObstacleType.treeBranch: 0.8,
+          ObstacleType.windsock: 0.7,
           ObstacleType.kite: 0.5,
           ObstacleType.stormCloud: 0.3,
           ObstacleType.powerLine: 0.2,
+          ObstacleType.trafficPlane: 0.2,
+          ObstacleType.weatherBalloon: 0.2,
           ObstacleType.building: 0.0,
           ObstacleType.drone: 0.1,
+          ObstacleType.clothesline: 0.0,
+          ObstacleType.fireworks: 0.0,
         }[type] ?? 0.0;
       case Biome.night:
         return const {
           ObstacleType.drone: 1.4,
+          ObstacleType.fireworks: 1.2,
           ObstacleType.building: 1.0,
           ObstacleType.hotAirBalloon: 0.9,
+          ObstacleType.trafficPlane: 0.8,
           ObstacleType.powerLine: 0.7,
           ObstacleType.kite: 0.5,
           ObstacleType.bird: 0.4,
           ObstacleType.stormCloud: 0.3,
           ObstacleType.treeBranch: 0.2,
           ObstacleType.windTurbine: 0.2,
+          ObstacleType.windsock: 0.2,
+          ObstacleType.weatherBalloon: 0.1,
+          ObstacleType.clothesline: 0.0,
         }[type] ?? 0.0;
       case Biome.atmosphere:
         return const {
+          ObstacleType.weatherBalloon: 1.4,
           ObstacleType.hotAirBalloon: 1.3,
           ObstacleType.drone: 1.2,
           ObstacleType.windTurbine: 1.0,
           ObstacleType.stormCloud: 0.9,
+          ObstacleType.fireworks: 0.8,
+          ObstacleType.trafficPlane: 0.7,
           ObstacleType.kite: 0.6,
           ObstacleType.bird: 0.5,
           ObstacleType.powerLine: 0.2,
+          ObstacleType.windsock: 0.1,
           ObstacleType.building: 0.1,
           ObstacleType.treeBranch: 0.0,
+          ObstacleType.clothesline: 0.0,
         }[type] ?? 0.0;
     }
   }

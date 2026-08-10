@@ -155,6 +155,18 @@ Color _powerUpColor(PowerUpType type) {
       return const Color(0xFF26A69A); // teal
     case PowerUpType.coinRush:
       return const Color(0xFFFFD700); // gold
+    case PowerUpType.doubleScore:
+      return const Color(0xFFFF5722); // deep orange
+    case PowerUpType.shrink:
+      return const Color(0xFFBA68C8); // lavender
+    case PowerUpType.windCaller:
+      return const Color(0xFF00E5FF); // electric cyan
+    case PowerUpType.decoyClone:
+      return const Color(0xFF7986CB); // indigo
+    case PowerUpType.blackHole:
+      return const Color(0xFF7C4DFF); // deep violet
+    case PowerUpType.turboDash:
+      return const Color(0xFFFF3D00); // blaze red
   }
 }
 

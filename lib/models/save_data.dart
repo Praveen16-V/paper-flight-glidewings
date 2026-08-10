@@ -128,6 +128,22 @@ class SaveData extends HiveObject {
   @HiveField(29)
   double zenBestDistanceMeters;
 
+  /// Upgrade level per plane index (maps to PlaneType.index, range 1..3).
+  @HiveField(30)
+  List<int> planeUpgradeLevels;
+
+  /// Player custom craft skin primary color hex.
+  @HiveField(31)
+  int customSkinPrimaryHex;
+
+  /// Player custom craft skin accent color hex.
+  @HiveField(32)
+  int customSkinAccentHex;
+
+  /// Player custom craft pattern stamp index (0 = stars, 1 = diamonds, 2 = hearts, 3 = lightning).
+  @HiveField(33)
+  int customSkinStamp;
+
   SaveData({
     this.coins = 0,
     this.gems = 0,
@@ -159,6 +175,10 @@ class SaveData extends HiveObject {
     this.dailyAttemptUsed = false,
     List<int>? trialStars,
     this.zenBestDistanceMeters = 0,
+    List<int>? planeUpgradeLevels,
+    this.customSkinPrimaryHex = 0xFF4FC3F7,
+    this.customSkinAccentHex = 0xFFFFD54F,
+    this.customSkinStamp = 0,
   })  : unlockedPlaneIndices = unlockedPlaneIndices ?? [0],
         unlockedSkinIndices = unlockedSkinIndices ?? [0],
         dailyChallengeIds = dailyChallengeIds ?? [],
@@ -169,7 +189,14 @@ class SaveData extends HiveObject {
         weeklyChallengeProgress = weeklyChallengeProgress ?? [],
         weeklyChallengeCompleted = weeklyChallengeCompleted ?? [],
         weeklyChallengeClaimed = weeklyChallengeClaimed ?? [],
-        trialStars = trialStars ?? [];
+        trialStars = trialStars ?? [],
+        planeUpgradeLevels = planeUpgradeLevels ?? List.filled(16, 1);
+
+  /// Returns the current upgrade level (1..3) for a given plane index.
+  int getPlaneLevel(int planeIndex) {
+    if (planeIndex < 0 || planeIndex >= planeUpgradeLevels.length) return 1;
+    return planeUpgradeLevels[planeIndex].clamp(1, 3);
+  }
 
   /// Returns a fresh default save for a new installation.
   factory SaveData.fresh() => SaveData();
@@ -207,6 +234,10 @@ class SaveData extends HiveObject {
       dailyAttemptUsed: dailyAttemptUsed,
       trialStars: List<int>.from(trialStars),
       zenBestDistanceMeters: zenBestDistanceMeters,
+      planeUpgradeLevels: List<int>.from(planeUpgradeLevels),
+      customSkinPrimaryHex: customSkinPrimaryHex,
+      customSkinAccentHex: customSkinAccentHex,
+      customSkinStamp: customSkinStamp,
     );
   }
 }

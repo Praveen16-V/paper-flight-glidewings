@@ -11,27 +11,15 @@ import '../components/obstacles/obstacle_script.dart';
 import '../paper_flight_game.dart';
 
 /// Manages obstacle spawn timing, object pools, and recycling across all biomes.
-///
-/// Features:
-///  - Object pools for all 9 rich obstacle types to avoid GC stutter.
-///  - Dynamic interval scaling tied to world scroll speed.
-///  - Anti-clumping intelligent lane distribution and vertical spacing.
-///  - Biome-weighted hazard spawning.
 class ObstacleSpawner extends Component {
   ObstacleSpawner({required this.game});
 
   final PaperFlightGame game;
 
-  /// RNG driving every spawn decision. The Daily Seeded Flight swaps this for
-  /// a seed-derived generator (via [PaperFlightGame.spawnRng]) so all players
-  /// see the identical run. Classic/Zen use an unseeded generator.
   math.Random random = math.Random();
-
-  /// When false (Precision Trials) the procedural spawner stands down — the
-  /// Trial Director drives every spawn from the handcrafted course instead.
   bool spawnEnabled = true;
 
-  // Per-type object pools for all 9 obstacle types.
+  // Per-type object pools for all 14 obstacle types.
   late final ObjectPool<PowerLineObstacle> _powerLinePool;
   late final ObjectPool<BuildingObstacle> _buildingPool;
   late final ObjectPool<TreeBranchObstacle> _branchPool;
@@ -41,8 +29,12 @@ class ObstacleSpawner extends Component {
   late final ObjectPool<HotAirBalloonObstacle> _hotAirBalloonPool;
   late final ObjectPool<StormCloudObstacle> _stormCloudPool;
   late final ObjectPool<KiteObstacle> _kitePool;
+  late final ObjectPool<TrafficPlaneObstacle> _trafficPlanePool;
+  late final ObjectPool<FireworksObstacle> _fireworksPool;
+  late final ObjectPool<WeatherBalloonObstacle> _weatherBalloonPool;
+  late final ObjectPool<ClotheslineObstacle> _clotheslinePool;
+  late final ObjectPool<WindSockObstacle> _windSockPool;
 
-  // Active obstacles tracked for lifecycle and near-miss scoring.
   final List<ObstacleComponent> _active = [];
   List<ObstacleComponent> get activeObstacles => _active;
 
@@ -50,9 +42,6 @@ class ObstacleSpawner extends Component {
   double _lastSpawnX = GameConfig.designWidth * 0.5;
   double _safeCorridorX = GameConfig.designWidth * 0.5;
 
-  /// Type chosen on the first frame of a spawn attempt. Held while the air
-  /// space isn't safe so retry frames never consume extra RNG draws — this
-  /// keeps the seeded daily run's spawn sequence frame-rate independent.
   ObstacleType? _pendingChosen;
 
   static const double _reactionWindowSeconds = 1.15;
@@ -69,6 +58,11 @@ class ObstacleSpawner extends Component {
     _hotAirBalloonPool = ObjectPool(create: HotAirBalloonObstacle.new, initialSize: 3);
     _stormCloudPool = ObjectPool(create: StormCloudObstacle.new, initialSize: 3);
     _kitePool = ObjectPool(create: KiteObstacle.new, initialSize: 4);
+    _trafficPlanePool = ObjectPool(create: TrafficPlaneObstacle.new, initialSize: 3);
+    _fireworksPool = ObjectPool(create: FireworksObstacle.new, initialSize: 3);
+    _weatherBalloonPool = ObjectPool(create: WeatherBalloonObstacle.new, initialSize: 3);
+    _clotheslinePool = ObjectPool(create: ClotheslineObstacle.new, initialSize: 3);
+    _windSockPool = ObjectPool(create: WindSockObstacle.new, initialSize: 3);
 
     await super.onLoad();
   }
@@ -82,8 +76,6 @@ class ObstacleSpawner extends Component {
 
     final interval = _currentSpawnInterval();
     if (_spawnTimer >= interval) {
-      // Keep accumulating if a proposed wave would compromise the currently
-      // reachable corridor; it will retry as soon as the airspace clears.
       if (_spawnObstacle()) _spawnTimer = 0;
     }
   }
@@ -93,7 +85,6 @@ class ObstacleSpawner extends Component {
     _lastSpawnX = GameConfig.designWidth * 0.5;
     _safeCorridorX = GameConfig.designWidth * 0.5;
     _pendingChosen = null;
-    // Return all active obstacles to their pools immediately.
     for (final obs in List.of(_active)) {
       _recycleObstacle(obs);
     }
@@ -103,7 +94,6 @@ class ObstacleSpawner extends Component {
   // ── Internals ─────────────────────────────────────────────────────────────
 
   double _currentSpawnInterval() {
-    // Interval shrinks as speed increases — smooth interpolation.
     final speedFraction = (game.scrollSpeed - GameConfig.baseScrollSpeed) /
         (GameConfig.maxScrollSpeed - GameConfig.baseScrollSpeed);
     final baseInterval = MathUtils.lerp(
@@ -111,8 +101,6 @@ class ObstacleSpawner extends Component {
       GameConfig.obstacleMinSpawnInterval,
       speedFraction.clamp(0.0, 1.0),
     );
-    // Backyard deliberately gives newcomers broad, calm clearances; mountain
-    // passes compress the rhythm into the requested chokepoint feeling.
     final biomeSpacing = switch (game.biomeManager.currentBiome) {
       Biome.backyard => 1.32,
       Biome.city => .96,
@@ -130,10 +118,7 @@ class ObstacleSpawner extends Component {
         .map((t) => game.biomeManager.obstacleWeight(t))
         .toList();
 
-    // Verify at least one obstacle type has positive weight
     final totalWeight = weights.fold<double>(0, (sum, w) => sum + w);
-    // Pick once per attempt; hold the choice across retry frames so the
-    // seeded RNG draw sequence never depends on frame timing.
     final ObstacleType chosen;
     final pending = _pendingChosen;
     if (pending != null) {
@@ -167,8 +152,6 @@ class ObstacleSpawner extends Component {
     return true;
   }
 
-  /// Scripted spawn used by the Precision Trial Director — places an obstacle
-  /// with an exact layout instead of rolling random values.
   ObstacleComponent spawnScripted(
     ObstacleType type, {
     required double x,
@@ -187,8 +170,6 @@ class ObstacleSpawner extends Component {
     return obs;
   }
 
-  /// Seed-aware weighted pick (mirrors MathUtils.weightedPick but uses the
-  /// spawner's own RNG so daily runs are fully deterministic).
   T _weightedPick<T>(List<T> items, List<double> weights) {
     final total = weights.fold(0.0, (a, b) => a + b);
     double roll = random.nextDouble() * total;
@@ -199,11 +180,17 @@ class ObstacleSpawner extends Component {
     return items.last;
   }
 
-  /// A full-width gate must never arrive alongside another hazard. At current
-  /// speed this preserves a full reaction window, even at the 480 px/s cap.
   bool _hasSafeReactionWindow(ObstacleType proposed) {
-    final isGate = proposed == ObstacleType.powerLine || proposed == ObstacleType.building;
-    if (!isGate && !_active.any((o) => o.type == ObstacleType.powerLine || o.type == ObstacleType.building)) return true;
+    final isGate = proposed == ObstacleType.powerLine ||
+        proposed == ObstacleType.building ||
+        proposed == ObstacleType.clothesline;
+    if (!isGate &&
+        !_active.any((o) =>
+            o.type == ObstacleType.powerLine ||
+            o.type == ObstacleType.building ||
+            o.type == ObstacleType.clothesline)) {
+      return true;
+    }
     final protectedDistance = game.scrollSpeed * _reactionWindowSeconds + 140;
     return !_active.any((o) => (o.position.y + 80).abs() < protectedDistance);
   }
@@ -214,7 +201,6 @@ class ObstacleSpawner extends Component {
       GameConfig.horizontalEdgeMargin + _corridorHalfWidth,
       GameConfig.designWidth - GameConfig.horizontalEdgeMargin - _corridorHalfWidth,
     ).toDouble();
-    // The selected gate is always within the maximum lateral bank distance.
     _safeCorridorX = desired.clamp(
       game.plane.position.x - reachable,
       game.plane.position.x + reachable,
@@ -223,22 +209,20 @@ class ObstacleSpawner extends Component {
   }
 
   double _pickSpawnX(ObstacleType type) {
-    // Full width obstacles anchor to 0
-    if (type == ObstacleType.powerLine || type == ObstacleType.building) {
+    if (type == ObstacleType.powerLine ||
+        type == ObstacleType.building ||
+        type == ObstacleType.clothesline) {
       return 0.0;
     }
 
-    // Branch obstacles pick their own side
     if (type == ObstacleType.treeBranch) {
       return random.nextBool() ? 0.0 : GameConfig.designWidth;
     }
 
-    // Dynamic obstacles: distribute smartly away from last spawn point to avoid clumping
     final minX = GameConfig.horizontalEdgeMargin + 35.0;
     final maxX = GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 35.0;
 
     double candidateX = minX + random.nextDouble() * (maxX - minX);
-    // If candidate is too close to last spawn, shift across screen
     if ((candidateX - _lastSpawnX).abs() < 70.0) {
       if (_lastSpawnX > GameConfig.designWidth * 0.5) {
         candidateX = minX + random.nextDouble() * (GameConfig.designWidth * 0.45 - minX);
@@ -270,6 +254,16 @@ class ObstacleSpawner extends Component {
         return _stormCloudPool.acquire();
       case ObstacleType.kite:
         return _kitePool.acquire();
+      case ObstacleType.trafficPlane:
+        return _trafficPlanePool.acquire();
+      case ObstacleType.fireworks:
+        return _fireworksPool.acquire();
+      case ObstacleType.weatherBalloon:
+        return _weatherBalloonPool.acquire();
+      case ObstacleType.clothesline:
+        return _clotheslinePool.acquire();
+      case ObstacleType.windsock:
+        return _windSockPool.acquire();
     }
   }
 
@@ -297,6 +291,16 @@ class ObstacleSpawner extends Component {
         _stormCloudPool.release(obs as StormCloudObstacle);
       case ObstacleType.kite:
         _kitePool.release(obs as KiteObstacle);
+      case ObstacleType.trafficPlane:
+        _trafficPlanePool.release(obs as TrafficPlaneObstacle);
+      case ObstacleType.fireworks:
+        _fireworksPool.release(obs as FireworksObstacle);
+      case ObstacleType.weatherBalloon:
+        _weatherBalloonPool.release(obs as WeatherBalloonObstacle);
+      case ObstacleType.clothesline:
+        _clotheslinePool.release(obs as ClotheslineObstacle);
+      case ObstacleType.windsock:
+        _windSockPool.release(obs as WindSockObstacle);
     }
   }
 }
