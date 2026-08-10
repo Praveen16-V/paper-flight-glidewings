@@ -26,7 +26,9 @@ import '../paper_flight_game.dart';
 ///    and playback rate (pitch) track world scroll speed + vertical dive speed.
 ///    Gated by the SFX toggle and scaled by SFX volume (per spec).
 ///  * **Dynamic camera** — pulls the view back (zoom-out) once scroll speed
-///    passes ~350 px/s, and banks the viewport 1–2° toward lateral movement.
+///    passes ~350 px/s. (The viewport previously also banked toward lateral
+///    movement, tilting the whole world with the plane; that is intentionally
+///    disabled now — the world stays level.)
 ///  * **Vignette / speed streaks** — white motion lines along the viewport
 ///    edges + a radial vignette that intensify on high-speed dives / Coin Rush.
 ///  * **Paper crease** — a synthesized flutter when holding lift or carving a
@@ -53,7 +55,6 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
 
   // ── Camera easing state ───────────────────────────────────────────────────
   double _zoom = 1.0;
-  double _bankAngle = 0.0;
 
   // ── Streak overlay animation ──────────────────────────────────────────────
   double _streakIntensity = 0.0;
@@ -197,7 +198,7 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
       _windTarget = 0.0;
       _windRate = 1.0;
     } else {
-      // World scroll speed 120..480 → 0..1, plus dive (downward) speed.
+      // World scroll speed base..max → 0..1, plus dive (downward) speed.
       final speedFactor = ((gameRef.scrollSpeed - GameConfig.baseScrollSpeed) /
               (GameConfig.maxScrollSpeed - GameConfig.baseScrollSpeed))
           .clamp(0.0, 1.0)
@@ -225,7 +226,12 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     _windReady = false;
   }
 
-  // ── Dynamic camera: zoom-out at high speed + banking into turns ───────────
+  // ── Dynamic camera: zoom-out at high speed ────────────────────────────────
+  //
+  // Note: the viewport previously also *banked* (rotated) toward the plane's
+  // lateral velocity, which tilted the whole world with the plane. That is
+  // disabled on purpose now — the world stays perfectly level; only a subtle
+  // zoom-out at high speed remains.
 
   void _updateCamera(double dt, bool playing) {
     final viewfinder = gameRef.camera.viewfinder;
@@ -233,7 +239,6 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     if (!playing) {
       // Ease back to neutral when idle / paused / dying / game over.
       _zoom = MathUtils.lerp(_zoom, 1.0, (5.0 * dt).clamp(0.0, 1.0));
-      _bankAngle = MathUtils.lerp(_bankAngle, 0.0, (5.0 * dt).clamp(0.0, 1.0));
     } else {
       // Zoom-out: pull back once scroll speed passes the threshold.
       final zoomTarget =
@@ -250,25 +255,11 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
                   .toDouble()
               : 1.0;
       _zoom = MathUtils.lerp(_zoom, zoomTarget, (3.0 * dt).clamp(0.0, 1.0));
-
-      // Banking: tilt the viewport toward the plane's lateral velocity.
-      final vx = gameRef.plane.horizontalVelocity;
-      final bankTarget = MathUtils
-          .remap(
-            vx,
-            -GameConfig.maxTiltSpeed,
-            GameConfig.maxTiltSpeed,
-            -GameConfig.cameraBankMax,
-            GameConfig.cameraBankMax,
-          )
-          .clamp(-GameConfig.cameraBankMax, GameConfig.cameraBankMax)
-          .toDouble();
-      _bankAngle = MathUtils.lerp(
-          _bankAngle, bankTarget, (4.0 * dt).clamp(0.0, 1.0));
     }
 
+    // World never tilts — angle is pinned level.
     viewfinder.zoom = _zoom;
-    viewfinder.angle = _bankAngle;
+    viewfinder.angle = 0.0;
   }
 
   // ── Vignette / speed streaks overlay ──────────────────────────────────────

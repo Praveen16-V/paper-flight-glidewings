@@ -97,7 +97,7 @@ class CollectibleSpawner extends Component {
             (GameConfig.designWidth -
                 GameConfig.horizontalEdgeMargin * 2 -
                 40);
-    final count = random.nextInt(4) + 4;
+    final count = random.nextInt(2) + 3; // 3–4 coins per line
     for (int i = 0; i < count; i++) {
       spawnCoinAt(Vector2(x, GameConfig.coinSpawnY - i * 36.0));
     }
@@ -106,7 +106,7 @@ class CollectibleSpawner extends Component {
   void _spawnArc() {
     final centerX = GameConfig.designWidth * 0.25 +
         random.nextDouble() * GameConfig.designWidth * 0.5;
-    final count = random.nextInt(4) + 6;
+    final count = random.nextInt(2) + 4; // 4–5 coins per arc
     final radius = 50 + random.nextDouble() * 40;
     spawnCoinArc(
       centerX: centerX,

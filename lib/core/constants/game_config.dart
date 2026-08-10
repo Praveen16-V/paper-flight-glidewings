@@ -7,9 +7,10 @@ abstract class GameConfig {
   static const double designHeight = 844.0;
 
   // ── Scroll / Speed ───────────────────────────────────────────────────────
-  /// Starting world scroll speed in logical px/s (downward). Kept low so the
-  /// world drifts by calmly at the start instead of rushing at the player.
-  static const double baseScrollSpeed = 120.0;
+  /// Starting world scroll speed in logical px/s (downward). Intentionally very
+  /// low so the world is almost still at the start — it only begins to move
+  /// past the plane as distance accumulates (see [scrollSpeedPerMeter]).
+  static const double baseScrollSpeed = 80.0;
 
   /// Maximum scroll speed cap — prevents unplayable frame windows.
   static const double maxScrollSpeed = 480.0;
@@ -18,8 +19,18 @@ abstract class GameConfig {
   ///
   /// Speed is a pure function of distance reached, not of elapsed time — so the
   /// world only speeds up as you fly further, ramping in gradually and smoothly.
-  /// (base + 0.16 × meters, clamped to maxScrollSpeed ≈ 2250 m.)
+  /// (base + 0.16 × meters, clamped to maxScrollSpeed ≈ 2500 m.)
   static const double scrollSpeedPerMeter = 0.16;
+
+  /// Distance (meters) at which dynamic obstacles (birds, kites, balloons,
+  /// drones) begin to gain any lateral movement. Below this they scroll
+  /// straight down with the world — effectively static, as requested.
+  static const double dynamicObstacleRampStartMeters = 0.0;
+
+  /// Distance (meters) by which dynamic obstacles reach their full lateral
+  /// movement amplitude. Between [dynamicObstacleRampStartMeters] and this
+  /// value the drift / tracking eases in linearly with distance flown.
+  static const double dynamicObstacleRampEndMeters = 350.0;
 
   /// Speed multiplier during Slow-Mo power-up.
   static const double slowMoPowerUpMultiplier = 0.45;
@@ -176,7 +187,9 @@ abstract class GameConfig {
   // ── Coins ────────────────────────────────────────────────────────────────
   static const double coinSpawnY = -40.0;
   static const double coinRecycleY = 920.0;
-  static const double coinBaseSpawnInterval = 0.9;
+  /// Time between procedural coin batches. Kept on the longer side so coins
+  /// feel like occasional rewards to chase rather than a constant shower.
+  static const double coinBaseSpawnInterval = 1.6;
   static const double coinMagnetRadius = 165.0;
   static const double coinSize = 28.0;
 

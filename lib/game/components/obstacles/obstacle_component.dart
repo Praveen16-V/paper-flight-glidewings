@@ -155,6 +155,30 @@ abstract class ObstacleComponent extends PositionComponent
   /// Override for dynamic obstacles that move beyond simple vertical scroll.
   void updateObstacle(double dt) {}
 
+  // ── Distance-driven movement ramp ──────────────────────────────────────────
+
+  /// How much of their full lateral movement dynamic obstacles (birds, kites,
+  /// balloons, drones) are currently allowed to use.
+  ///
+  /// Returns 0 at the very start of a run — so those obstacles scroll straight
+  /// down with the world and read as static — and ramps linearly to 1 by
+  /// [GameConfig.dynamicObstacleRampEndMeters] flown. Subclasses multiply
+  /// their drift amplitude / tracking gain by this factor.
+  double get dynamicMovementFactor {
+    // Precision Trials are handcrafted courses whose obstacles carry explicit
+    // drift amplitudes — they must move exactly as authored, so the distance
+    // ramp never applies there.
+    if (game.mode == GameMode.trial) return 1.0;
+    final meters = game.distanceMeters;
+    if (meters <= GameConfig.dynamicObstacleRampStartMeters) return 0.0;
+    if (meters >= GameConfig.dynamicObstacleRampEndMeters) return 1.0;
+    return ((meters - GameConfig.dynamicObstacleRampStartMeters) /
+            (GameConfig.dynamicObstacleRampEndMeters -
+                GameConfig.dynamicObstacleRampStartMeters))
+        .clamp(0.0, 1.0)
+        .toDouble();
+  }
+
   // ── Collision ──────────────────────────────────────────────────────────────
 
   @override
@@ -645,19 +669,26 @@ class BuildingObstacle extends ObstacleComponent {
       {required bool isLeft}) {
     if (bw <= 0) return;
 
-    // Base building facade
+    // Warm paper-craft facade — deliberately a different hue family from the
+    // cool dark-navy sky so buildings always read clearly against the world.
     final facadePaint = Paint()
-      ..color = const Color(0xFF263238)
+      ..color = const Color(0xFFD7B98C) // warm kraft tan
       ..style = PaintingStyle.fill;
     final foldEdgePaint = Paint()
-      ..color = const Color(0xFF37474F)
+      ..color = const Color(0xFFB8945C) // folded-under warm shadow edge
       ..style = PaintingStyle.fill;
     final trimPaint = Paint()
-      ..color = const Color(0xFF455A64)
+      ..color = const Color(0xFF8D6E4F) // warm brown cornice trim
       ..style = PaintingStyle.fill;
+    // Crisp dark outline so the silhouette separates from any backdrop.
+    final outlinePaint = Paint()
+      ..color = const Color(0xFF4E342E)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6;
 
     // Main tower block
     canvas.drawRect(Rect.fromLTWH(startX, 0, bw, bh), facadePaint);
+    canvas.drawRect(Rect.fromLTWH(startX, 0, bw, bh), outlinePaint);
 
     // Paper-fold side shadow / 3D depth panel
     final sideWidth = math.min(10.0, bw * 0.2);
@@ -1099,7 +1130,10 @@ class BirdObstacle extends ObstacleComponent {
     _wingFlapPhase += dt * 9.0; // Rapid wing flap frequency
 
     final prevX = position.x;
-    final targetX = _spawnX + _patrolAmplitude * math.sin(_patrolPhase);
+    // Lateral drift eases in from zero with distance flown — at the start of
+    // a run the bird simply scrolls straight down with the world.
+    final targetX =
+        _spawnX + _patrolAmplitude * dynamicMovementFactor * math.sin(_patrolPhase);
     position.x = targetX.clamp(
       GameConfig.horizontalEdgeMargin + 10,
       GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 10,
@@ -1286,8 +1320,11 @@ class DroneObstacle extends ObstacleComponent {
           (targetX - safeCorridorX!).abs() < 55) {
         targetX = targetX < safeCorridorX! ? safeCorridorX! - 65 : safeCorridorX! + 65;
       }
-      final diff = targetX - position.x;
-      _isLockedOn = diff.abs() < 40.0;
+      final rawDiff = targetX - position.x;
+      _isLockedOn = rawDiff.abs() < 40.0;
+      // Player-tracking only engages as the run warms up — at the very start
+      // the drone holds its spawn lane and scrolls straight down.
+      final diff = rawDiff * dynamicMovementFactor;
       _velocityX = MathUtils.lerp(_velocityX, diff * 1.8, 0.10);
       position.x = (position.x + _velocityX * dt).clamp(
         GameConfig.horizontalEdgeMargin + 15,
@@ -1644,7 +1681,11 @@ class HotAirBalloonObstacle extends ObstacleComponent {
   @override
   void updateObstacle(double dt) {
     _driftPhase += dt * 1.2;
-    position.x = (_spawnX + math.sin(_driftPhase) * _driftAmp).clamp(
+    // Drift eases in from zero with distance flown — the balloon starts
+    // hovering in place and only begins to sway once the player is further in.
+    position.x = (_spawnX +
+            math.sin(_driftPhase) * _driftAmp * dynamicMovementFactor)
+        .clamp(
       GameConfig.horizontalEdgeMargin + 30,
       GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 30,
     );
@@ -1908,7 +1949,14 @@ class StormCloudObstacle extends ObstacleComponent {
     ];
     final radii = [22.0, 26.0, 28.0, 20.0, 25.0];
 
+    // Light rim outline first so the dark cloud silhouette stays readable
+    // against the similarly-dark storm sky.
+    final rimPaint = Paint()
+      ..color = const Color(0x66B0BEC5)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
     for (int i = 0; i < lobes.length; i++) {
+      canvas.drawCircle(lobes[i], radii[i] + 1, rimPaint);
       canvas.drawCircle(lobes[i], radii[i], baseCloud);
     }
     for (int i = 0; i < lobes.length; i++) {
@@ -1988,7 +2036,12 @@ class KiteObstacle extends ObstacleComponent {
   @override
   void updateObstacle(double dt) {
     _flutterPhase += dt * 3.5;
-    position.x = (_spawnX + math.sin(_flutterPhase) * _driftAmp).clamp(
+    // Lateral drift eases in from zero with distance flown — at the start the
+    // kite simply descends with the world. (The paper-flutter tilt is a
+    // cosmetic animation and stays.)
+    position.x = (_spawnX +
+            math.sin(_flutterPhase) * _driftAmp * dynamicMovementFactor)
+        .clamp(
       GameConfig.horizontalEdgeMargin + 20,
       GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 20,
     );

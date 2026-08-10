@@ -37,9 +37,9 @@ import 'plane_trail_component.dart';
 ///   X-axis / wind / thermal: unchanged from original design.
 ///
 ///   Rotation:
-///     Adaptive lerp speed — faster response at high velocity changes.
-///     Pitch maps vY → angle; bank maps vX → angle.
-///     Glide-arc nose-up bias while coasting upward.
+///     The nose is locked pointing to the top of the screen at all times —
+///     the plane never banks to a side and never pitches with climb/dive.
+///     (This keeps it readable and stable while the world stays level.)
 class PlaneComponent extends PositionComponent
     with HasGameRef<PaperFlightGame>, CollisionCallbacks {
   PlaneComponent({
@@ -77,8 +77,6 @@ class PlaneComponent extends PositionComponent
   // ── Visual State ───────────────────────────────────────────────────────────
 
   bool _isAlive = true;
-  double _bankAngle = 0.0;   // visual roll for X movement
-  double _pitchAngle = 0.0;  // visual pitch for Y movement
 
   /// Wing-fold amount [0 = fully spread (gliding), 1 = folded up (holding)].
   double _wingFold = 0.0;
@@ -722,10 +720,8 @@ class PlaneComponent extends PositionComponent
     // ── Visual Rotation (Task 3) ───────────────────────────────────────────────
 
     _updateRotation();
-    // Turbulence visibly rattles the wings as well as reducing control.
-    if (wind.isInTurbulence(normX)) {
-      angle += sin(_ghostFlickerPhase * 3.0) * 0.035;
-    }
+    // Note: no extra angle jitter is applied — the nose stays locked pointing
+    // up at all times (see [_updateRotation]).
 
     // ── Wing Fold ─────────────────────────────────────────────────────────────
 
@@ -816,59 +812,11 @@ class PlaneComponent extends PositionComponent
   // ── Rotation Update (Task 3) ──────────────────────────────────────────────
 
   void _updateRotation() {
-    // Adaptive pitch lerp: responds faster when velocity is changing quickly.
-    final pitchLerpT = MathUtils.remap(
-      _velocityY.abs(),
-      0,
-      GameConfig.maxFallSpeed,
-      0.06,
-      0.18,
-    );
-
-    // Pitch target: nose-up when climbing, nose-down when falling.
-    // Slightly wider range than original for more expressive feel.
-    double pitchTarget = MathUtils.remap(
-      _velocityY,
-      GameConfig.liftCruiseSpeed, // full climb speed → max nose-up
-      GameConfig.maxFallSpeed,    // max fall speed  → max nose-down
-      -0.42,
-      0.52,
-    );
-
-    // Glide arc nose-up bias: plane "floats" with nose slightly raised while
-    // coasting upward — the most characteristic paper-plane moment.
-    if (_glideArcActive && _velocityY < 0) {
-      pitchTarget += GameConfig.glideNoseUpBias;
-    }
-
-    // Ceiling stall dip: gentle nose-down while stalling at ceiling.
-    if (_ceilingStallTimer > 0) {
-      final t = _ceilingStallTimer / GameConfig.ceilingDipDuration;
-      pitchTarget += GameConfig.ceilingDipAngle * t;
-    }
-
-    _pitchAngle = MathUtils.lerp(_pitchAngle, pitchTarget, pitchLerpT);
-
-    // Adaptive bank lerp.
-    final bankLerpT = MathUtils.remap(
-      _velocityX.abs(),
-      0,
-      GameConfig.maxTiltSpeed,
-      0.07,
-      0.16,
-    );
-
-    final bankTarget = MathUtils.remap(
-      _velocityX,
-      -GameConfig.maxTiltSpeed,
-      GameConfig.maxTiltSpeed,
-      -0.22,
-      0.22,
-    );
-
-    _bankAngle = MathUtils.lerp(_bankAngle, bankTarget, bankLerpT);
-
-    angle = _pitchAngle + _bankAngle;
+    // The plane is drawn nose-up by default (see the -π/2 rotation in
+    // [render]). We keep that nose locked pointing to the top of the screen at
+    // all times — it never banks (leans to a side) and never pitches down,
+    // regardless of climb / dive / lateral velocity.
+    angle = 0.0;
   }
 
   // ── Wing Squish Effect (Task 4) ────────────────────────────────────────────
@@ -909,8 +857,6 @@ class PlaneComponent extends PositionComponent
     _isAlive = true;
     _velocityX = 0;
     _velocityY = 0;
-    _pitchAngle = 0;
-    _bankAngle = 0;
     _wingFold = 0;
     _wasHolding = false;
     _glideArcActive = false;
