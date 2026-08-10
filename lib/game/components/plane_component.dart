@@ -18,6 +18,7 @@ import '../systems/input_manager.dart';
 import 'effects/thermal_column_component.dart';
 import 'skins/animated_paper_skin.dart';
 import 'skins/reactive_paper_skin_painter.dart';
+import 'skins/weathered_paper_skin_painter.dart';
 import 'plane_trail_component.dart';
 
 /// The player's paper plane.
@@ -57,6 +58,7 @@ class PlaneComponent extends PositionComponent
     required this.planeType,
     PaperSkin paperSkin = PaperSkin.plain,
     this.planeLevel = 1,
+    this.skinWearLevel = 0.0,
   })  : paperSkin = paperSkin,
         _skinPainter = ReactivePaperSkinPainter(paperSkin),
         super(
@@ -69,6 +71,11 @@ class PlaneComponent extends PositionComponent
   PaperSkin paperSkin;
   final ReactivePaperSkinPainter _skinPainter;
   int planeLevel;
+
+  /// Persistent blend from pristine (0) to veteran (1) paper texture.
+  double skinWearLevel;
+  static const WeatheredPaperSkinPainter _weatheredSkinPainter =
+      WeatheredPaperSkinPainter();
 
   // ── Physics State ──────────────────────────────────────────────────────────
 
@@ -236,6 +243,10 @@ class PlaneComponent extends PositionComponent
     _skinPainter.onGameEvent(eventType);
   }
 
+  void syncSkinWear(double newWearLevel) {
+    skinWearLevel = newWearLevel.clamp(0.0, 1.0).toDouble();
+  }
+
   /// Attaches/removes the sprite-sheet overlay only for frame-animated skins.
   /// Other skins keep using the lightweight procedural Canvas pass below.
   void _syncAnimatedSkinOverlay() {
@@ -364,6 +375,13 @@ class PlaneComponent extends PositionComponent
     // ── Paper-skin overlay patterns and gameplay reactions ──────────────────
     _drawSkinOverlay(canvas, w, h);
     _skinPainter.renderReactionOverlay(canvas, w, h, _animTime);
+    _weatheredSkinPainter.paint(
+      canvas,
+      skin: paperSkin,
+      wearLevel: skinWearLevel,
+      width: w,
+      height: h,
+    );
 
     // ── Aviation Wing Navigation Lights ──────────────────────────────────────
     _drawWingNavLights(canvas, w, h);

@@ -166,6 +166,10 @@ class PaperFlightGame extends FlameGame
   int _powerUpsUsedThisRun = 0;
   String _lastCrashCause = 'unknown';
 
+  /// Guards the one persistent weathering write for any completed/abandoned
+  /// flight. The game can finalize through several mode-specific paths.
+  bool _skinWearRecordedThisRun = false;
+
   // Flutter/provider synchronization is intentionally outside the 60/120 Hz
   // hot path. The Flame world still updates every frame.
   double _hudUpdateAccumulator = 0;
@@ -243,14 +247,20 @@ class PaperFlightGame extends FlameGame
 
     // Plane — added last so it renders on top of obstacles (z-order by add).
     final save = ref.read(saveDataProvider);
-    final planeType = PlaneType.values[save.equippedPlaneIndex.clamp(0, PlaneType.values.length - 1)];
-    final skin = PaperSkin.values[save.equippedSkinIndex.clamp(0, PaperSkin.values.length - 1)];
+    final planeType = PlaneType.values[save.equippedPlaneIndex
+        .clamp(0, PlaneType.values.length - 1)
+        .toInt()];
+    final skinIndex = save.equippedSkinIndex
+        .clamp(0, PaperSkin.values.length - 1)
+        .toInt();
+    final skin = PaperSkin.values[skinIndex];
     final planeLvl = save.getPlaneLevel(save.equippedPlaneIndex);
     plane = PlaneComponent(
       game: this,
       planeType: planeType,
       paperSkin: skin,
       planeLevel: planeLvl,
+      skinWearLevel: save.skinWearLevelFor(skinIndex),
     );
     world.add(plane);
 
@@ -444,12 +454,14 @@ class PaperFlightGame extends FlameGame
       final pType = PlaneType.values[save.equippedPlaneIndex
           .clamp(0, PlaneType.values.length - 1)
           .toInt()];
-      final pSkin = PaperSkin.values[save.equippedSkinIndex
+      final skinIndex = save.equippedSkinIndex
           .clamp(0, PaperSkin.values.length - 1)
-          .toInt()];
+          .toInt();
+      final pSkin = PaperSkin.values[skinIndex];
       final pLvl = save.getPlaneLevel(save.equippedPlaneIndex);
       if (pType != plane.planeType) plane.syncHitboxForPlaneType(pType);
       if (pSkin != plane.paperSkin) plane.syncSkin(pSkin);
+      plane.syncSkinWear(save.skinWearLevelFor(skinIndex));
       if (pLvl != plane.planeLevel) plane.syncLevel(pLvl);
     } catch (_) {}
   }
@@ -566,6 +578,7 @@ class PaperFlightGame extends FlameGame
     _hudUpdateAccumulator = 0;
     _runtimeStateSyncAccumulator = 0;
     _lastCrashCause = 'unknown';
+    _skinWearRecordedThisRun = false;
     _zenBounceCooldown = 0;
     _phase = GamePhase.playing;
     _isReviving = false;
@@ -617,11 +630,17 @@ class PaperFlightGame extends FlameGame
       inputManager.calibrateTilt();
       // Re-sync plane type/skin at run start in case hangar changed it
       final save = ref.read(saveDataProvider);
-      final pType = PlaneType.values[save.equippedPlaneIndex.clamp(0, PlaneType.values.length - 1)];
-      final pSkin = PaperSkin.values[save.equippedSkinIndex.clamp(0, PaperSkin.values.length - 1)];
+      final pType = PlaneType.values[save.equippedPlaneIndex
+          .clamp(0, PlaneType.values.length - 1)
+          .toInt()];
+      final skinIndex = save.equippedSkinIndex
+          .clamp(0, PaperSkin.values.length - 1)
+          .toInt();
+      final pSkin = PaperSkin.values[skinIndex];
       final pLvl = save.getPlaneLevel(save.equippedPlaneIndex);
       plane.syncHitboxForPlaneType(pType);
       plane.syncSkin(pSkin);
+      plane.syncSkinWear(save.skinWearLevelFor(skinIndex));
       plane.syncLevel(pLvl);
 
       // Crane branch brush-off charges (1 at L1/L2, 2 at L3)
@@ -853,9 +872,7 @@ class PaperFlightGame extends FlameGame
         durationSeconds: _runTimeSeconds,
       ),
     );
-    try {
-      ref.read(saveDataProvider.notifier).recordZenRun(_distanceMeters);
-    } catch (_) {}
+    unawaited(_persistZenCompletion());
     ref.read(gameSessionProvider.notifier).endZen();
   }
 
@@ -926,15 +943,11 @@ class PaperFlightGame extends FlameGame
       );
     }
 
-    if (stars > 0) {
-      unawaited(() async {
-        try {
-          await ref
-              .read(saveDataProvider.notifier)
-              .recordTrialStars(trialId: def.id, stars: stars);
-        } catch (_) {}
-      }());
-    }
+    unawaited(_persistTrialCompletion(
+      trialId: def.id,
+      stars: stars,
+      crashed: !completed && !timedOut,
+    ));
   }
 
   /// Ends an in-progress run without awarding economy/progression and records
@@ -952,6 +965,7 @@ class PaperFlightGame extends FlameGame
         reason: reason,
       ),
     );
+    unawaited(_recordSkinWear(crashed: false));
     _phase = GamePhase.idle;
     inputManager.pauseSensors();
     gameFeelSystem.silence();
@@ -1162,6 +1176,48 @@ class PaperFlightGame extends FlameGame
 
   // ── Internals ─────────────────────────────────────────────────────────────
 
+  /// Persists distance wear and a final-crash mark for the equipped skin once
+  /// per run. Wear is cosmetic-only and therefore never delays results UI.
+  Future<void> _recordSkinWear({required bool crashed}) async {
+    if (_skinWearRecordedThisRun) return;
+    _skinWearRecordedThisRun = true;
+    try {
+      final save = ref.read(saveDataProvider);
+      final skinIndex = save.equippedSkinIndex
+          .clamp(0, PaperSkin.values.length - 1)
+          .toInt();
+      await ref.read(saveDataProvider.notifier).accrueSkinWear(
+            skinIndex: skinIndex,
+            distanceMeters: _distanceMeters,
+            crashed: crashed,
+          );
+    } catch (_) {
+      // Cosmetic persistence never compromises the end-of-run flow.
+    }
+  }
+
+  Future<void> _persistZenCompletion() async {
+    try {
+      await ref.read(saveDataProvider.notifier).recordZenRun(_distanceMeters);
+    } catch (_) {}
+    await _recordSkinWear(crashed: false);
+  }
+
+  Future<void> _persistTrialCompletion({
+    required int trialId,
+    required int stars,
+    required bool crashed,
+  }) async {
+    try {
+      if (stars > 0) {
+        await ref
+            .read(saveDataProvider.notifier)
+            .recordTrialStars(trialId: trialId, stars: stars);
+      }
+    } catch (_) {}
+    await _recordSkinWear(crashed: crashed);
+  }
+
   Future<void> _finalizeRun({required bool wasRevived}) async {
     final session = ref.read(gameSessionProvider);
 
@@ -1198,7 +1254,7 @@ class PaperFlightGame extends FlameGame
       ref.read(gameSessionProvider.notifier).triggerGameOver(result);
     }
 
-    // Persist in the background (unawaited).
+    // Persist economy and cosmetic weathering in the background (unawaited).
     unawaited(_persistRun());
   }
 
@@ -1209,6 +1265,8 @@ class PaperFlightGame extends FlameGame
     final notifier = ref.read(saveDataProvider.notifier);
 
     try {
+      // Keep wear and run/economy writes serialized through PersistenceService.
+      await _recordSkinWear(crashed: true);
       if (mode == GameMode.daily) {
         // ── Daily Seeded Flight: the award is the leaderboard — the run never
         // touches coins, high scores or challenge objectives.

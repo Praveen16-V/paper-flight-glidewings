@@ -144,6 +144,11 @@ class SaveData extends HiveObject {
   @HiveField(33)
   int customSkinStamp;
 
+  /// Persistent 0..1 weathering per PaperSkin index. Empty entries read as
+  /// pristine so saves created before the wear system migrate safely.
+  @HiveField(34)
+  List<double> skinWearLevels;
+
   SaveData({
     this.coins = 0,
     this.gems = 0,
@@ -179,6 +184,7 @@ class SaveData extends HiveObject {
     this.customSkinPrimaryHex = 0xFF4FC3F7,
     this.customSkinAccentHex = 0xFFFFD54F,
     this.customSkinStamp = 0,
+    List<double>? skinWearLevels,
   })  : unlockedPlaneIndices = unlockedPlaneIndices ?? [0],
         unlockedSkinIndices = unlockedSkinIndices ?? [0],
         dailyChallengeIds = dailyChallengeIds ?? [],
@@ -190,12 +196,19 @@ class SaveData extends HiveObject {
         weeklyChallengeCompleted = weeklyChallengeCompleted ?? [],
         weeklyChallengeClaimed = weeklyChallengeClaimed ?? [],
         trialStars = trialStars ?? [],
-        planeUpgradeLevels = planeUpgradeLevels ?? List.filled(16, 1);
+        planeUpgradeLevels = planeUpgradeLevels ?? List.filled(16, 1),
+        skinWearLevels = skinWearLevels ?? [];
 
   /// Returns the current upgrade level (1..3) for a given plane index.
   int getPlaneLevel(int planeIndex) {
     if (planeIndex < 0 || planeIndex >= planeUpgradeLevels.length) return 1;
     return planeUpgradeLevels[planeIndex].clamp(1, 3);
+  }
+
+  /// Returns weathering for [skinIndex] (0 = pristine, 1 = veteran).
+  double skinWearLevelFor(int skinIndex) {
+    if (skinIndex < 0 || skinIndex >= skinWearLevels.length) return 0.0;
+    return skinWearLevels[skinIndex].clamp(0.0, 1.0).toDouble();
   }
 
   /// Returns a fresh default save for a new installation.
@@ -238,6 +251,7 @@ class SaveData extends HiveObject {
       customSkinPrimaryHex: customSkinPrimaryHex,
       customSkinAccentHex: customSkinAccentHex,
       customSkinStamp: customSkinStamp,
+      skinWearLevels: List<double>.from(skinWearLevels),
     );
   }
 }

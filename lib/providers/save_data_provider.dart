@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
 import '../models/save_data.dart';
 import '../models/challenge_definitions.dart';
@@ -306,6 +307,40 @@ class SaveDataNotifier extends Notifier<SaveData> {
       if (primaryHex != null) s.customSkinPrimaryHex = primaryHex;
       if (accentHex != null) s.customSkinAccentHex = accentHex;
       if (stampIndex != null) s.customSkinStamp = stampIndex;
+      return s;
+    });
+  }
+
+  // ── Skin Weathering ───────────────────────────────────────────────────────
+
+  double skinWearLevel(int skinIndex) => state.skinWearLevelFor(skinIndex);
+
+  /// Permanently ages a skin from completed flight distance and a final crash.
+  /// The write happens once per run (never from the frame loop), so the visual
+  /// story persists without adding pressure to gameplay performance.
+  Future<void> accrueSkinWear({
+    required int skinIndex,
+    required double distanceMeters,
+    required bool crashed,
+  }) async {
+    if (skinIndex < 0) return;
+    final distanceWear = (distanceMeters /
+            GameConfig.skinWearDistanceForVeteran)
+        .clamp(0.0, GameConfig.skinWearMaxDistanceIncrementPerRun)
+        .toDouble();
+    final delta = distanceWear +
+        (crashed ? GameConfig.skinWearCrashImpact : 0.0);
+    if (delta <= 0) return;
+
+    state = await PersistenceService.instance.updateSave((s) {
+      final levels = List<double>.from(s.skinWearLevels);
+      while (levels.length <= skinIndex) {
+        levels.add(0.0);
+      }
+      levels[skinIndex] = (levels[skinIndex] + delta)
+          .clamp(0.0, 1.0)
+          .toDouble();
+      s.skinWearLevels = levels;
       return s;
     });
   }

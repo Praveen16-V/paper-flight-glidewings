@@ -10,6 +10,7 @@ import '../core/widgets/currency_chip.dart';
 import '../core/widgets/paper_button.dart';
 import '../core/widgets/paper_card.dart';
 import '../core/widgets/paper_icons.dart';
+import '../game/components/skins/weathered_paper_skin_painter.dart';
 import '../providers/save_data_provider.dart';
 import '../services/analytics_service.dart';
 
@@ -749,6 +750,12 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
 
   @override
   Widget build(BuildContext context) {
+    final wearLevel = ref
+        .watch(saveDataProvider)
+        .skinWearLevelFor(widget.selectedIndex);
+    final wearLabel = wearLevel < .18
+        ? 'PRISTINE'
+        : (wearLevel < .68 ? 'SEASONED' : 'VETERAN');
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
@@ -870,6 +877,12 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
                                                   painter:
                                                       _SkinPatternPainter(
                                                           skin: widget.skin)),
+                                              CustomPaint(
+                                                painter: _WearOverlayPainter(
+                                                  skin: widget.skin,
+                                                  wearLevel: wearLevel,
+                                                ),
+                                              ),
                                               // paper plane silhouette centered
                                               Center(
                                                 child: CustomPaint(
@@ -915,6 +928,31 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
                               color: Colors.white.withOpacity(0.55),
                               fontSize: 10,
                               fontStyle: FontStyle.italic)),
+                      if (widget.unlocked) ...[
+                        const SizedBox(height: 5),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(
+                                  .12 + wearLevel * .28),
+                            ),
+                          ),
+                          child: Text(
+                            'PAPER $wearLabel • ${(wearLevel * 100).round()}% PATINA',
+                            style: AppTypography.overline.copyWith(
+                              color: wearLevel >= .68
+                                  ? const Color(0xFFFFCC80)
+                                  : Colors.white.withOpacity(0.72),
+                              fontSize: 7.5,
+                              letterSpacing: .7,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -2621,6 +2659,31 @@ class _SkinPatternPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SkinPatternPainter old) => old.skin != skin;
+}
+
+/// Hangar-preview bridge for the same pristine → veteran blend used in flight.
+class _WearOverlayPainter extends CustomPainter {
+  const _WearOverlayPainter({required this.skin, required this.wearLevel});
+
+  final PaperSkin skin;
+  final double wearLevel;
+  static const WeatheredPaperSkinPainter _painter =
+      WeatheredPaperSkinPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    _painter.paint(
+      canvas,
+      skin: skin,
+      wearLevel: wearLevel,
+      width: size.width,
+      height: size.height,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _WearOverlayPainter old) =>
+      old.skin != skin || (old.wearLevel - wearLevel).abs() > .001;
 }
 
 // ── Action chips — hierarchy ────────────────────────────────────────────────

@@ -107,7 +107,8 @@ lib/
 │   │   │   └── thermal_column_component.dart # Visible local updrafts + orbit surfing
 │   │   ├── skins/
 │   │   │   ├── animated_paper_skin.dart # 8-frame SpriteAnimation skin overlays
-│   │   │   └── reactive_paper_skin_painter.dart # Event-driven skin reactions
+│   │   │   ├── reactive_paper_skin_painter.dart # Event-driven skin reactions
+│   │   │   └── weathered_paper_skin_painter.dart # Pristine → veteran texture blend
 │   │   └── powerups/
 │   │       └── powerup_component.dart    # 5 power-up types, Canvas icons
 │   ├── systems/
@@ -187,6 +188,7 @@ Key knobs to adjust during playtesting:
 - `thermalColumnMinRadius` / `thermalSurfLiftMultiplier` — updraft precision and circle-surf payoff
 - `wingmanFormationRadius` / `wingmanCoinScoreMultiplier` — formation tolerance and wingman reward strength
 - `goldLeafCoinSparkleDuration` / `holographicNearMissShiftDuration` — reactive skin response windows
+- `skinWearDistanceForVeteran` / `skinWearCrashImpact` — cosmetic patina pace and crash marks
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts

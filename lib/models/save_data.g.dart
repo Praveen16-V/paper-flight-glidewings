@@ -52,13 +52,16 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
       customSkinPrimaryHex: (fields[31] as num?)?.toInt() ?? 0xFF4FC3F7,
       customSkinAccentHex: (fields[32] as num?)?.toInt() ?? 0xFFFFD54F,
       customSkinStamp: (fields[33] as num?)?.toInt() ?? 0,
+      skinWearLevels: ((fields[34] as List?) ?? const <dynamic>[])
+          .map<double>((value) => (value as num).toDouble())
+          .toList(),
     );
   }
 
   @override
   void write(BinaryWriter writer, SaveData obj) {
     writer
-      ..writeByte(34)
+      ..writeByte(35)
       ..writeByte(0)
       ..write(obj.coins)
       ..writeByte(1)
@@ -126,7 +129,9 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
       ..writeByte(32)
       ..write(obj.customSkinAccentHex)
       ..writeByte(33)
-      ..write(obj.customSkinStamp);
+      ..write(obj.customSkinStamp)
+      ..writeByte(34)
+      ..write(obj.skinWearLevels);
   }
 
   @override
