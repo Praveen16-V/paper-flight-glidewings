@@ -33,7 +33,7 @@ import 'plane_trail_component.dart';
 ///     Origami Butterfly, Paper Bomber, Interceptor, Soaring Albatross,
 ///     Classic Biplane, Origami Shuriken, Paper Rocket).
 ///   - 3-level upgrade tree perks & stats scaling.
-///   - Secondary Perlin wing flex wobble on top of hold/release fold.
+///   - Crosswind-amplified Perlin wing flex on top of hold/release fold.
 ///   - Thermal breathing scale pulse while riding updrafts.
 ///   - Edge curl & crumple damage state after near-miss passes (heals over time).
 ///   - Procedural paper grain texture & diffuse shading (not flat solid colors).
@@ -92,6 +92,12 @@ class PlaneComponent extends PositionComponent
 
   /// Procedural ValueNoise generator for secondary aerodynamic wing flutter.
   final ValueNoise _noise = ValueNoise(seed: 2026);
+
+  /// Smoothed local crosswind cached from [WindSystem.currentForceAt]. Render
+  /// reads this instead of resampling game systems, keeping wing flex visually
+  /// stable while the physics loop remains authoritative.
+  double _crosswindForce = 0.0;
+  double _wingFlexStrength = 0.0;
 
   /// Near-miss crumple / damage intensity [0.0 = pristine, 1.0 = curled/crumpled].
   double _crumpleAmount = 0.0;
@@ -219,9 +225,15 @@ class PlaneComponent extends PositionComponent
     var breathScale = 1.0 + 0.042 * breathSin * _thermalBreathFactor;
     if (_shrinkActive) breathScale *= GameConfig.shrinkVisualScale;
 
-    // ── Secondary Wing Flex Wobble on top of hold/release fold ───────────────
+    // ── Crosswind-amplified wing flex on top of hold/release fold ───────────
+    // Calm air keeps a small paper flutter; a real local gust amplifies the
+    // same noise field, so wings bend organically instead of snapping between
+    // a separate "windy" pose and a calm pose.
     final flexNoise = _noise.noise1d(_animTime * 3.8);
-    final wingFlexWobble = flexNoise * 0.07 * (1.0 - _wingFold * 0.4);
+    final flexAmplitude = GameConfig.wingFlexBaseNoiseAmplitude +
+        _wingFlexStrength * GameConfig.wingFlexCrosswindNoiseBoost;
+    final wingFlexWobble =
+        flexNoise * flexAmplitude * (1.0 - _wingFold * 0.4);
     final butterflyFlap = planeType == PlaneType.butterfly
         ? math.sin(_animTime * 10.0) * 0.35 * (1.0 - _wingFold * 0.5)
         : 0.0;
@@ -275,7 +287,14 @@ class PlaneComponent extends PositionComponent
     // 4. Directional Top-Left Highlight & Dual Crease Lines
     _drawLightingAndCreases(canvas, w, h, planeColor, effectiveFold);
 
-    // 5. Edge Curl & Crumple Damage Overlay
+    // 5. Crosswind bends the paper along its wing creases. The overlay follows
+    // the same local transform as the silhouette, so it reads as flex rather
+    // than a world-space wind effect sliding over the plane.
+    if (_wingFlexStrength > 0.01) {
+      _drawCrosswindWingFlex(canvas, w, h, effectiveFold);
+    }
+
+    // 6. Edge Curl & Crumple Damage Overlay
     if (_crumpleAmount > 0.01) {
       _drawCrumpleDamage(canvas, w, h, _crumpleAmount);
     }
@@ -665,6 +684,84 @@ class PlaneComponent extends PositionComponent
 
     final creaseShadow = Paint()..color = Colors.black.withOpacity(0.45)..strokeWidth = 0.9..style = PaintingStyle.stroke;
     canvas.drawLine(Offset(w * 0.25, h / 2 + 0.5), Offset(w, h / 2 + 0.5), creaseShadow);
+  }
+
+  /// Draws subtle, asymmetric crease arcs that bow with the live crosswind.
+  /// The base silhouette already receives the amplified noise fold; these lines
+  /// make the direction and magnitude legible on every paper archetype.
+  void _drawCrosswindWingFlex(
+    Canvas canvas,
+    double w,
+    double h,
+    double effectiveFold,
+  ) {
+    final direction = _crosswindForce == 0 ? 1.0 : _crosswindForce.sign;
+    final bend = direction *
+        GameConfig.wingFlexMaxBendPixels *
+        _wingFlexStrength;
+    final spread = 1.0 - effectiveFold;
+    final upperTipY = h / 2 - h * .34 * spread;
+    final lowerTipY = h / 2 + h * .34 * spread;
+    final root = Offset(w * .63, h / 2);
+
+    final litCrease = Paint()
+      ..color = Color.fromRGBO(
+        255,
+        255,
+        255,
+        (.12 + _wingFlexStrength * .40).clamp(0.0, .58).toDouble(),
+      )
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.05 + _wingFlexStrength * .75
+      ..strokeCap = StrokeCap.round;
+    final shadedCrease = Paint()
+      ..color = Color.fromRGBO(
+        24,
+        38,
+        48,
+        (.10 + _wingFlexStrength * .34).clamp(0.0, .48).toDouble(),
+      )
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .90 + _wingFlexStrength * .65
+      ..strokeCap = StrokeCap.round;
+
+    final upperWingFlex = Path()
+      ..moveTo(root.dx, root.dy - .4)
+      ..quadraticBezierTo(
+        w * .40 + bend * .45,
+        h * .31 - bend * .16,
+        w * .10 + bend,
+        upperTipY,
+      );
+    final lowerWingFlex = Path()
+      ..moveTo(root.dx, root.dy + .4)
+      ..quadraticBezierTo(
+        w * .40 + bend * .45,
+        h * .69 - bend * .16,
+        w * .10 + bend,
+        lowerTipY,
+      );
+    canvas.drawPath(upperWingFlex, litCrease);
+    canvas.drawPath(lowerWingFlex, shadedCrease);
+
+    // A tiny displaced wingtip fold sells the paper bending into the gust even
+    // on compact archetypes whose silhouettes have very short wings.
+    final tipPaint = Paint()
+      ..color = const Color(0xFFFFF9C4)
+          .withOpacity(.20 + _wingFlexStrength * .38)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .8 + _wingFlexStrength * .55;
+    canvas.drawArc(
+      Rect.fromCenter(
+        center: Offset(w * .10 + bend, h / 2),
+        width: 8 + _wingFlexStrength * 8,
+        height: h * .42 * spread + 5,
+      ),
+      direction > 0 ? -math.pi / 2 : math.pi / 2,
+      math.pi * .72,
+      false,
+      tipPaint,
+    );
   }
 
   // ── Damage / Crumple States (Edge Curl After Near-Miss) ────────────────────
@@ -1641,6 +1738,24 @@ class PlaneComponent extends PositionComponent
     final turbulence = wind.turbulenceAt(normX);
     final controlMult = turbulence?.controlMultiplier ?? 1.0;
     final turbulenceForce = turbulence?.lateralForce ?? 0.0;
+
+    // Feed render-time paper flex from the same composed lane + pocket force
+    // the plane is fighting in physics. Smoothing prevents a noisy turbulence
+    // reversal from making folded wings visually flicker frame-to-frame.
+    final liveCrosswindForce = wind.currentForceAt(position.x);
+    final flexBlend =
+        (GameConfig.wingFlexResponseRate * dt).clamp(0.0, 1.0).toDouble();
+    _crosswindForce = MathUtils.lerp(
+      _crosswindForce,
+      liveCrosswindForce,
+      flexBlend,
+    );
+    _wingFlexStrength = MathUtils.lerp(
+      _wingFlexStrength,
+      GameConfig.wingFlexStrengthForForce(liveCrosswindForce),
+      flexBlend,
+    );
+
     double biomeControl = wind.profile.control;
     if (planeType == PlaneType.stealthJet) {
       final wBonus = planeLevel >= 3 ? 1.20 : (planeLevel == 2 ? 1.15 : 1.08);
@@ -1870,6 +1985,8 @@ class PlaneComponent extends PositionComponent
     _blackHoleActive = false;
     _turboDashActive = false;
     _shieldHitRippleTimer = 0.0;
+    _crosswindForce = 0.0;
+    _wingFlexStrength = 0.0;
     angle = 0;
     _animTime = 0.0;
     position = Vector2(
@@ -1901,6 +2018,8 @@ class PlaneComponent extends PositionComponent
     _thermalSurfLoopQueued = false;
     _thermalBreathFactor = 0.0;
     _shieldHitRippleTimer = 0.0;
+    _crosswindForce = 0.0;
+    _wingFlexStrength = 0.0;
     angle = 0;
     position.y = GameConfig.designHeight * 0.5;
 

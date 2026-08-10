@@ -259,6 +259,17 @@ class WindSystem extends Component with HasGameRef<PaperFlightGame> {
           .clamp(0, GameConfig.windLaneCount - 1)
           .toInt();
 
+  /// Returns the signed lateral force at a design-space [x] coordinate.
+  ///
+  /// This composes the broad lane push with any local turbulence cell, so
+  /// visuals such as wing flex can react to the exact same air the plane feels.
+  double currentForceAt(double x) {
+    final normX = (x / GameConfig.designWidth).clamp(0.0, 1.0).toDouble();
+    final laneForce = windAt(laneForNormX(normX)).lateralForce;
+    final pocketForce = turbulenceAt(normX)?.lateralForce ?? 0.0;
+    return laneForce + pocketForce;
+  }
+
   /// Samples the local cells at [normX]. A null result means normal lane wind
   /// is sufficient. Wind Caller deliberately calms both lane and pocket gusts.
   TurbulenceSample? turbulenceAt(double normX) {

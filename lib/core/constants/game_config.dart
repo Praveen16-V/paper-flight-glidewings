@@ -4,7 +4,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-flight-4';
+  static const String balanceVersion = '2026.08-flight-5';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -249,6 +249,30 @@ abstract class GameConfig {
 
   /// Turbulence pocket control reduction (0–1, fraction of input ignored).
   static const double turbulenceControlReduction = 0.35;
+
+  // ── Crosswind Wing Flex ─────────────────────────────────────────────────
+  /// Baseline procedural paper flutter, even in calm air.
+  static const double wingFlexBaseNoiseAmplitude = 0.07;
+
+  /// Additional flutter amplitude at full crosswind strength. This is applied
+  /// to PlaneComponent's existing noise, so flex stays organic rather than
+  /// becoming a binary wind/no-wind animation.
+  static const double wingFlexCrosswindNoiseBoost = 0.14;
+
+  /// Lateral force (px/s) that reads as a fully bent wing on screen.
+  static const double wingFlexForceForFullStrength = 135.0;
+
+  /// How quickly visual flex follows changing gusts (per second).
+  static const double wingFlexResponseRate = 5.5;
+
+  /// Max wing-crease bend in local plane pixels at full crosswind.
+  static const double wingFlexMaxBendPixels = 6.0;
+
+  /// Converts signed lateral wind into a stable 0..1 flex amount.
+  static double wingFlexStrengthForForce(double lateralForce) =>
+      (lateralForce.abs() / wingFlexForceForFullStrength)
+          .clamp(0.0, 1.0)
+          .toDouble();
 
   // ── Micro-biome Turbulence Pockets ───────────────────────────────────────
   /// Natural pockets persist long enough to be read and corrected for, rather

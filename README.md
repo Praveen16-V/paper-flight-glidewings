@@ -177,6 +177,7 @@ Key knobs to adjust during playtesting:
 - `liftForce` / `gravity` — hold/release feel
 - `turnMomentumResponsePerSecond` / `wingLoadingResponseExponent` — how quickly light vs. heavy folds bank and recover
 - `maxWindForce` / `turbulencePocketMinDuration` / `turbulencePocketMaxDuration` — gust challenge level and local-cell lifetime
+- `wingFlexForceForFullStrength` / `wingFlexCrosswindNoiseBoost` — visual wing bend sensitivity in gusts
 - `thermalColumnMinRadius` / `thermalSurfLiftMultiplier` — updraft precision and circle-surf payoff
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
