@@ -18,7 +18,7 @@ import '../../providers/settings_provider.dart';
 import '../paper_flight_game.dart';
 
 /// The "juice" layer — adaptive flight audio, dynamic camera, speed streaks,
-/// coin-combo chime melody, paper crease and rich haptics (Task 6).
+/// coin-combo chime melody and rich haptics (Task 6).
 ///
 /// Responsibilities (each respects the player's SFX / haptic settings):
 ///
@@ -31,12 +31,15 @@ import '../paper_flight_game.dart';
 ///    disabled now — the world stays level.)
 ///  * **Vignette / speed streaks** — white motion lines along the viewport
 ///    edges + a radial vignette that intensify on high-speed dives / Coin Rush.
-///  * **Paper crease** — a synthesized flutter when holding lift or carving a
-///    tight turn (throttled so it never spams).
 ///  * **Coin-combo chime** — a rising pentatonic note per combo count, forming
 ///    a melody as the combo grows.
 ///  * **Haptics** — coin tap, near-miss click, crash/shield shudder, and a
 ///    gentle periodic hum while riding a thermal updraft.
+///
+/// Note: a synthesized "paper crease" flutter used to play on a ~0.28 s loop
+/// while the player held the screen (or carved a tight turn). It was removed
+/// because holding is the core flight input, so the rustle repeated
+/// continuously during normal play and read as an unwanted noise.
 ///
 /// The camera zoom/rotation modify `game.camera.viewfinder` (Flame's zoom and
 /// angle both pivot about the viewport centre), so the framing is preserved.
@@ -61,7 +64,6 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
   double _streakPulse = 0.0;
 
   // ── Throttles ─────────────────────────────────────────────────────────────
-  double _creaseTimer = 0.0;
   double _thermalHapticsTimer = 0.0;
 
   @override
@@ -125,9 +127,8 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
 
   // ── Lifecycle hooks called by PaperFlightGame ─────────────────────────────
 
-  /// Resets transient per-run state (throttle timers, camera easing).
+  /// Resets transient per-run state (thermal-haptics throttle timer).
   void reset() {
-    _creaseTimer = 0;
     _thermalHapticsTimer = 0;
   }
 
@@ -151,7 +152,6 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     _updateCamera(dt, playing);
     _updateStreakOverlay(dt, playing);
     _updateThermalHaptics(dt, playing);
-    _updatePaperCrease(dt, playing);
 
     super.update(dt);
   }
@@ -337,22 +337,6 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     }
   }
 
-  // ── Paper crease flutter while holding lift or carving tight turns ────────
-
-  void _updatePaperCrease(double dt, bool playing) {
-    _creaseTimer -= dt;
-    if (!playing || _creaseTimer > 0) return;
-
-    final holding = gameRef.inputManager.isHolding;
-    final vx = gameRef.plane.horizontalVelocity;
-    final tightTurn = vx.abs() > GameConfig.creaseTightTurnSpeed;
-
-    if (holding || tightTurn) {
-      _creaseTimer = GameConfig.creaseInterval;
-      _playPaperCrease();
-    }
-  }
-
   // ── Public event hooks (called from scoring / game) ───────────────────────
 
   /// Coin collected — light tap + ascending chime for the current combo.
@@ -389,14 +373,6 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
       volume: GameConfig.coinChimeVolume,
     );
     _playBytes(bytes, volume: _settings().sfxVolume);
-  }
-
-  void _playPaperCrease() {
-    if (!_settings().sfxEnabled) return;
-    _playBytes(
-      AudioSynth.paperCrease(volume: GameConfig.paperCreaseVolume),
-      volume: _settings().sfxVolume,
-    );
   }
 
   /// Plays a synthesized byte buffer with a short-lived player that disposes

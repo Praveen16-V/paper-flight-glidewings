@@ -373,17 +373,8 @@ abstract class GameConfig {
   /// Camera bank angle (radians) at full lateral speed (~1.7° each way).
   static const double cameraBankMax = 0.03;
 
-  /// Minimum seconds between synthesized paper-crease flutter plays.
-  static const double creaseInterval = 0.28;
-
-  /// Lateral speed (px/s) above which a tight turn triggers a crease flutter.
-  static const double creaseTightTurnSpeed = 90.0;
-
   /// Coin-combo chime volume (0..1), multiplied by the SFX volume setting.
   static const double coinChimeVolume = 0.55;
-
-  /// Paper-crease volume (0..1), multiplied by the SFX volume setting.
-  static const double paperCreaseVolume = 0.5;
 
   // ── Plane Signature Abilities (Task 7) ────────────────────────────────────
 
