@@ -145,6 +145,9 @@ class ScoringSystem extends Component {
       points = (points * formationMultiplier).round();
     }
     _coinScoreAccumulated += points;
+    // Skin reactions receive score-confirmed coin events, including 5x stacks
+    // and elite bonus coins that do not originate from a CoinComponent.
+    game.plane.onGameEvent(SkinGameEvent.coinCollected);
     // Juice: coin tap haptic + ascending combo-chime melody (Task 6).
     game.gameFeelSystem.onCoinCollected(comboCount);
     return points;

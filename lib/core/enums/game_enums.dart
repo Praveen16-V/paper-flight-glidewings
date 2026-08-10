@@ -26,6 +26,13 @@ enum FlightControlState {
   spinning,
 }
 
+/// Gameplay signals forwarded from the plane to its active paper-skin painter.
+enum SkinGameEvent {
+  coinCollected,
+  nearMiss,
+  shieldHit,
+}
+
 // ── Game Modes (Task 8) ─────────────────────────────────────────────────────
 
 enum GameMode {

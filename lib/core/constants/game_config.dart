@@ -6,7 +6,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-skins-1';
+  static const String balanceVersion = '2026.08-skins-2';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -622,6 +622,11 @@ abstract class GameConfig {
     'Watercolor Wash',
     'Gold Leaf',
   ];
+
+  /// Short visual response windows for gameplay-reactive paper finishes.
+  static const double goldLeafCoinSparkleDuration = 0.52;
+  static const double holographicNearMissShiftDuration = 0.72;
+  static const double dragonScaleShieldPulseDuration = 0.62;
 
   // ── Challenges ─────────────────────────────────────────────────────────────
   /// Daily: 3 challenges refreshed at midnight.

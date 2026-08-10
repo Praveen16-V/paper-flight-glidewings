@@ -17,6 +17,7 @@ import '../paper_flight_game.dart';
 import '../systems/input_manager.dart';
 import 'effects/thermal_column_component.dart';
 import 'skins/animated_paper_skin.dart';
+import 'skins/reactive_paper_skin_painter.dart';
 import 'plane_trail_component.dart';
 
 /// The player's paper plane.
@@ -38,6 +39,7 @@ import 'plane_trail_component.dart';
 ///   - 3-level upgrade tree perks & stats scaling.
 ///   - Crosswind-amplified Perlin wing flex on top of hold/release fold.
 ///   - Eight-frame SpriteAnimationComponent overlays for premium paper skins.
+///   - Event-reactive Gold Leaf, Holographic Foil, and Dragon Scale finishes.
 ///   - Thermal breathing scale pulse while riding updrafts.
 ///   - Edge curl & crumple damage state after near-miss passes (heals over time).
 ///   - Procedural paper grain texture & diffuse shading (not flat solid colors).
@@ -53,9 +55,11 @@ class PlaneComponent extends PositionComponent
   PlaneComponent({
     required this.game,
     required this.planeType,
-    this.paperSkin = PaperSkin.plain,
+    PaperSkin paperSkin = PaperSkin.plain,
     this.planeLevel = 1,
-  }) : super(
+  })  : paperSkin = paperSkin,
+        _skinPainter = ReactivePaperSkinPainter(paperSkin),
+        super(
           size: Vector2(48, 32),
           anchor: Anchor.center,
         );
@@ -63,6 +67,7 @@ class PlaneComponent extends PositionComponent
   final PaperFlightGame game;
   PlaneType planeType;
   PaperSkin paperSkin;
+  final ReactivePaperSkinPainter _skinPainter;
   int planeLevel;
 
   // ── Physics State ──────────────────────────────────────────────────────────
@@ -221,7 +226,14 @@ class PlaneComponent extends PositionComponent
   void syncSkin(PaperSkin newSkin) {
     if (paperSkin == newSkin) return;
     paperSkin = newSkin;
+    _skinPainter.setSkin(newSkin);
     _syncAnimatedSkinOverlay();
+  }
+
+  /// Receives gameplay signals from coin, near-miss, and shield systems, then
+  /// forwards them to the equipped skin's reactive painter.
+  void onGameEvent(SkinGameEvent eventType) {
+    _skinPainter.onGameEvent(eventType);
   }
 
   /// Attaches/removes the sprite-sheet overlay only for frame-animated skins.
@@ -349,8 +361,9 @@ class PlaneComponent extends PositionComponent
 
     super.render(canvas);
 
-    // ── Paper-skin overlay patterns ──────────────────────────────────────────
+    // ── Paper-skin overlay patterns and gameplay reactions ──────────────────
     _drawSkinOverlay(canvas, w, h);
+    _skinPainter.renderReactionOverlay(canvas, w, h, _animTime);
 
     // ── Aviation Wing Navigation Lights ──────────────────────────────────────
     _drawWingNavLights(canvas, w, h);
@@ -934,11 +947,43 @@ class PlaneComponent extends PositionComponent
         break;
       case PaperSkin.holographicFoil:
         final sweepShift = (_animTime * 35.0) % (w * 1.5);
-        final foilPaint = Paint()..shader = LinearGradient(begin: Alignment(-1.5 + (sweepShift / w), -1.0), end: Alignment(0.5 + (sweepShift / w), 1.0), colors: const [Color(0xFFE040FB), Color(0xFF00E5FF), Color(0xFF76FF03), Color(0xFFFFD740), Color(0xFFE040FB)]).createShader(Rect.fromLTWH(0, 0, w, h))..style = PaintingStyle.fill;
+        final nearMissShift = _skinPainter.holographicHueShiftDegrees;
+        Color hue(double offset, double lightness) => HSLColor.fromAHSL(
+              1.0,
+              (292.0 + offset + nearMissShift) % 360.0,
+              0.88,
+              lightness,
+            ).toColor();
+        final foilPaint = Paint()
+          ..shader = LinearGradient(
+            begin: Alignment(-1.5 + (sweepShift / w), -1.0),
+            end: Alignment(0.5 + (sweepShift / w), 1.0),
+            colors: [
+              hue(0, .63),
+              hue(72, .64),
+              hue(145, .61),
+              hue(220, .66),
+              hue(360, .63),
+            ],
+          ).createShader(Rect.fromLTWH(0, 0, w, h))
+          ..style = PaintingStyle.fill;
         canvas.drawRect(Rect.fromLTWH(0, 0, w, h), foilPaint);
-        final glint = Paint()..color = Colors.white.withOpacity(0.75 * pulse);
+        final glint = Paint()
+          ..color = Colors.white.withOpacity(
+            (0.75 * pulse +
+                    _skinPainter.holographicNearMissIntensity * 0.20)
+                .clamp(0.0, 1.0)
+                .toDouble(),
+          );
         for (int i = 0; i < 3; i++) {
-          canvas.drawCircle(Offset(w * (0.3 + i * 0.22), h * (0.35 + math.sin(_animTime * 4.0 + i * 2.0) * 0.2)), 1.6, glint);
+          canvas.drawCircle(
+            Offset(
+              w * (0.3 + i * 0.22),
+              h * (0.35 + math.sin(_animTime * 4.0 + i * 2.0) * 0.2),
+            ),
+            1.6 + _skinPainter.holographicNearMissIntensity * 1.4,
+            glint,
+          );
         }
         break;
       case PaperSkin.watercolorWash:
@@ -948,13 +993,49 @@ class PlaneComponent extends PositionComponent
         canvas.drawCircle(Offset(w * 0.38, h * 0.62), 11, washB);
         break;
       case PaperSkin.goldLeaf:
+        final coinSparkle = _skinPainter.goldCoinSparkleIntensity;
         final fleckPaint = Paint()..style = PaintingStyle.fill;
-        for (int i = 0; i < 5; i++) {
-          final sparkleTTL = (math.sin(_animTime * 7.0 + i * 2.1) * 0.5 + 0.5);
-          fleckPaint.color = Color.fromRGBO(255, 215, 0, 0.25 + 0.65 * sparkleTTL);
-          canvas.drawCircle(Offset(w * (0.25 + (i * 0.14)), h * (0.30 + ((i * 37) % 40) * 0.01)), 1.2 + sparkleTTL * 1.2, fleckPaint);
+        final fleckCount = 5 + (coinSparkle * 5).round();
+        for (int i = 0; i < fleckCount; i++) {
+          final sparkleTTL =
+              math.sin(_animTime * 7.0 + i * 2.1) * 0.5 + 0.5;
+          final reactionBoost = coinSparkle *
+              (0.55 + math.sin(_animTime * 18.0 + i) * 0.45);
+          fleckPaint.color = Color.fromRGBO(
+            255,
+            215,
+            0,
+            (0.25 + 0.55 * sparkleTTL + 0.45 * reactionBoost)
+                .clamp(0.0, 1.0)
+                .toDouble(),
+          );
+          canvas.drawCircle(
+            Offset(
+              w * (0.20 + (i % 6).toDouble() * 0.13),
+              h * (0.26 + ((i * 37) % 48).toDouble() * 0.01),
+            ),
+            1.2 + sparkleTTL * 1.2 + coinSparkle * 1.7,
+            fleckPaint,
+          );
         }
-        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(w / 2, h / 2), width: w * 0.94, height: h * 0.74), const Radius.circular(5)), Paint()..color = const Color(0xFFFFD700).withOpacity(0.30 * pulse)..style = PaintingStyle.stroke..strokeWidth = 1.4);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(
+              center: Offset(w / 2, h / 2),
+              width: w * 0.94,
+              height: h * 0.74,
+            ),
+            const Radius.circular(5),
+          ),
+          Paint()
+            ..color = const Color(0xFFFFD700).withOpacity(
+              (0.30 * pulse + coinSparkle * 0.35)
+                  .clamp(0.0, 0.8)
+                  .toDouble(),
+            )
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4 + coinSparkle,
+        );
         break;
       case PaperSkin.blueprint:
         final bpLine = Paint()..color = Colors.white.withOpacity(0.40)..strokeWidth = 0.7..style = PaintingStyle.stroke;
@@ -998,10 +1079,27 @@ class PlaneComponent extends PositionComponent
         canvas.drawRect(Rect.fromLTWH(0, 0, w, h), pridePaint);
         break;
       case PaperSkin.dragonScales:
-        final scalePaint = Paint()..color = const Color(0xFF00E676).withOpacity(0.28)..style = PaintingStyle.stroke..strokeWidth = 0.9;
+        final shieldPulse = _skinPainter.dragonShieldPulseIntensity;
+        final scalePaint = Paint()
+          ..color = Color.lerp(
+            const Color(0xFF00E676),
+            const Color(0xFFB2FF59),
+            shieldPulse,
+          )!
+              .withOpacity(0.28 + shieldPulse * 0.58)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.9 + shieldPulse * 1.1;
         for (double x = w * 0.25; x < w * 0.75; x += 7.0) {
           for (double y = h * 0.28; y < h * 0.75; y += 6.0) {
-            canvas.drawPath(Path()..moveTo(x, y)..lineTo(x + 3.5, y + 4)..lineTo(x, y + 7)..lineTo(x - 3.5, y + 4)..close(), scalePaint);
+            canvas.drawPath(
+              Path()
+                ..moveTo(x, y)
+                ..lineTo(x + 3.5, y + 4)
+                ..lineTo(x, y + 7)
+                ..lineTo(x - 3.5, y + 4)
+                ..close(),
+              scalePaint,
+            );
           }
         }
         break;
@@ -1670,6 +1768,7 @@ class PlaneComponent extends PositionComponent
     if (game.phase != GamePhase.playing) return;
 
     _animTime += dt;
+    _skinPainter.update(dt);
 
     final input = game.inputManager;
     final wind = game.windSystem;
@@ -2201,6 +2300,7 @@ class PlaneComponent extends PositionComponent
   }
 
   void onNearMiss(NearMissTier tier) {
+    onGameEvent(SkinGameEvent.nearMiss);
     final addCrumple = switch (tier) {
       NearMissTier.deathDefying => 1.0,
       NearMissTier.hairThin => 0.75,
@@ -2300,6 +2400,7 @@ class PlaneComponent extends PositionComponent
 
   void reset() {
     _isAlive = true;
+    _skinPainter.reset();
     _velocityX = 0;
     _velocityY = 0;
     _wingFold = 0;
@@ -2350,6 +2451,7 @@ class PlaneComponent extends PositionComponent
 
   void revive() {
     _isAlive = true;
+    _skinPainter.reset();
     _velocityY = 0;
     _velocityX = 0;
     _wingFold = 0;
@@ -2393,6 +2495,7 @@ class PlaneComponent extends PositionComponent
   }
 
   void playShieldHitAnimation() {
+    onGameEvent(SkinGameEvent.shieldHit);
     _shieldHitRippleTimer = 1.0;
     add(
       ScaleEffect.by(
