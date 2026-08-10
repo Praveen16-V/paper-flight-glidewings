@@ -6,7 +6,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-flight-6';
+  static const String balanceVersion = '2026.08-flight-7';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -228,6 +228,20 @@ abstract class GameConfig {
   static const double spinRecoveryDuration = 0.58;
   static const double spinRecoveryDecayPerSecond = 0.85;
   static const double spinRecoveryVerticalKick = -42.0;
+
+  // ── Friendly Wingmen / Formation Flying ─────────────────────────────────
+  /// Zen and Daily Flights launch two non-colliding friendly paper planes.
+  static const int wingmanCount = 2;
+  static const double wingmanFollowResponsePerSecond = 2.4;
+  static const double wingmanFormationRadius = 102.0;
+  static const double wingmanFormationJoinSeconds = 0.85;
+  static const double wingmanFormationGraceSeconds = 0.32;
+
+  /// Formation rewards: periodic combo support plus a score bonus on every
+  /// collected coin while the squad is locked in formation.
+  static const double wingmanComboPulseInterval = 2.4;
+  static const double wingmanComboBonusNotches = 0.5;
+  static const double wingmanCoinScoreMultiplier = 1.25;
 
   // ── Wing Squish Effect ────────────────────────────────────────────────────
 

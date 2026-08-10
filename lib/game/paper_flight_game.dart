@@ -37,6 +37,7 @@ import 'systems/streak_system.dart';
 import 'systems/trial_director.dart';
 import 'systems/wind_system.dart';
 import 'systems/thermal_column_system.dart';
+import 'systems/wingman_system.dart';
 import 'systems/biome_manager.dart';
 import 'systems/game_feel_system.dart';
 
@@ -114,6 +115,7 @@ class PaperFlightGame extends FlameGame
   late final InputManager inputManager;
   late final WindSystem windSystem;
   late final ThermalColumnSystem thermalColumnSystem;
+  late final WingmanSystem wingmanSystem;
   late final ScoringSystem scoringSystem;
   late final StreakSystem streakSystem;
   late final BiomeManager biomeManager;
@@ -213,6 +215,7 @@ class PaperFlightGame extends FlameGame
     };
     windSystem = WindSystem(seed: windSeed);
     thermalColumnSystem = ThermalColumnSystem(game: this, seed: windSeed);
+    wingmanSystem = WingmanSystem(game: this, seed: windSeed);
     scoringSystem = ScoringSystem(game: this);
     streakSystem = StreakSystem();
     biomeManager = BiomeManager(game: this);
@@ -225,6 +228,9 @@ class PaperFlightGame extends FlameGame
     world.add(scoringSystem);
     world.add(streakSystem);
     world.add(biomeManager);
+    // Friendly formation planes render behind hazards/player and only activate
+    // in Zen or Daily Flight.
+    world.add(wingmanSystem);
 
     // Spawners.
     obstacleSpawner = ObstacleSpawner(game: this);
@@ -646,6 +652,7 @@ class PaperFlightGame extends FlameGame
     biomeManager.reset(mode);
     windSystem.reset();
     thermalColumnSystem.reset();
+    wingmanSystem.reset();
     gameFeelSystem.reset();
 
     // Zen Flight: gentle ambient pad from the first flap.

@@ -138,6 +138,12 @@ class ScoringSystem extends Component {
     if (session.activePowerUps.contains(PowerUpType.coinRush)) {
       points = (points * GameConfig.coinRushValueMultiplier).toInt();
     }
+    // Zen/Daily wingmen reward disciplined proximity with richer coin value.
+    // Classic has no active wingmen, so this remains exactly 1.0 there.
+    final formationMultiplier = game.wingmanSystem.coinScoreMultiplier;
+    if (formationMultiplier > 1.0) {
+      points = (points * formationMultiplier).round();
+    }
     _coinScoreAccumulated += points;
     // Juice: coin tap haptic + ascending combo-chime melody (Task 6).
     game.gameFeelSystem.onCoinCollected(comboCount);

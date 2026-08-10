@@ -96,6 +96,7 @@ lib/
 │   ├── paper_flight_game.dart    # FlameGame root — scroll engine, crash, revive
 │   ├── components/
 │   │   ├── plane_component.dart  # 2-axis physics, stall/spin recovery, hitbox, shield/revive anims
+│   │   ├── wingman_component.dart # Friendly formation follower
 │   │   ├── background/
 │   │   │   └── parallax_background.dart  # 3-layer parallax, biome sky gradients
 │   │   ├── obstacles/
@@ -109,6 +110,7 @@ lib/
 │   ├── systems/
 │   │   ├── wind_system.dart        # Lane-based FBM weather + turbulence
 │   │   ├── thermal_column_system.dart # Local visible updraft placement + sampling
+│   │   ├── wingman_system.dart      # Zen/Daily friendly formation + bonuses
 │   │   ├── input_manager.dart      # Hold/release + tilt/touchZone + double-tap
 │   │   ├── scoring_system.dart     # Distance + coins×combo + near-miss
 │   │   ├── biome_manager.dart      # Distance → biome + per-biome obstacle weights
@@ -180,6 +182,7 @@ Key knobs to adjust during playtesting:
 - `maxWindForce` / `turbulencePocketMinDuration` / `turbulencePocketMaxDuration` — gust challenge level and local-cell lifetime
 - `wingFlexForceForFullStrength` / `wingFlexCrosswindNoiseBoost` — visual wing bend sensitivity in gusts
 - `thermalColumnMinRadius` / `thermalSurfLiftMultiplier` — updraft precision and circle-surf payoff
+- `wingmanFormationRadius` / `wingmanCoinScoreMultiplier` — formation tolerance and wingman reward strength
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts
