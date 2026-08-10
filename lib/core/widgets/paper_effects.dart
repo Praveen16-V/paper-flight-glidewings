@@ -4,42 +4,49 @@ import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
 
-/// Sharp, slightly-offset "cut-paper" shadows stacked beneath a sheet.
+/// Paper-craft depth cues for the folded-paper design system.
 ///
-/// Instead of a single heavy Gaussian blur (which reads as Material elevation),
-/// these are tight, low-blur offsets that look like stacked sheets of coloured
-/// paper peeking out from under the top card.
+/// Instead of a diffuse Material elevation blur — or stacked semi-transparent
+/// "sheets" (which read as dirty duplicate edges, especially on the dark
+/// night-sky backdrop) — a lifted sheet gets exactly two cues:
+///
+///  1. a crisp, zero-blur strip in the sheet's own folded-edge colour directly
+///     beneath it (the paper's thickness), and
+///  2. a single soft ambient shadow grounding it on the table.
 class PaperShadows {
   PaperShadows._();
 
-  /// The standard layered stack used by [PaperCard].
+  /// The standard shadow stack used by [PaperCard].
+  ///
+  /// [color] tints the soft ambient shadow (defaults to ink). When
+  /// [edgeColor] is provided, a crisp folded-paper edge strip is drawn
+  /// underneath the card first — this is what communicates card thickness,
+  /// matching the chunky hard edge [PaperButton] uses.
   static List<BoxShadow> stack({
     Color? color,
     double elevation = 1.0,
     double radius = 18,
+    Color? edgeColor,
   }) {
     final base = color ?? AppColors.paperInk;
     final e = elevation.clamp(0.5, 3.0);
+    // Thickness of the visible folded edge grows gently with elevation.
+    final edgeHeight = 3.0 + e * 1.5;
     return [
-      // darkest bottom sheet, furthest offset
+      if (edgeColor != null)
+        // Crisp folded-under paper edge — zero blur so it reads as the
+        // thickness of the sheet, not a blurry duplicate of the card.
+        BoxShadow(
+          color: edgeColor,
+          offset: Offset(0, edgeHeight),
+          blurRadius: 0,
+        ),
+      // A single soft ambient shadow grounding the sheet.
       BoxShadow(
-        color: base.withOpacity(0.10 * e + 0.05),
-        offset: Offset(0, 6 * e),
-        blurRadius: 1.5,
-        spreadRadius: 0,
-      ),
-      // mid sheet
-      BoxShadow(
-        color: base.withOpacity(0.10 * e + 0.04),
-        offset: Offset(0, 3 * e),
-        blurRadius: 1.0,
-      ),
-      // contact shadow
-      BoxShadow(
-        color: Colors.black.withOpacity(0.18 + 0.06 * e),
-        offset: Offset(0, 1.5 * e),
-        blurRadius: 4 * e,
-        spreadRadius: -1,
+        color: base.withOpacity(0.22),
+        offset: Offset(0, edgeHeight + 2 + e),
+        blurRadius: 7 + 3 * e,
+        spreadRadius: -(1.5 + e),
       ),
     ];
   }

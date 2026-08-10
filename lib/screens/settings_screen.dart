@@ -792,8 +792,10 @@ class _SegmentedRow<T> extends StatelessWidget {
   final ValueChanged<T> onChanged;
   @override
   Widget build(BuildContext context) {
+    // Brighter sheet than the grouped card it sits in, so the nested
+    // "sheet-on-sheet" layering reads cleanly with its folded bottom edge.
     return PaperCard(
-      color: AppColors.paper,
+      color: AppColors.paperBright,
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: AppTypography.bodyLarge.copyWith(color: AppColors.paperInk, fontSize: 15)),

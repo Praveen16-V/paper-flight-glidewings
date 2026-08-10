@@ -100,85 +100,96 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
                 ),
 
                 // ── Centre: logo + plane ──────────────────────────────────
+                // Wrapped in a FittedBox so on short screens (or large text
+                // scales) the whole centrepiece scales down as a unit and
+                // the PLAY button is never pushed off-screen.
                 Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      AnimatedBuilder(
-                        animation: _floatY,
-                        builder: (_, __) => Transform.translate(
-                          offset: Offset(0, _floatY.value),
-                          child: PaperPlaneIcon(size: 100),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        'PAPER FLIGHT',
-                        style: AppTypography.displayMedium.copyWith(
-                          fontSize: 34,
-                          letterSpacing: 3,
-                        ),
-                      ),
-                      if (save.highScore > 0) ...[
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: AppColors.paper,
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.backgroundDeep.withOpacity(0.55),
-                                offset: const Offset(0, 3),
-                                blurRadius: 0,
+                  child: Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AnimatedBuilder(
+                              animation: _floatY,
+                              builder: (_, __) => Transform.translate(
+                                offset: Offset(0, _floatY.value),
+                                child: PaperPlaneIcon(size: 100),
                               ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'BEST',
-                                style: AppTypography.overline.copyWith(
-                                  color: AppColors.paperInkSoft,
-                                  letterSpacing: 1.4,
+                            ),
+                            const SizedBox(height: 20),
+                            Text(
+                              'PAPER FLIGHT',
+                              style: AppTypography.displayMedium.copyWith(
+                                fontSize: 34,
+                                letterSpacing: 3,
+                              ),
+                            ),
+                            if (save.highScore > 0) ...[
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: AppColors.paper,
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppColors.backgroundDeep.withOpacity(0.55),
+                                      offset: const Offset(0, 3),
+                                      blurRadius: 0,
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'BEST',
+                                      style: AppTypography.overline.copyWith(
+                                        color: AppColors.paperInkSoft,
+                                        letterSpacing: 1.4,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _fmt(save.highScore),
+                                      style: AppTypography.statSmall.copyWith(
+                                        color: AppColors.accentDeep,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                _fmt(save.highScore),
-                                style: AppTypography.statSmall.copyWith(
-                                  color: AppColors.accentDeep,
-                                ),
-                              ),
                             ],
-                          ),
+                            const SizedBox(height: 32),
+
+                            // ── Mode Preview Card (replaces _ModesPill) ────
+                            _ModePreviewCard(
+                              selectedIndex: _selectedModeIndex,
+                              save: save,
+                              onTapLeft: () => setState(() {
+                                _selectedModeIndex =
+                                    (_selectedModeIndex - 1).clamp(
+                                        0, _ModePreviewCard.modeCount - 1);
+                              }),
+                              onTapRight: () => setState(() {
+                                _selectedModeIndex =
+                                    (_selectedModeIndex + 1).clamp(
+                                        0, _ModePreviewCard.modeCount - 1);
+                              }),
+                              onTapCenter: _onModeTap,
+                            ),
+                            const SizedBox(height: 20),
+
+                            // ── PLAY button ────────────────────────────────
+                            _PlayButton(onTap: _onPlay),
+                          ],
                         ),
-                      ],
-                      const SizedBox(height: 32),
-
-                      // ── Mode Preview Card (replaces _ModesPill) ─────────
-                      _ModePreviewCard(
-                        selectedIndex: _selectedModeIndex,
-                        save: save,
-                        onTapLeft: () => setState(() {
-                          _selectedModeIndex =
-                              (_selectedModeIndex - 1).clamp(
-                                  0, _ModePreviewCard.modeCount - 1);
-                        }),
-                        onTapRight: () => setState(() {
-                          _selectedModeIndex =
-                              (_selectedModeIndex + 1).clamp(
-                                  0, _ModePreviewCard.modeCount - 1);
-                        }),
-                        onTapCenter: _onModeTap,
                       ),
-                      const SizedBox(height: 20),
-
-                      // ── PLAY button ──────────────────────────────────────
-                      _PlayButton(onTap: _onPlay),
-                    ],
+                    ),
                   ),
                 ),
 

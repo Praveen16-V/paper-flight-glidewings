@@ -5,10 +5,10 @@ import 'paper_effects.dart';
 
 /// A sheet of folded paper — the core surface of the design system.
 ///
-/// Renders a light cream/kraft card with layered cut-paper shadows, a subtle
-/// paper-grain overlay, an optional darker folded edge, and rounded corners.
-/// Used everywhere the old code used a flat `BoxDecoration` with
-/// `BorderRadius.circular(18)`.
+/// Renders a light cream/kraft card with a crisp folded-under bottom edge
+/// (paper thickness), a single soft ambient shadow beneath it, a subtle
+/// paper-grain overlay, and rounded corners. Used everywhere the old code
+/// used a flat `BoxDecoration` with `BorderRadius.circular(18)`.
 class PaperCard extends StatelessWidget {
   const PaperCard({
     super.key,
@@ -63,31 +63,18 @@ class PaperCard extends StatelessWidget {
             duration: const Duration(milliseconds: 160),
             decoration: BoxDecoration(
               borderRadius: borderRadius,
+              // Paper thickness is a crisp folded edge beneath the sheet
+              // plus one soft ambient shadow — see [PaperShadows.stack].
               boxShadow: PaperShadows.stack(
                 color: AppColors.paperInk,
                 elevation: elevation,
                 radius: radius,
+                edgeColor: edge,
               ),
             ),
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-                // Folded-under bottom edge strip (gives paper thickness).
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: 7,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: edge,
-                      borderRadius: BorderRadius.only(
-                        bottomLeft: r,
-                        bottomRight: r,
-                      ),
-                    ),
-                  ),
-                ),
                 ClipRRect(
                   borderRadius: borderRadius,
                   child: Stack(
