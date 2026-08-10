@@ -4,7 +4,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-flight-3';
+  static const String balanceVersion = '2026.08-flight-4';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -25,15 +25,36 @@ abstract class GameConfig {
   /// past the plane as distance accumulates (see [scrollSpeedPerMeter]).
   static const double baseScrollSpeed = 80.0;
 
-  /// Maximum scroll speed cap — prevents unplayable frame windows.
+  /// Neutral-airframe scroll-speed cap. Long-haul airframes may scale this via
+  /// their own cap multiplier while still using it as the balance base.
   static const double maxScrollSpeed = 480.0;
 
   /// Scroll speed gained (px/s) per meter the player has traveled.
   ///
   /// Speed is a pure function of distance reached, not of elapsed time — so the
   /// world only speeds up as you fly further, ramping in gradually and smoothly.
-  /// (base + 0.16 × meters, clamped to maxScrollSpeed ≈ 2500 m.)
+  /// (baseline: base + 0.16 × meters, capped around 2500 m; individual
+  /// airframes adjust the ramp/cap through their speed-curve data.)
   static const double scrollSpeedPerMeter = 0.16;
+
+  /// Evaluates a distance-based world-speed curve for a specific airframe.
+  /// [curveMultiplier] changes how quickly the world accelerates; [capMultiplier]
+  /// permits slow-ramping long-haul folds to eventually exceed the neutral cap.
+  /// Keeping this pure makes balance comparisons deterministic and testable.
+  static double curvedScrollSpeedForDistance({
+    required double meters,
+    required double baseSpeed,
+    required double speedPerMeter,
+    required double maxSpeed,
+    required double curveMultiplier,
+    required double capMultiplier,
+  }) {
+    final safeMeters = meters < 0 ? 0.0 : meters;
+    final multipliedCap = maxSpeed * capMultiplier;
+    final cap = multipliedCap < baseSpeed ? baseSpeed : multipliedCap;
+    final speed = baseSpeed + speedPerMeter * curveMultiplier * safeMeters;
+    return speed.clamp(baseSpeed, cap).toDouble();
+  }
 
   /// Distance (meters) at which dynamic obstacles (birds, kites, balloons,
   /// drones) begin to gain any lateral movement. Below this they scroll

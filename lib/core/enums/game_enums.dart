@@ -374,9 +374,9 @@ extension PlaneLabel on PlaneType {
   String get tagline {
     switch (this) {
       case PlaneType.dart:
-        return 'Reliable starter — +15% distance score';
+        return 'Reliable starter — +15% distance score, fast ramp';
       case PlaneType.glider:
-        return 'Floats longer, attracts coins, +20% thermal';
+        return 'Floats longer — slow ramp, long-haul cruise';
       case PlaneType.stuntFold:
         return 'Snappy turns, 2× snap, +50% near-miss';
       case PlaneType.crane:
@@ -386,9 +386,9 @@ extension PlaneLabel on PlaneType {
       case PlaneType.butterfly:
         return 'Flutters gracefully — fall 0.75, auto-sway, +40% thermal';
       case PlaneType.bomber:
-        return 'Heavy fortress — spawns with 2 shield charges';
+        return 'Heavy fortress — slow ramp, highest cruise cap';
       case PlaneType.interceptor:
-        return 'Agile turn 1.25 — camera zoom-out, 0 coin attract';
+        return 'Agile turn 1.25 — fastest speed ramp';
       case PlaneType.albatross:
         return 'Master glider — 2× streak, endless glide combo';
       case PlaneType.biplane:
@@ -396,7 +396,7 @@ extension PlaneLabel on PlaneType {
       case PlaneType.ninjaStar:
         return 'Ultra-snappy turns, fast snap burst recharge';
       case PlaneType.rocket:
-        return 'High-speed streamlined dart, rapid dive penetration';
+        return 'Fast-ramping dart with 1.10× cruise cap';
     }
   }
 
@@ -555,6 +555,100 @@ extension PlaneLabel on PlaneType {
         return 1.25; // ultra snappy
       case PlaneType.rocket:
         return 1.15; // high response
+    }
+  }
+
+  /// Distance-ramp multiplier for world speed (1.0 = baseline world-speed
+  /// curve). Higher values reach cruising pace early; lower values reserve
+  /// their strength for a longer, deliberate build.
+  double get speedCurveMultiplier {
+    switch (this) {
+      case PlaneType.dart:
+        return 1.20;
+      case PlaneType.glider:
+        return 0.72;
+      case PlaneType.stuntFold:
+        return 1.08;
+      case PlaneType.crane:
+        return 0.90;
+      case PlaneType.stealthJet:
+        return 1.12;
+      case PlaneType.butterfly:
+        return 0.82;
+      case PlaneType.bomber:
+        return 0.68;
+      case PlaneType.interceptor:
+        return 1.28;
+      case PlaneType.albatross:
+        return 0.78;
+      case PlaneType.biplane:
+        return 0.94;
+      case PlaneType.ninjaStar:
+        return 1.15;
+      case PlaneType.rocket:
+        return 1.17;
+    }
+  }
+
+  /// Multiplier for the world-speed cap. Long-haul airframes intentionally
+  /// trade a slow early ramp for a ceiling beyond the neutral 480 px/s cap.
+  double get speedCapMultiplier {
+    switch (this) {
+      case PlaneType.dart:
+        return 1.00;
+      case PlaneType.glider:
+        return 1.13;
+      case PlaneType.stuntFold:
+        return 1.00;
+      case PlaneType.crane:
+        return 1.04;
+      case PlaneType.stealthJet:
+        return 1.05;
+      case PlaneType.butterfly:
+        return 0.96;
+      case PlaneType.bomber:
+        return 1.16;
+      case PlaneType.interceptor:
+        return 1.04;
+      case PlaneType.albatross:
+        return 1.12;
+      case PlaneType.biplane:
+        return 1.06;
+      case PlaneType.ninjaStar:
+        return 1.00;
+      case PlaneType.rocket:
+        return 1.10;
+    }
+  }
+
+  /// Human-readable speed behaviour for the hangar, where one SPD radar value
+  /// cannot communicate both acceleration and a separate end-game cap.
+  String get speedProfileLabel {
+    switch (this) {
+      case PlaneType.dart:
+        return 'Fast ramp • standard cruise cap';
+      case PlaneType.glider:
+        return 'Slow ramp • 1.13× long-haul cap';
+      case PlaneType.stuntFold:
+        return 'Quick ramp • standard cruise cap';
+      case PlaneType.crane:
+        return 'Gentle ramp • 1.04× cruise cap';
+      case PlaneType.stealthJet:
+        return 'Fast ramp • 1.05× cruise cap';
+      case PlaneType.butterfly:
+        return 'Soft ramp • lower calm-sky cap';
+      case PlaneType.bomber:
+        return 'Slow ramp • 1.16× long-haul cap';
+      case PlaneType.interceptor:
+        return 'Very fast ramp • 1.04× cruise cap';
+      case PlaneType.albatross:
+        return 'Slow ramp • 1.12× long-haul cap';
+      case PlaneType.biplane:
+        return 'Steady ramp • 1.06× cruise cap';
+      case PlaneType.ninjaStar:
+        return 'Fast ramp • standard cruise cap';
+      case PlaneType.rocket:
+        return 'Fast ramp • 1.10× cruise cap';
     }
   }
 

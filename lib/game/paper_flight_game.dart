@@ -504,21 +504,41 @@ class PaperFlightGame extends FlameGame
   ///
   /// Because it is a pure function of meters traveled, the ramp-up is identical
   /// regardless of power-ups or frame rate — distance is the only driver.
-  /// Zen ramps far more gently; trials run at a fixed course speed.
+  /// Classic/Zen airframes scale the ramp and eventual cap; Daily and Trials
+  /// deliberately stay neutral/fixed so shared leaderboard timing remains fair.
   double _scrollSpeedForDistance(double meters) {
     switch (mode) {
       case GameMode.trial:
         return trial?.scrollSpeedPxPerSec ?? GameConfig.baseScrollSpeed;
       case GameMode.zen:
-        return (GameConfig.zenBaseScrollSpeed +
-                GameConfig.zenScrollSpeedPerMeter * meters)
-            .clamp(
-                GameConfig.zenBaseScrollSpeed, GameConfig.zenMaxScrollSpeed);
-      case GameMode.classic:
+        return GameConfig.curvedScrollSpeedForDistance(
+          meters: meters,
+          baseSpeed: GameConfig.zenBaseScrollSpeed,
+          speedPerMeter: GameConfig.zenScrollSpeedPerMeter,
+          maxSpeed: GameConfig.zenMaxScrollSpeed,
+          curveMultiplier: plane.planeType.speedCurveMultiplier,
+          capMultiplier: plane.planeType.speedCapMultiplier,
+        );
       case GameMode.daily:
-        return (GameConfig.baseScrollSpeed +
-                GameConfig.scrollSpeedPerMeter * meters)
-            .clamp(GameConfig.baseScrollSpeed, GameConfig.maxScrollSpeed);
+        // The Daily board promises every player the same world-speed schedule,
+        // so plane curves stay neutral here even when equipped airframes differ.
+        return GameConfig.curvedScrollSpeedForDistance(
+          meters: meters,
+          baseSpeed: GameConfig.baseScrollSpeed,
+          speedPerMeter: GameConfig.scrollSpeedPerMeter,
+          maxSpeed: GameConfig.maxScrollSpeed,
+          curveMultiplier: 1.0,
+          capMultiplier: 1.0,
+        );
+      case GameMode.classic:
+        return GameConfig.curvedScrollSpeedForDistance(
+          meters: meters,
+          baseSpeed: GameConfig.baseScrollSpeed,
+          speedPerMeter: GameConfig.scrollSpeedPerMeter,
+          maxSpeed: GameConfig.maxScrollSpeed,
+          curveMultiplier: plane.planeType.speedCurveMultiplier,
+          capMultiplier: plane.planeType.speedCapMultiplier,
+        );
     }
   }
 

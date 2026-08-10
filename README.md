@@ -173,7 +173,7 @@ All gameplay constants live in `lib/core/constants/game_config.dart`.
 No magic numbers anywhere else — change one value and it propagates everywhere.
 
 Key knobs to adjust during playtesting:
-- `baseScrollSpeed` / `scrollAcceleration` — overall difficulty ramp
+- `baseScrollSpeed` / `scrollSpeedPerMeter` / `PlaneType.speedCurveMultiplier` — overall and per-airframe speed ramps
 - `liftForce` / `gravity` — hold/release feel
 - `turnMomentumResponsePerSecond` / `wingLoadingResponseExponent` — how quickly light vs. heavy folds bank and recover
 - `maxWindForce` / `turbulencePocketMinDuration` / `turbulencePocketMaxDuration` — gust challenge level and local-cell lifetime

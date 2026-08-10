@@ -1482,7 +1482,10 @@ class _PlaneCard extends StatelessWidget {
                         Wrap(
                           spacing: 5,
                           runSpacing: 4,
-                          children: plane.traitBullets
+                          children: [
+                            ...plane.traitBullets,
+                            plane.speedProfileLabel,
+                          ]
                               .map((t) => Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 6, vertical: 2),
