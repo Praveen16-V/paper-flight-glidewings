@@ -14,6 +14,7 @@ import '../../core/utils/math_utils.dart';
 import '../../core/utils/noise.dart';
 import '../../providers/game_session_provider.dart';
 import '../paper_flight_game.dart';
+import 'effects/thermal_column_component.dart';
 import 'plane_trail_component.dart';
 
 /// The player's paper plane.
@@ -101,6 +102,20 @@ class PlaneComponent extends PositionComponent
   /// True while the plane's wind lane is a thermal updraft.
   bool _inThermal = false;
   bool get isInThermal => _inThermal;
+
+  /// The local column currently being surfed, if any. Keeping this on the
+  /// plane lets a pilot's orbit reset cleanly when they leave or switch cells.
+  ThermalColumnComponent? _surfingThermalColumn;
+  bool _thermalSurfBoostActive = false;
+  bool _thermalSurfLoopQueued = false;
+  bool get thermalSurfBoostActive => _thermalSurfBoostActive;
+
+  /// One-shot signal consumed by [StreakSystem] to announce a completed orbit.
+  bool consumeThermalSurfLoop() {
+    if (!_thermalSurfLoopQueued) return false;
+    _thermalSurfLoopQueued = false;
+    return true;
+  }
 
   // ── Active Power-up Visual State ───────────────────────────────────────────
 
@@ -1564,18 +1579,43 @@ class PlaneComponent extends PositionComponent
       _velocityY = MathUtils.lerp(_velocityY, -60.0, dt * 5.0);
     }
 
-    // Thermal lift bonus from wind lane
+    // Thermal lift comes from a real, visible column inside a favourable lane
+    // rather than from an invisible quarter-screen strip. Wind Caller retains
+    // its intentionally broad calm-updraft effect as a power-up exception.
     final normX = position.x / GameConfig.designWidth;
     final laneIndex = wind.laneForNormX(normX);
     final laneWind = wind.windAt(laneIndex);
-    final inThermal = laneWind.type == WindType.thermal;
+    final windCallerThermal =
+        wind.windCallerActive && laneWind.type == WindType.thermal;
+    final thermalSample = windCallerThermal
+        ? null
+        : game.thermalColumnSystem.sampleAt(position);
+    final inThermal = thermalSample != null || windCallerThermal;
     _inThermal = inThermal;
+
+    double surfLiftMultiplier = 1.0;
+    if (thermalSample != null) {
+      final previousColumn = _surfingThermalColumn;
+      if (previousColumn != null && previousColumn != thermalSample.column) {
+        previousColumn.resetPilotOrbit();
+      }
+      _surfingThermalColumn = thermalSample.column;
+      final surf = thermalSample.trackPilot(position, dt);
+      surfLiftMultiplier = surf.liftMultiplier;
+      _thermalSurfBoostActive = surf.bonusActive;
+      if (surf.completedOrbit) _thermalSurfLoopQueued = true;
+    } else {
+      _surfingThermalColumn?.resetPilotOrbit();
+      _surfingThermalColumn = null;
+      _thermalSurfBoostActive = false;
+    }
 
     _thermalBreathFactor = MathUtils.lerp(
         _thermalBreathFactor, inThermal ? 1.0 : 0.0, dt * 3.5);
 
     if (inThermal) {
-      double lift = laneWind.liftBonus;
+      double lift = thermalSample?.lift ?? laneWind.liftBonus;
+      lift *= surfLiftMultiplier;
       if (planeType == PlaneType.glider) {
         final gMult = planeLevel >= 3 ? 1.50 : (planeLevel == 2 ? 1.35 : 1.20);
         lift *= gMult;
@@ -1812,6 +1852,10 @@ class PlaneComponent extends PositionComponent
     _ceilingWasInSoftZone = false;
     _snapFlashTimer = 0.0;
     _inThermal = false;
+    _surfingThermalColumn?.resetPilotOrbit(clearBonus: true);
+    _surfingThermalColumn = null;
+    _thermalSurfBoostActive = false;
+    _thermalSurfLoopQueued = false;
     _thermalBreathFactor = 0.0;
     _crumpleAmount = 0.0;
     _shieldActive = false;
@@ -1850,6 +1894,11 @@ class PlaneComponent extends PositionComponent
     _ceilingWasInSoftZone = false;
     _snapFlashTimer = 0.0;
     _crumpleAmount = 0.0;
+    _inThermal = false;
+    _surfingThermalColumn?.resetPilotOrbit(clearBonus: true);
+    _surfingThermalColumn = null;
+    _thermalSurfBoostActive = false;
+    _thermalSurfLoopQueued = false;
     _thermalBreathFactor = 0.0;
     _shieldHitRippleTimer = 0.0;
     angle = 0;

@@ -36,6 +36,7 @@ import 'systems/scoring_system.dart';
 import 'systems/streak_system.dart';
 import 'systems/trial_director.dart';
 import 'systems/wind_system.dart';
+import 'systems/thermal_column_system.dart';
 import 'systems/biome_manager.dart';
 import 'systems/game_feel_system.dart';
 
@@ -112,6 +113,7 @@ class PaperFlightGame extends FlameGame
 
   late final InputManager inputManager;
   late final WindSystem windSystem;
+  late final ThermalColumnSystem thermalColumnSystem;
   late final ScoringSystem scoringSystem;
   late final StreakSystem streakSystem;
   late final BiomeManager biomeManager;
@@ -210,12 +212,16 @@ class PaperFlightGame extends FlameGame
       GameMode.zen || GameMode.classic => null,
     };
     windSystem = WindSystem(seed: windSeed);
+    thermalColumnSystem = ThermalColumnSystem(game: this, seed: windSeed);
     scoringSystem = ScoringSystem(game: this);
     streakSystem = StreakSystem();
     biomeManager = BiomeManager(game: this);
 
     world.add(inputManager);
     world.add(windSystem);
+    // Visible local updrafts update after lanes but before the plane samples
+    // them, so their particle column and lift field always agree.
+    world.add(thermalColumnSystem);
     world.add(scoringSystem);
     world.add(streakSystem);
     world.add(biomeManager);
@@ -619,6 +625,7 @@ class PaperFlightGame extends FlameGame
     streakSystem.reset();
     biomeManager.reset(mode);
     windSystem.reset();
+    thermalColumnSystem.reset();
     gameFeelSystem.reset();
 
     // Zen Flight: gentle ambient pad from the first flap.

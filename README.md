@@ -102,10 +102,13 @@ lib/
 │   │   │   └── obstacle_component.dart   # Base + 5 concrete types (pooled)
 │   │   ├── collectibles/
 │   │   │   └── coin_component.dart       # Coin with magnet + combo integration
+│   │   ├── effects/
+│   │   │   └── thermal_column_component.dart # Visible local updrafts + orbit surfing
 │   │   └── powerups/
 │   │       └── powerup_component.dart    # 5 power-up types, Canvas icons
 │   ├── systems/
-│   │   ├── wind_system.dart        # Lane-based FBM noise, thermals, turbulence
+│   │   ├── wind_system.dart        # Lane-based FBM weather + turbulence
+│   │   ├── thermal_column_system.dart # Local visible updraft placement + sampling
 │   │   ├── input_manager.dart      # Hold/release + tilt/touchZone + double-tap
 │   │   ├── scoring_system.dart     # Distance + coins×combo + near-miss
 │   │   ├── biome_manager.dart      # Distance → biome + per-biome obstacle weights
@@ -174,6 +177,7 @@ Key knobs to adjust during playtesting:
 - `liftForce` / `gravity` — hold/release feel
 - `turnMomentumResponsePerSecond` / `wingLoadingResponseExponent` — how quickly light vs. heavy folds bank and recover
 - `maxWindForce` / `turbulencePocketMinDuration` / `turbulencePocketMaxDuration` — gust challenge level and local-cell lifetime
+- `thermalColumnMinRadius` / `thermalSurfLiftMultiplier` — updraft precision and circle-surf payoff
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts

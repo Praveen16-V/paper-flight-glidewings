@@ -420,6 +420,9 @@ class WindSystem extends Component with HasGameRef<PaperFlightGame> {
   double _randomRange(double min, double max) =>
       min + _rng.nextDouble() * (max - min);
 
+  /// True while Wind Caller is calming natural lane and pocket weather.
+  bool get windCallerActive => _isWindCallerActive;
+
   bool get _isWindCallerActive {
     try {
       return gameRef.ref

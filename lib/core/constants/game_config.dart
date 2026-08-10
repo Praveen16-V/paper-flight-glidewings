@@ -4,7 +4,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-flight-2';
+  static const String balanceVersion = '2026.08-flight-3';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -191,8 +191,34 @@ abstract class GameConfig {
   /// Max lateral wind push force (px/s).
   static const double maxWindForce = 90.0;
 
-  /// Thermal (updraft) lift force (px/s) when plane is in thermal lane.
+  /// Thermal (updraft) lift force (px/s) when plane is in a thermal column.
   static const double thermalLiftForce = 160.0;
+
+  // ── Visible Thermal Columns / Thermal Surfing ────────────────────────────
+  /// A lane advertises favourable air, but the actual updraft is a visible,
+  /// local column the player can choose to enter and ride.
+  static const double thermalColumnMinRadius = 32.0;
+  static const double thermalColumnMaxRadius = 46.0;
+  static const double thermalColumnMinimumLift = 12.0;
+  static const int thermalColumnParticleCount = 22;
+  static const double thermalColumnFadeInRate = 5.5;
+  static const double thermalColumnFadeOutRate = 2.4;
+
+  /// Centre of the visual/surfing core, expressed as a screen-height fraction.
+  static const double thermalColumnCoreYFraction = 0.56;
+
+  /// Thermal surfing measures an orbit around the core rather than merely
+  /// rewarding time spent inside it. Completing a clockwise or counter-clockwise
+  /// loop earns a temporary stronger updraft.
+  static const double thermalSurfOrbitHorizontalRadiusMultiplier = 0.45;
+  static const double thermalSurfOrbitVerticalRadius = 92.0;
+  static const double thermalSurfMinOrbitRadius = 0.34;
+  static const double thermalSurfMaxOrbitRadius = 1.10;
+  static const double thermalSurfRequiredRadians = 6.283185307179586;
+  static const double thermalSurfProgressLiftBonus = 0.18;
+  static const double thermalSurfLiftMultiplier = 1.45;
+  static const double thermalSurfBonusDuration = 2.5;
+  static const double thermalSurfMinimumInfluence = 0.50;
 
   /// Noise time scale — controls how fast wind patterns evolve.
   static const double windNoiseTimeScale = 0.4;

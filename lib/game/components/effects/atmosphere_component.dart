@@ -58,7 +58,8 @@ class AtmosphereComponent extends PositionComponent with HasGameRef<PaperFlightG
   void render(Canvas canvas) {
     final biome = gameRef.biomeManager.currentBiome;
     _drawWindLanes(canvas);
-    _drawThermals(canvas);
+    // Thermal lift is rendered by local ThermalColumnComponents rather than
+    // as an ambiguous full-lane glow.
     _drawTurbulence(canvas);
     _drawBiomeMotes(canvas, biome);
     if (biome == Biome.storm) _drawStorm(canvas);
@@ -86,32 +87,6 @@ class AtmosphereComponent extends PositionComponent with HasGameRef<PaperFlightG
         // Tiny paper-confetti fleck that makes the direction more obvious.
         canvas.drawCircle(Offset(x - direction * 7, y + 4), 1.5 + wind.intensity, paint..style = PaintingStyle.fill);
         paint.style = PaintingStyle.stroke;
-      }
-    }
-  }
-
-  void _drawThermals(Canvas canvas) {
-    for (var lane = 0; lane < GameConfig.windLaneCount; lane++) {
-      final wind = gameRef.windSystem.windAt(lane);
-      if (wind.type != WindType.thermal) continue;
-      final x = (lane + .5) * size.x / GameConfig.windLaneCount;
-      final strength = wind.intensity;
-      final glow = Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-          colors: [
-            Color.fromRGBO(255, 183, 77, .03),
-            Color.fromRGBO(255, 213, 79, .20 + strength * .14),
-            Color.fromRGBO(255, 241, 180, .02),
-          ],
-        ).createShader(Rect.fromLTWH(x - 34, 40, 68, size.y - 80));
-      canvas.drawOval(Rect.fromCenter(center: Offset(x, size.y * .58), width: 62, height: size.y * .95), glow);
-      final shimmer = Paint()..color = Color.fromRGBO(255, 235, 130, .32)..strokeWidth = 1.2;
-      for (var i = 0; i < 6; i++) {
-        final y = size.y - ((_time * (42 + strength * 65) + i * 127) % (size.y + 30));
-        final wobble = sin(_time * 3 + i) * 12;
-        canvas.drawCircle(Offset(x + wobble, y), 1.2 + (i % 2), shimmer);
       }
     }
   }
