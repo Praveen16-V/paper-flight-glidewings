@@ -55,20 +55,20 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   @override
   void dispose() {
-    // Tear down the FlameGame when this screen leaves the tree.
+    // Do NOT manually call _game.dispose() here.
     //
-    // Previously this only called pauseEngine(), which left every previous
-    // run's game — its accelerometer stream subscription (InputManager),
-    // audio players (GameFeelSystem) and whole component/world tree — alive.
-    // Because each Retry pushes a brand-new GameScreen (and therefore a
-    // brand-new PaperFlightGame), those stale instances accumulated run
-    // after run until the app hung.
+    // Flutter disposes parent StatefulWidget (GameScreen) BEFORE its children
+    // (GameWidget). If we call _game.dispose() here, it sets _disposed=true
+    // and runs _releaseResources(cascadeChildren:false). Then when GameWidget
+    // is disposed, it calls game.onRemove() which runs
+    // _releaseResources(cascadeChildren:true) but returns early due to the
+    // _disposed guard — leaving the world's children (plane, obstacles,
+    // spawners, etc.) never removed, causing resource leaks that accumulate
+    // over multiple plays.
     //
-    // The game overrides onRemove() to release those resources; the
-    // GameWidget also calls onRemove/dispose when it is torn down. We call
-    // dispose() here too as a deterministic safety net — the game's
-    // _disposed guard makes this idempotent, so a double call is harmless.
-    _game.dispose();
+    // The correct lifecycle is: GameWidget.dispose() -> game.onRemove() ->
+    // _releaseResources(cascadeChildren:true) which properly cleans up
+    // everything including cascading to all world children.
     super.dispose();
   }
 
