@@ -6,6 +6,7 @@ import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../core/utils/noise.dart';
 import '../../models/trial_definition.dart';
+import '../../providers/game_session_provider.dart';
 import '../paper_flight_game.dart';
 
 class LaneWind {
