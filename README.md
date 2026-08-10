@@ -105,6 +105,8 @@ lib/
 │   │   │   └── coin_component.dart       # Coin with magnet + combo integration
 │   │   ├── effects/
 │   │   │   └── thermal_column_component.dart # Visible local updrafts + orbit surfing
+│   │   ├── skins/
+│   │   │   └── animated_paper_skin.dart # 8-frame SpriteAnimation skin overlays
 │   │   └── powerups/
 │   │       └── powerup_component.dart    # 5 power-up types, Canvas icons
 │   ├── systems/

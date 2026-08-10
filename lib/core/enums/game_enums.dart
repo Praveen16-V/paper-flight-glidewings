@@ -1037,6 +1037,7 @@ enum PaperSkin {
   lavaLamp,         // animated glowing neon liquid magma blobs
   animatedHologram, // premium animated 360° hue-rotating holographic prism
   customCraft,      // player custom dual-tone craft paper with pattern stamps
+  flipbook,         // premium 8-frame hand-flipped paper animation
 }
 
 extension PaperSkinLabel on PaperSkin {
@@ -1082,6 +1083,8 @@ extension PaperSkinLabel on PaperSkin {
         return 'Prism Hologram';
       case PaperSkin.customCraft:
         return 'Custom Craft';
+      case PaperSkin.flipbook:
+        return 'Flipbook Flight';
     }
   }
 
@@ -1127,6 +1130,8 @@ extension PaperSkinLabel on PaperSkin {
         return 'Premium 360° hue-rotating rainbow prism foil';
       case PaperSkin.customCraft:
         return 'Player custom dual-tone craft paper + pattern stamps';
+      case PaperSkin.flipbook:
+        return 'Eight hand-flipped prism frames with a paper-thin motion trail';
     }
   }
 
@@ -1171,6 +1176,8 @@ extension PaperSkinLabel on PaperSkin {
         return 3000;
       case PaperSkin.animatedHologram:
         return 3200;
+      case PaperSkin.flipbook:
+        return 3600;
     }
   }
 
@@ -1203,6 +1210,8 @@ extension PaperSkinLabel on PaperSkin {
         return 8;
       case PaperSkin.animatedHologram:
         return 8;
+      case PaperSkin.flipbook:
+        return 10;
     }
   }
 
@@ -1249,8 +1258,19 @@ extension PaperSkinLabel on PaperSkin {
         return 0xFFE040FB;
       case PaperSkin.customCraft:
         return 0xFF4FC3F7;
+      case PaperSkin.flipbook:
+        return 0xFF7C4DFF;
     }
   }
+
+  /// True when this skin renders an eight-frame SpriteAnimationComponent
+  /// overlay instead of a single procedural Canvas pass.
+  bool get usesFrameAnimation =>
+      this == PaperSkin.animatedHologram ||
+      this == PaperSkin.lavaLamp ||
+      this == PaperSkin.flipbook;
+
+  int get animationFrameCount => usesFrameAnimation ? 8 : 0;
 }
 
 // ── Challenge System ────────────────────────────────────────────────────────

@@ -2484,6 +2484,7 @@ class _SkinPatternPainter extends CustomPainter {
         break;
       case PaperSkin.holographicFoil:
       case PaperSkin.animatedHologram:
+      case PaperSkin.flipbook:
         final foil = Paint()
           ..shader = LinearGradient(
                   colors: [

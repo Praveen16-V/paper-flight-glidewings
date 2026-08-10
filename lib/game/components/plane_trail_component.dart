@@ -182,6 +182,7 @@ class PlaneTrailComponent extends Component
         return Color.lerp(const Color(0xFF80DEEA), const Color(0xFFFF80AB), t)!;
       case PaperSkin.holographicFoil:
       case PaperSkin.animatedHologram:
+      case PaperSkin.flipbook:
         final hue = (headFraction * 260.0 + _animTime * 90.0) % 360.0;
         return HSLColor.fromAHSL(1.0, hue, 0.85, 0.65).toColor();
       case PaperSkin.prideGradient:

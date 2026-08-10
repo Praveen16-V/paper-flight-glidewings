@@ -16,6 +16,7 @@ import '../../providers/game_session_provider.dart';
 import '../paper_flight_game.dart';
 import '../systems/input_manager.dart';
 import 'effects/thermal_column_component.dart';
+import 'skins/animated_paper_skin.dart';
 import 'plane_trail_component.dart';
 
 /// The player's paper plane.
@@ -36,6 +37,7 @@ import 'plane_trail_component.dart';
 ///     Classic Biplane, Origami Shuriken, Paper Rocket).
 ///   - 3-level upgrade tree perks & stats scaling.
 ///   - Crosswind-amplified Perlin wing flex on top of hold/release fold.
+///   - Eight-frame SpriteAnimationComponent overlays for premium paper skins.
 ///   - Thermal breathing scale pulse while riding updrafts.
 ///   - Edge curl & crumple damage state after near-miss passes (heals over time).
 ///   - Procedural paper grain texture & diffuse shading (not flat solid colors).
@@ -177,6 +179,7 @@ class PlaneComponent extends PositionComponent
 
   late final PlaneTrailComponent _trail;
   late final RectangleHitbox _hitbox;
+  AnimatedPaperSkin? _animatedSkinOverlay;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -199,6 +202,7 @@ class PlaneComponent extends PositionComponent
       position: (size - hbSize) / 2,
     );
     add(_hitbox);
+    _syncAnimatedSkinOverlay();
 
     await super.onLoad();
   }
@@ -215,7 +219,27 @@ class PlaneComponent extends PositionComponent
   }
 
   void syncSkin(PaperSkin newSkin) {
+    if (paperSkin == newSkin) return;
     paperSkin = newSkin;
+    _syncAnimatedSkinOverlay();
+  }
+
+  /// Attaches/removes the sprite-sheet overlay only for frame-animated skins.
+  /// Other skins keep using the lightweight procedural Canvas pass below.
+  void _syncAnimatedSkinOverlay() {
+    final existing = _animatedSkinOverlay;
+    if (existing != null) {
+      existing.removeFromParent();
+      _animatedSkinOverlay = null;
+    }
+    if (!paperSkin.usesFrameAnimation) return;
+
+    final overlay = AnimatedPaperSkin(
+      skin: paperSkin,
+      planeSize: size.clone(),
+    );
+    _animatedSkinOverlay = overlay;
+    add(overlay);
   }
 
   void syncLevel(int newLevel) {
@@ -998,18 +1022,11 @@ class PlaneComponent extends PositionComponent
           canvas.drawOval(Rect.fromCenter(center: Offset(w * (0.35 + i * 0.15), h * (0.35 + math.sin(_animTime * 3.0 + i) * 0.15)), width: 5, height: 3), petalPaint);
         }
         break;
+      // Frame-animated skins are rendered by [AnimatedPaperSkin], a child
+      // SpriteAnimationComponent overlay added during syncSkin/onLoad.
       case PaperSkin.lavaLamp:
-        final lavaA = Paint()..color = const Color(0xFFFF4081).withOpacity(0.35 + 0.1 * math.sin(_animTime * 3.0))..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6)..style = PaintingStyle.fill;
-        final lavaB = Paint()..color = const Color(0xFF00E5FF).withOpacity(0.35 + 0.1 * math.cos(_animTime * 2.5))..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6)..style = PaintingStyle.fill;
-        canvas.drawCircle(Offset(w * 0.45, h * 0.5 + math.sin(_animTime * 2.5) * 8), 9, lavaA);
-        canvas.drawCircle(Offset(w * 0.65, h * 0.5 - math.sin(_animTime * 2.0) * 8), 11, lavaB);
-        break;
       case PaperSkin.animatedHologram:
-        final hue = (_animTime * 65.0) % 360.0;
-        final color1 = HSLColor.fromAHSL(0.35, hue, 0.9, 0.6).toColor();
-        final color2 = HSLColor.fromAHSL(0.35, (hue + 120) % 360.0, 0.9, 0.6).toColor();
-        final color3 = HSLColor.fromAHSL(0.35, (hue + 240) % 360.0, 0.9, 0.6).toColor();
-        canvas.drawRect(Rect.fromLTWH(0, 0, w, h), Paint()..shader = LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [color1, color2, color3, color1]).createShader(Rect.fromLTWH(0, 0, w, h))..style = PaintingStyle.fill);
+      case PaperSkin.flipbook:
         break;
       case PaperSkin.customCraft:
         canvas.drawCircle(Offset(w * 0.4, h * 0.4), 4, Paint()..color = Colors.white.withOpacity(0.35)..style = PaintingStyle.stroke..strokeWidth = 0.9);
