@@ -172,6 +172,7 @@ No magic numbers anywhere else — change one value and it propagates everywhere
 Key knobs to adjust during playtesting:
 - `baseScrollSpeed` / `scrollAcceleration` — overall difficulty ramp
 - `liftForce` / `gravity` — hold/release feel
+- `turnMomentumResponsePerSecond` / `wingLoadingResponseExponent` — how quickly light vs. heavy folds bank and recover
 - `maxWindForce` — wind challenge level
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds

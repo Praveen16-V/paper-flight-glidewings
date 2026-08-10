@@ -1621,21 +1621,37 @@ class PlaneComponent extends PositionComponent
       targetVX += autoSway;
     }
 
-    _velocityX = MathUtils.lerp(
-      _velocityX,
-      targetVX + laneWind.lateralForce,
-      GameConfig.tiltVelocityResponse,
+    // Steering intent and crosswind are composed before the input layer applies
+    // the airframe's dynamic wing-loading response. This replaces the old
+    // fixed per-frame lerp: Butterfly/Albatross folds track corrections almost
+    // instantly while Bomber/Rocket folds have to carry their bank through a
+    // reversal. The same state machine is used by tilt, touch zones, and stick.
+    _velocityX = input.resolveTurnMomentum(
+      planeType: planeType,
+      desiredVelocity: targetVX + laneWind.lateralForce,
+      hasSteeringInput:
+          input.horizontalInput.abs() > GameConfig.turnMomentumInputDeadZone,
+      dt: dt,
     );
 
     // ── Integrate Position ────────────────────────────────────────────────────
 
-    position.x += _velocityX * dt;
+    final minX = GameConfig.horizontalEdgeMargin;
+    final maxX = GameConfig.designWidth - GameConfig.horizontalEdgeMargin;
+    final proposedX = position.x + _velocityX * dt;
+    position.x = proposedX.clamp(minX, maxX).toDouble();
     position.y += _velocityY * dt;
 
-    position.x = position.x.clamp(
-      GameConfig.horizontalEdgeMargin,
-      GameConfig.designWidth - GameConfig.horizontalEdgeMargin,
-    );
+    // Keep the input model in sync with physical bounds. Without this, a heavy
+    // plane pushed into an edge by a gust would keep invisible outward momentum
+    // and feel sticky when the pilot begins correcting back into the play area.
+    if (proposedX <= minX && _velocityX < 0) {
+      _velocityX = 0;
+      input.blockTurnMomentumAtEdge(left: true);
+    } else if (proposedX >= maxX && _velocityX > 0) {
+      _velocityX = 0;
+      input.blockTurnMomentumAtEdge(right: true);
+    }
 
     // ── Soft Altitude Ceiling ─────────────────────────────────────────────────
     _handleCeiling(dt);

@@ -432,13 +432,13 @@ extension PlaneLabel on PlaneType {
       case PlaneType.butterfly:
         return [
           'Floaty fall rate (0.75)',
-          'Aerodynamic auto-sway',
+          'Auto-sway + light, instant turns',
           '+40% thermal lift bonus',
         ];
       case PlaneType.bomber:
         return [
           'Starts with 2 shield charges',
-          'Heavy sturdy paper frame',
+          'Heavy frame — committed momentum turns',
           'Turn 0.80 / Fall 1.15',
         ];
       case PlaneType.interceptor:
@@ -449,7 +449,7 @@ extension PlaneLabel on PlaneType {
         ];
       case PlaneType.albatross:
         return [
-          'Endless glide combo bonus',
+          'Endless glide combo, instant correction',
           '2× clean glide streak points',
           '50% slower combo decay in glide',
         ];
@@ -468,7 +468,7 @@ extension PlaneLabel on PlaneType {
       case PlaneType.rocket:
         return [
           'High speed cruise (1.15)',
-          'Streamlined needle hitbox (0.40)',
+          'Needle hitbox (0.40), carries a bank',
           'Instant dive recovery',
         ];
     }
@@ -555,6 +555,42 @@ extension PlaneLabel on PlaneType {
         return 1.25; // ultra snappy
       case PlaneType.rocket:
         return 1.15; // high response
+    }
+  }
+
+  /// Relative wing loading (1.0 = the balanced Paper Dart).
+  ///
+  /// This is deliberately independent from [turnSpeedMultiplier]: turn speed
+  /// describes how much authority a fold can generate, while wing loading
+  /// describes how quickly it can change direction. The result is a light
+  /// Butterfly or Albatross that reacts almost at once and a Bomber/Rocket
+  /// that has to commit to a bank and carries that momentum through a turn.
+  double get wingLoading {
+    switch (this) {
+      case PlaneType.dart:
+        return 1.00;
+      case PlaneType.glider:
+        return 0.72;
+      case PlaneType.stuntFold:
+        return 0.88;
+      case PlaneType.crane:
+        return 0.78;
+      case PlaneType.stealthJet:
+        return 0.86;
+      case PlaneType.butterfly:
+        return 0.50;
+      case PlaneType.bomber:
+        return 1.85;
+      case PlaneType.interceptor:
+        return 0.68;
+      case PlaneType.albatross:
+        return 0.58;
+      case PlaneType.biplane:
+        return 1.05;
+      case PlaneType.ninjaStar:
+        return 0.52;
+      case PlaneType.rocket:
+        return 1.52;
     }
   }
 

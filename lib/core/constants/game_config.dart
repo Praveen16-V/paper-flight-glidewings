@@ -4,7 +4,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-baseline-1';
+  static const String balanceVersion = '2026.08-flight-1';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -69,10 +69,35 @@ abstract class GameConfig {
   /// This is deliberately small: sensor samples ease into the steering target.
   static const double tiltLowPassAlpha = 0.10;
 
-  /// Per-frame blend used when the plane follows its filtered tilt target.
-  /// Kept small (below the input filter) so lateral direction changes ease in
-  /// gradually and the bank never snaps from side to side.
-  static const double tiltVelocityResponse = 0.05;
+  // ── Dynamic Wing Loading / Turn Momentum ─────────────────────────────────
+  /// Neutral (wing-loading 1.0) lateral response in inverse seconds. The
+  /// response is converted to a frame-rate-independent exponential blend by
+  /// [InputManager]. Lower wing loading responds much faster; high loading
+  /// retains a deliberate, weighty turn arc.
+  static const double turnMomentumResponsePerSecond = 7.5;
+
+  /// Exponent applied to a plane's relative wing loading. A little more than
+  /// linear scaling makes the Bomber and Rocket visibly carry momentum without
+  /// making the neutral Paper Dart feel sluggish.
+  static const double wingLoadingResponseExponent = 1.35;
+
+  /// Releasing lateral input should let an airframe coast rather than snapping
+  /// straight. This multiplier is applied to response while no steering input
+  /// is present; high-wing-loading planes therefore drift longest.
+  static const double turnMomentumCoastResponseMultiplier = 0.48;
+
+  /// Counter-steering is intentionally slower than continuing a bank. It gives
+  /// heavier planes a readable turn commitment while light folds can recover
+  /// almost immediately.
+  static const double turnMomentumReversalResponseMultiplier = 0.68;
+
+  /// Input magnitude below which a plane is considered to be coasting.
+  static const double turnMomentumInputDeadZone = 0.04;
+
+  /// Safety cap for the composed steering + wind velocity. This is well above
+  /// normal full-input movement, while preventing a pathological wind stack
+  /// from throwing a plane through the world edge in one frame.
+  static const double maxTurnMomentumSpeed = 380.0;
 
   /// Default tilt sensitivity (1.0 = neutral, range 0.3–2.0 via settings).
   static const double defaultTiltSensitivity = 1.0;
