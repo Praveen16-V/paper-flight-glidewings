@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -122,7 +123,15 @@ abstract class ObstacleComponent extends PositionComponent
       _ => null,
     };
     if (cue != null) {
-      try { FlameAudio.play(cue, volume: .32); } catch (_) {}
+      unawaited(_playThreatCueAsync(cue));
+    }
+  }
+
+  Future<void> _playThreatCueAsync(String cue) async {
+    try {
+      await FlameAudio.play(cue, volume: .32);
+    } catch (_) {
+      // Threat audio is optional; never let a decoder failure affect gameplay.
     }
   }
 

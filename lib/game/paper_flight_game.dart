@@ -607,7 +607,10 @@ class PaperFlightGame extends FlameGame
         Duration(milliseconds: (GameConfig.trialCrashFreezeSeconds * 1000).round()),
         () {
           if (_disposed) return;
-          resumeEngine();
+          // Keep the crashed game paused while the results route is pushed.
+          // Resuming here lets post-crash HUD/power-up updates continue and
+          // can make the old canvas compete with the incoming results screen.
+          _phase = GamePhase.gameOver;
           _finalizeTrial(completed: false, timedOut: false);
         },
       );
@@ -661,7 +664,10 @@ class PaperFlightGame extends FlameGame
     // finalization on a torn-down game.
     Future.delayed(GameConfig.crashSlowMoFreeze, () {
       if (_disposed) return;
-      resumeEngine();
+      // Leave the engine paused until GameWidget is removed. Resuming the
+      // crashed world allows timed power-up/HUD updates to keep firing while
+      // the replacement route is animating, which can enqueue repeated route
+      // work and present as a flickering game-over screen.
       _phase = GamePhase.gameOver;
       _finalizeRun(wasRevived: false);
     });
@@ -672,6 +678,9 @@ class PaperFlightGame extends FlameGame
     if (_isReviving || _phase != GamePhase.gameOver) return;
     _isReviving = true;
     _phase = GamePhase.playing;
+    // Crash finalization keeps the engine paused while the results route is
+    // being replaced. Resume it when an in-place revive is requested.
+    resumeEngine();
     plane.revive();
     ref.read(gameSessionProvider.notifier).useRevive();
   }
@@ -711,9 +720,9 @@ class PaperFlightGame extends FlameGame
   /// ambient music and signals game over so the UI can show the summary.
   void endZenFlight() {
     if (_phase != GamePhase.playing && _phase != GamePhase.paused) return;
-    if (_phase == GamePhase.paused) resumeEngine();
     gameFeelSystem.stopZenMusic();
     _phase = GamePhase.gameOver;
+    pauseEngine();
     try {
       ref.read(saveDataProvider.notifier).recordZenRun(_distanceMeters);
     } catch (_) {}
@@ -725,6 +734,7 @@ class PaperFlightGame extends FlameGame
   /// The course was flown to the end — evaluate stars and finalize.
   void onTrialComplete() {
     if (_phase != GamePhase.playing) return;
+    pauseEngine();
     _phase = GamePhase.gameOver;
     gameFeelSystem.silence();
     _finalizeTrial(completed: true, timedOut: false);
@@ -733,6 +743,7 @@ class PaperFlightGame extends FlameGame
   /// The trial clock hit zero — the attempt fails.
   void onTrialTimeout() {
     if (_phase != GamePhase.playing) return;
+    pauseEngine();
     _phase = GamePhase.gameOver;
     gameFeelSystem.silence();
     _finalizeTrial(completed: false, timedOut: true);
