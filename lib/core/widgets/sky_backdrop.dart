@@ -115,7 +115,7 @@ class _SkyPainter extends CustomPainter {
       final sr = starRng.nextDouble() * 1.4 + 0.3;
       final twinkle =
           0.15 + 0.18 * math.sin(animT * math.pi * 2 + starRng.nextDouble() * 6);
-      starPaint.color = Colors.white.withOpacity(twinkle);
+      starPaint.color = Colors.white.withOpacity(twinkle.clamp(0.0, 1.0));
       canvas.drawCircle(Offset(sx, sy), sr, starPaint);
     }
 

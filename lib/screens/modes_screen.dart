@@ -322,11 +322,14 @@ class _ZenModeCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(
-                      mode.displayName,
-                      style: AppTypography.title.copyWith(
-                        color: _edgeOf(accent),
-                        fontSize: 18,
+                    Expanded(
+                      child: Text(
+                        mode.displayName,
+                        style: AppTypography.title.copyWith(
+                          color: _edgeOf(accent),
+                          fontSize: 18,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -423,11 +426,14 @@ class _DailyModeCard extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Text(
-                          mode.displayName,
-                          style: AppTypography.title.copyWith(
-                            color: _edgeOf(accent),
-                            fontSize: 18,
+                        Expanded(
+                          child: Text(
+                            mode.displayName,
+                            style: AppTypography.title.copyWith(
+                              color: _edgeOf(accent),
+                              fontSize: 18,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(width: 8),

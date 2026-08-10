@@ -353,71 +353,74 @@ class _MapIsland extends StatelessWidget {
             // body
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 34, 10, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(trial.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.bodyLarge.copyWith(color: AppColors.paperInk, fontSize: 13.5, height: 1.0)),
-                  const SizedBox(height: 2),
-                  Text(trial.flavor,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.caption.copyWith(color: AppColors.paperInkSoft, fontSize: 9.5, height: 1.1)),
-                  const SizedBox(height: 7),
-                  Row(
-                    children: [
-                      for (int s = 1; s <= 3; s++)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 2),
-                          child: Icon(s <= stars ? Icons.star_rounded : Icons.star_border_rounded,
-                              size: 15, color: s <= stars ? AppColors.warning : AppColors.paperInkSoft.withOpacity(0.38)),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(trial.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.bodyLarge.copyWith(color: AppColors.paperInk, fontSize: 13.5, height: 1.0)),
+                    const SizedBox(height: 2),
+                    Text(trial.flavor,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.caption.copyWith(color: AppColors.paperInkSoft, fontSize: 9.5, height: 1.1)),
+                    const SizedBox(height: 7),
+                    Row(
+                      children: [
+                        for (int s = 1; s <= 3; s++)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 2),
+                            child: Icon(s <= stars ? Icons.star_rounded : Icons.star_border_rounded,
+                                size: 15, color: s <= stars ? AppColors.warning : AppColors.paperInkSoft.withOpacity(0.38)),
+                          ),
+                        const Spacer(),
+                        if (trial.parSeconds != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(color: AppColors.paperInk.withOpacity(0.06), borderRadius: BorderRadius.circular(5)),
+                            child: Text('PAR ${trial.parSeconds!.toStringAsFixed(0)}s',
+                                style: AppTypography.caption.copyWith(color: AppColors.paperInkSoft, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.3)),
+                          ),
+                      ],
+                    ),
+                    // Fix 4: locked unlock hint
+                    if (!unlocked && index > 0) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Need ★ from checkpoint ${index.toString().padLeft(2, '0')}',
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.paperInkSoft.withOpacity(0.75),
+                          fontSize: 9,
                         ),
-                      const Spacer(),
-                      if (trial.parSeconds != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                          decoration: BoxDecoration(color: AppColors.paperInk.withOpacity(0.06), borderRadius: BorderRadius.circular(5)),
-                          child: Text('PAR ${trial.parSeconds!.toStringAsFixed(0)}s',
-                              style: AppTypography.caption.copyWith(color: AppColors.paperInkSoft, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.3)),
-                        ),
-                    ],
-                  ),
-                  // Fix 4: locked unlock hint
-                  if (!unlocked && index > 0) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'Need ★ from checkpoint ${index.toString().padLeft(2, '0')}',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.paperInkSoft.withOpacity(0.75),
-                        fontSize: 9,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    ],
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        if (trial.totalCoins > 0) ...[
+                          PaperIcon(PaperIconData.coin, size: 10, color: AppColors.coinGold),
+                          const SizedBox(width: 3),
+                          Text('${trial.totalCoins}', style: AppTypography.caption.copyWith(color: AppColors.coinGoldDeep, fontSize: 10, fontWeight: FontWeight.w800)),
+                          const SizedBox(width: 8),
+                        ],
+                        Expanded(
+                          child: Text(trial.objective,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.caption.copyWith(color: AppColors.paperInkSoft.withOpacity(0.85), fontSize: 8.5, fontStyle: FontStyle.italic)),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(unlocked ? Icons.play_circle_fill_rounded : Icons.lock_outline_rounded,
+                            color: unlocked ? accent : AppColors.paperInkSoft.withOpacity(0.55), size: 22),
+                      ],
                     ),
                   ],
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      if (trial.totalCoins > 0) ...[
-                        PaperIcon(PaperIconData.coin, size: 10, color: AppColors.coinGold),
-                        const SizedBox(width: 3),
-                        Text('${trial.totalCoins}', style: AppTypography.caption.copyWith(color: AppColors.coinGoldDeep, fontSize: 10, fontWeight: FontWeight.w800)),
-                        const SizedBox(width: 8),
-                      ],
-                      Expanded(
-                        child: Text(trial.objective,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.caption.copyWith(color: AppColors.paperInkSoft.withOpacity(0.85), fontSize: 8.5, fontStyle: FontStyle.italic)),
-                      ),
-                      const SizedBox(width: 6),
-                      Icon(unlocked ? Icons.play_circle_fill_rounded : Icons.lock_outline_rounded,
-                          color: unlocked ? accent : AppColors.paperInkSoft.withOpacity(0.55), size: 22),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ),
             // connector nub toward center spine

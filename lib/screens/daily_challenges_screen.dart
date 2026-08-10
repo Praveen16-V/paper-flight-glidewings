@@ -323,9 +323,11 @@ class _DayStampBox extends StatelessWidget {
           alignment: Alignment.center,
           clipBehavior: Clip.none,
           children: [
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+            SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                 if (isMilestone)
                   SizedBox(width: 28, height: 24, child: CustomPaint(painter: _GiftBoxPainter(isCompleted: isCompleted))),
                 if (isMilestone) const SizedBox(height: 3),
@@ -349,6 +351,7 @@ class _DayStampBox extends StatelessWidget {
                           color: isCompleted ? const Color(0xFF6D4C00) : AppColors.paperInkSoft, fontSize: 7, letterSpacing: 1.0)),
               ],
             ),
+          ),
             // origami checkmark stamp overlay for completed days (non-milestone)
             if (isCompleted && !isMilestone)
               Positioned(
