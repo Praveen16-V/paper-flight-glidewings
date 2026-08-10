@@ -95,15 +95,15 @@ flutter:
     - assets/images/ui/gem_icon.png
     - assets/images/ui/shield_icon.png
     # Audio
-    - assets/audio/wind_loop.mp3
+    - assets/audio/wind_loop.wav
     - assets/audio/drone_warning.wav
     - assets/audio/bird_warning.wav
     - assets/audio/thunder_warning.wav
-    - assets/audio/coin_collect.mp3
-    - assets/audio/crash.mp3
-    - assets/audio/powerup_pickup.mp3
-    - assets/audio/near_miss.mp3
-    - assets/audio/bgm_city.mp3
+    - assets/audio/coin_collect.wav
+    - assets/audio/crash.wav
+    - assets/audio/powerup_pickup.wav
+    - assets/audio/near_miss.wav
+    - assets/audio/bgm_city.wav
 
   fonts:
     - family: Fredoka

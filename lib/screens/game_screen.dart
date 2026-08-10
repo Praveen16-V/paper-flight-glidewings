@@ -43,6 +43,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   late PaperFlightGame _game;
   bool _started = false;
 
+  /// A game-over session can continue publishing HUD timer updates while the
+  /// results route is being pushed (for example, when a timed power-up is
+  /// active at the moment of impact). Navigation must happen only for the
+  /// actual playing -> gameOver edge; otherwise every one of those updates
+  /// pushes another results route and the screen appears to flicker.
+  bool _resultsNavigationStarted = false;
+
   @override
   void initState() {
     super.initState();
@@ -74,9 +81,18 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch for game-over transition.
+    // Watch for the playing -> gameOver edge. The game can still publish
+    // provider changes after it enters gameOver (power-up countdowns are the
+    // usual example), so checking only `next.phase` would enqueue a new route
+    // on every update and make the results screen flicker.
     ref.listen<GameSessionState>(gameSessionProvider, (prev, next) {
-      if (next.phase != GamePhase.gameOver) return;
+      if (!mounted || _resultsNavigationStarted) return;
+      if (next.phase != GamePhase.gameOver ||
+          prev?.phase == GamePhase.gameOver) {
+        return;
+      }
+
+      _resultsNavigationStarted = true;
       if (next.mode == GameMode.trial && next.trialOutcome != null) {
         _navigateToTrialResults(next.trialOutcome!);
         return;
@@ -128,6 +144,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   void _navigateToGameOver(RunResult result, GameMode mode) {
+    if (!mounted) return;
     Navigator.of(context).pushReplacementNamed(
       AppRoutes.gameOver,
       arguments: GameOverArgs(
@@ -139,6 +156,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   void _navigateToTrialResults(TrialOutcome outcome) {
+    if (!mounted) return;
     Navigator.of(context).pushReplacementNamed(
       AppRoutes.trialResult,
       arguments: TrialResultArgs(outcome: outcome),

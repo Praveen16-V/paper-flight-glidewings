@@ -22,7 +22,7 @@ import '../paper_flight_game.dart';
 ///
 /// Responsibilities (each respects the player's SFX / haptic settings):
 ///
-///  * **Adaptive wind** — a continuously looping `wind_loop.mp3` whose volume
+///  * **Adaptive wind** — a continuously looping `wind_loop.wav` whose volume
 ///    and playback rate (pitch) track world scroll speed + vertical dive speed.
 ///    Gated by the SFX toggle and scaled by SFX volume (per spec).
 ///  * **Dynamic camera** — pulls the view back (zoom-out) once scroll speed
@@ -170,7 +170,7 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     try {
       final player = AudioPlayer();
       await player.setReleaseMode(ReleaseMode.loop);
-      await player.setSource(AssetSource('audio/wind_loop.mp3'));
+      await player.setSource(AssetSource('audio/wind_loop.wav'));
       await player.setVolume(0.0); // muted until the first update sets it
       _wind = player;
       await player.resume();
@@ -407,9 +407,23 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
       player.onPlayerComplete.listen((_) async {
         await player.dispose();
       });
-      unawaited(player.play(BytesSource(bytes), volume: volume));
+      unawaited(_playBytesAsync(player, bytes, volume));
     } catch (_) {
       // Audio safely ignored if unsupported (tests / headless).
+    }
+  }
+
+  Future<void> _playBytesAsync(
+    AudioPlayer player,
+    Uint8List bytes,
+    double volume,
+  ) async {
+    try {
+      await player.play(BytesSource(bytes), volume: volume);
+    } catch (_) {
+      try {
+        await player.dispose();
+      } catch (_) {}
     }
   }
 

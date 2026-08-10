@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:audioplayers/audioplayers.dart';
@@ -24,7 +25,7 @@ void spawnCoinFeedback(
       text: '+$points',
     ),
   );
-  _playSfx('coin_collect.mp3');
+  _playSfx('coin_collect.wav');
 }
 
 /// Spawns tier-aware near-miss feedback at [position]: golden/cyan spark
@@ -94,16 +95,19 @@ void spawnStreakFeedback(
 // 6.x removed `prefix` from AudioPool and `pool.play(rate:)` — we use a
 // short-lived AudioPlayer to support per-playback rate.
 Future<void> _playNearMissSting(double rate) async {
+  final player = AudioPlayer();
   try {
-    final player = AudioPlayer();
     await player.setPlaybackRate(rate);
-    await player.play(AssetSource('audio/near_miss.mp3'), volume: 0.9);
+    await player.play(AssetSource('audio/near_miss.wav'), volume: 0.9);
     // Auto-dispose after playback completes to avoid leaking players.
     player.onPlayerComplete.listen((_) async {
       await player.dispose();
     });
   } catch (_) {
-    // Audio playback safely ignored if asset is silent or unsupported in test.
+    try {
+      await player.dispose();
+    } catch (_) {}
+    // Audio playback safely ignored if the asset is unsupported on this device.
   }
 }
 
@@ -116,7 +120,7 @@ void spawnCrashFeedback(
   final world = game.world;
   world.add(CrashShockwaveRing(position: position.clone()));
   world.add(PaperCrashBurst(position: position.clone()));
-  _playSfx('crash.mp3');
+  _playSfx('crash.wav');
 }
 
 /// Spawns a satisfying power-up pickup: a colored energy burst in the
@@ -136,7 +140,7 @@ void spawnPowerUpFeedback(
       fontSize: 22,
     ),
   );
-  _playSfx('powerup_pickup.mp3');
+  _playSfx('powerup_pickup.wav');
 }
 
 Color _powerUpColor(PowerUpType type) {
@@ -155,10 +159,17 @@ Color _powerUpColor(PowerUpType type) {
 }
 
 void _playSfx(String fileName) {
+  // FlameAudio returns a Future; catching only around the call does not catch
+  // an asynchronous decoder failure. Keep audio best-effort so a bad device
+  // codec can never surface as an uncaught game-loop error.
+  unawaited(_playSfxAsync(fileName));
+}
+
+Future<void> _playSfxAsync(String fileName) async {
   try {
-    FlameAudio.play(fileName);
+    await FlameAudio.play(fileName);
   } catch (_) {
-    // Audio playback safely ignored if asset is silent or unsupported in test.
+    // Audio playback safely ignored if the device cannot decode the asset.
   }
 }
 

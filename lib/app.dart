@@ -115,19 +115,18 @@ class PaperFlightApp extends ConsumerWidget {
 
   /// Slide-up transition used for sheets/results screens.
   ///
-  /// The incoming page starts fully opaque (its Scaffold paints the app
-  /// background) so there is never a transparent gap revealing a black
-  /// underlying canvas during the pushReplacement from the game screen — this
-  /// is what previously flashed black for a moment before the results screen
-  /// appeared. We also fade it in in lock-step with the slide so even the very
-  /// first frame isn't a blank/transparent placeholder.
+  /// Keep the route backdrop opaque and animate only the incoming page. A
+  /// fading full-screen route exposes the still-rendering Flame canvas below
+  /// during pushReplacement; when the game is also emitting crash effects that
+  /// reads as a flicker before the results screen settles.
   PageRouteBuilder<T> _slide<T>(Widget page) => PageRouteBuilder(
+        opaque: true,
         pageBuilder: (_, __, ___) => page,
         transitionsBuilder: (_, anim, __, child) {
           final curved =
               CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
-          return FadeTransition(
-            opacity: curved,
+          return ColoredBox(
+            color: AppColors.background,
             child: SlideTransition(
               position: Tween<Offset>(
                 begin: const Offset(0, 0.06),
