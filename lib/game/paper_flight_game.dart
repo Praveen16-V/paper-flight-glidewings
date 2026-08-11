@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
+import '../core/utils/object_pool.dart';
 import '../core/utils/run_random.dart';
 import '../models/run_result.dart';
 import '../models/settings_model.dart';
@@ -145,6 +146,14 @@ class PaperFlightGame extends FlameGame
   late final ObstacleSynergySystem obstacleSynergySystem;
   late final CollectibleSpawner collectibleSpawner;
   late final PowerUpSpawner powerUpSpawner;
+
+  /// Snapshot-only pool diagnostics for a debug overlay, automated soak test,
+  /// or post-run memory capture. Do not query this from the frame hot path.
+  List<ObjectPoolDiagnostics> get poolDiagnostics => [
+        ...obstacleSpawner.poolDiagnostics,
+        ...collectibleSpawner.poolDiagnostics,
+        ...powerUpSpawner.poolDiagnostics,
+      ];
 
   /// Juice layer — adaptive audio, dynamic camera, streaks, chimes & haptics.
   late final GameFeelSystem gameFeelSystem;

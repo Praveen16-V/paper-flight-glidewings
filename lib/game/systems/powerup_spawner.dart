@@ -27,6 +27,9 @@ class PowerUpSpawner extends Component {
   final Map<PowerUpType, ObjectPool<PowerUpComponent>> _pools = {};
   final List<PowerUpComponent> _active = [];
 
+  List<ObjectPoolDiagnostics> get poolDiagnostics =>
+      _pools.values.map((pool) => pool.diagnostics).toList(growable: false);
+
   double _spawnTimer = 0;
 
   @override
@@ -35,6 +38,8 @@ class PowerUpSpawner extends Component {
       _pools[type] = ObjectPool(
         create: () => PowerUpComponent(type: type),
         initialSize: 2,
+        maxRetained: GameConfig.powerUpPoolMaxRetained,
+        label: 'powerup.${type.name}',
       );
     }
     await super.onLoad();

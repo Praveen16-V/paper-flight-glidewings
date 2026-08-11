@@ -411,6 +411,15 @@ abstract class GameConfig {
   /// Minimum spawn interval floor.
   static const double obstacleMinSpawnInterval = 0.55;
 
+  // ── Pool Lifecycle / Capacity Tuning ────────────────────────────────────
+  /// Idle component caps bound memory after spike-heavy encounters while each
+  /// pool still expands transiently when a run genuinely needs more live items.
+  static const int obstaclePoolMaxRetained = 6;
+  static const int largeObstaclePoolMaxRetained = 2;
+  static const int coinPoolMaxRetained = 48;
+  static const int tunnelRingPoolMaxRetained = 12;
+  static const int powerUpPoolMaxRetained = 4;
+
   // ── Tunnel Ring Runs ────────────────────────────────────────────────────
   /// Tunnel rings arrive as occasional single gates or short linked runs. A
   /// full perfect run is a precision reward, not a random coin shower.

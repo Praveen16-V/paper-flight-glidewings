@@ -25,6 +25,11 @@ class CollectibleSpawner extends Component {
   final List<CoinComponent> _activeCoins = [];
   final List<TunnelRingComponent> _activeRings = [];
 
+  List<ObjectPoolDiagnostics> get poolDiagnostics => [
+        _coinPool.diagnostics,
+        _ringPool.diagnostics,
+      ];
+
   double _spawnTimer = 0;
   double _tunnelRingTimer = 0;
   int _nextRingChainId = 0;
@@ -32,8 +37,18 @@ class CollectibleSpawner extends Component {
 
   @override
   Future<void> onLoad() async {
-    _coinPool = ObjectPool(create: CoinComponent.new, initialSize: 20);
-    _ringPool = ObjectPool(create: TunnelRingComponent.new, initialSize: 6);
+    _coinPool = ObjectPool(
+      create: CoinComponent.new,
+      initialSize: 20,
+      maxRetained: GameConfig.coinPoolMaxRetained,
+      label: 'collectible.coin',
+    );
+    _ringPool = ObjectPool(
+      create: TunnelRingComponent.new,
+      initialSize: 6,
+      maxRetained: GameConfig.tunnelRingPoolMaxRetained,
+      label: 'collectible.tunnel_ring',
+    );
     await super.onLoad();
   }
 

@@ -171,7 +171,7 @@ swap it for a Firestore/REST implementation without touching game code.
 | Decision | Rationale |
 |---|---|
 | Static camera + downward scroll | Simplest Flame architecture for a vertical scroller — no camera-follow logic |
-| Object pools for obstacles/coins | Prevents GC spikes on low-end Android (per GDD §13) |
+| Identity-safe object pools | Prevents GC spikes, rejects duplicate recycle callbacks, caps idle retention, and exposes lifecycle diagnostics |
 | Riverpod outside game loop | Currency/unlocks/settings need to survive screen transitions; Flame's component system is enough inside the loop |
 | Hand-written Hive adapter | Avoids build_runner complexity for CI; safe to replace with generated adapter later |
 | ValueNoise FBM for wind | No external package dependency; deterministic with a seed; cheap enough to sample 4 lanes per frame |
@@ -210,6 +210,7 @@ Key knobs to adjust during playtesting:
 - `powerUpStatusRingRadius` / `powerUpStatusRingStrokeWidth` — in-flight radial effect readability
 - `AudioSynth.shieldHum` / `ghostWhisper` / `turboSpool` — synthesized power-up audio cues
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
+- `obstaclePoolMaxRetained` / `coinPoolMaxRetained` / `powerUpPoolMaxRetained` — idle cache caps after encounter spikes
 - Environmental hazards: Lightning Strike, Meteor Shower, and Tornado are biome-weighted in Storm/Atmosphere
 - Flock Migration adds 10–20 dynamically hitboxed birds in a cross-screen V formation
 - Moonlit Ocean introduces slow Whale Breach hazards, sea spray, and a progression step before Atmosphere
