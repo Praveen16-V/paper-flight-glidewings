@@ -311,9 +311,10 @@ abstract class ObstacleComponent extends PositionComponent
     }
 
     final progress =
-        (1.0 - (position.y.abs() / earlyWarningLeadDistance)).clamp(0.0, 1.0);
+        (1.0 - (position.y.abs() / earlyWarningLeadDistance)).clamp(0.0, 1.0).toDouble();
     final pulse = (math.sin(animTime * 14.0) * 0.5 + 0.5);
-    final alpha = (progress * (0.65 + 0.35 * pulse)).clamp(0.0, 1.0);
+    final alpha =
+        (progress * (0.65 + 0.35 * pulse)).clamp(0.0, 1.0).toDouble();
 
     final warningPaint = Paint()
       ..color = telegraphColor.withOpacity(alpha)
@@ -331,6 +332,7 @@ abstract class ObstacleComponent extends PositionComponent
     canvas.save();
     canvas.translate(localX, localY);
 
+    _drawArrivalDial(canvas, progress, alpha);
     canvas.drawCircle(Offset.zero, 14, glowPaint);
 
     // Linked beacons distinguish a planned pair from a lone hazard while it
@@ -384,8 +386,225 @@ abstract class ObstacleComponent extends PositionComponent
     renderThreatPreview(canvas, localX, localY, progress, pulse);
   }
 
+  /// A three-tick countdown ring makes the time-to-arrival legible even when
+  /// the player is concentrating on the plane rather than reading a label.
+  void _drawArrivalDial(Canvas canvas, double progress, double alpha) {
+    final radius = GameConfig.telegraphCountdownRadius;
+    final track = Paint()
+      ..color = telegraphColor.withOpacity(alpha * .22)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round;
+    final fill = Paint()
+      ..color = telegraphColor.withOpacity(alpha * .95)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.6
+      ..strokeCap = StrokeCap.round;
+    final rect = Rect.fromCircle(center: Offset.zero, radius: radius);
+    canvas.drawArc(rect, -math.pi / 2, math.pi * 2, false, track);
+    canvas.drawArc(rect, -math.pi / 2, math.pi * 2 * progress, false, fill);
+
+    final tickPaint = Paint()
+      ..color = telegraphColor.withOpacity(alpha * .78)
+      ..strokeWidth = 1.0;
+    for (var i = 0; i < GameConfig.telegraphCountdownTickCount; i++) {
+      final angle = -math.pi / 2 +
+          i * math.pi * 2 / GameConfig.telegraphCountdownTickCount;
+      final inner = radius - 2.8;
+      final outer = radius + 1.6;
+      canvas.drawLine(
+        Offset(math.cos(angle) * inner, math.sin(angle) * inner),
+        Offset(math.cos(angle) * outer, math.sin(angle) * outer),
+        tickPaint,
+      );
+    }
+  }
+
+  /// Draws the profile-specific intent projection beneath the shared warning
+  /// badge. Gate and boss profiles supply their own richer previews.
   void renderThreatPreview(
-      Canvas canvas, double x, double y, double progress, double pulse) {}
+    Canvas canvas,
+    double x,
+    double y,
+    double progress,
+    double pulse,
+  ) {
+    final startY = y + GameConfig.telegraphProjectionStartOffset;
+    final depth = GameConfig.telegraphProjectionDepth * (.48 + progress * .52);
+    final alpha = (progress * .68).clamp(0.0, 1.0).toDouble();
+
+    switch (type.telegraphStyle) {
+      case ObstacleTelegraphStyle.pinpoint:
+        _drawPinpointPreview(canvas, x, startY + depth * .58, alpha, pulse);
+        break;
+      case ObstacleTelegraphStyle.trajectory:
+        _drawTrajectoryPreview(canvas, x, startY, depth, alpha);
+        break;
+      case ObstacleTelegraphStyle.lane:
+        _drawLanePreview(canvas, x, startY, depth, alpha);
+        break;
+      case ObstacleTelegraphStyle.area:
+        _drawAreaPreview(canvas, x, startY, depth, alpha, pulse);
+        break;
+      case ObstacleTelegraphStyle.formation:
+        _drawFormationPreview(canvas, x, startY, depth, alpha);
+        break;
+      case ObstacleTelegraphStyle.gate:
+      case ObstacleTelegraphStyle.boss:
+        break;
+    }
+  }
+
+  void _drawPinpointPreview(
+    Canvas canvas,
+    double x,
+    double y,
+    double alpha,
+    double pulse,
+  ) {
+    final paint = Paint()
+      ..color = telegraphColor.withOpacity(alpha)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round;
+    final radius = 8.0 + pulse * 3.0;
+    canvas.drawCircle(Offset(x, y), radius, paint);
+    canvas.drawLine(Offset(x - radius - 4, y), Offset(x + radius + 4, y), paint);
+    canvas.drawLine(Offset(x, y - radius - 4), Offset(x, y + radius + 4), paint);
+  }
+
+  void _drawTrajectoryPreview(
+    Canvas canvas,
+    double x,
+    double startY,
+    double depth,
+    double alpha,
+  ) {
+    final pathPaint = Paint()
+      ..color = telegraphColor.withOpacity(alpha * .44)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(Offset(x, startY), Offset(x, startY + depth), pathPaint);
+
+    final arrowPaint = Paint()
+      ..color = telegraphColor.withOpacity(alpha)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < GameConfig.telegraphTrajectoryChevronCount; i++) {
+      final t = (i + 1) / (GameConfig.telegraphTrajectoryChevronCount + 1);
+      final cy = startY + depth * t;
+      final sway = math.sin(animTime * 5.0 + i * 1.7) * 3.5;
+      canvas.drawLine(Offset(x - 5 + sway, cy - 3), Offset(x + sway, cy + 3), arrowPaint);
+      canvas.drawLine(Offset(x + sway, cy + 3), Offset(x + 5 + sway, cy - 3), arrowPaint);
+    }
+  }
+
+  void _drawLanePreview(
+    Canvas canvas,
+    double x,
+    double startY,
+    double depth,
+    double alpha,
+  ) {
+    final width = math.max(14.0, size.x * .28).toDouble();
+    final band = Rect.fromCenter(
+      center: Offset(x, startY + depth * .5),
+      width: width,
+      height: depth,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(band, const Radius.circular(5)),
+      Paint()..color = telegraphColor.withOpacity(alpha * .16),
+    );
+    final edge = Paint()
+      ..color = telegraphColor.withOpacity(alpha * .86)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.35;
+    canvas.drawLine(Offset(band.left, band.top), Offset(band.left, band.bottom), edge);
+    canvas.drawLine(Offset(band.right, band.top), Offset(band.right, band.bottom), edge);
+  }
+
+  void _drawAreaPreview(
+    Canvas canvas,
+    double x,
+    double startY,
+    double depth,
+    double alpha,
+    double pulse,
+  ) {
+    final paint = Paint()
+      ..color = telegraphColor.withOpacity(alpha * .82)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    final center = Offset(x, startY + depth * .48);
+    for (var i = 0; i < 3; i++) {
+      final radius = 10.0 + i * 13.0 + pulse * 3.0;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        -math.pi * .82,
+        math.pi * 1.64,
+        false,
+        paint,
+      );
+    }
+  }
+
+  void _drawFormationPreview(
+    Canvas canvas,
+    double x,
+    double startY,
+    double depth,
+    double alpha,
+  ) {
+    final paint = Paint()
+      ..color = telegraphColor.withOpacity(alpha)
+      ..style = PaintingStyle.fill;
+    final baseY = startY + depth * .56;
+    for (var i = 0; i < 5; i++) {
+      final rank = (i + 1) ~/ 2;
+      final side = i.isEven ? -1.0 : 1.0;
+      final px = x + side * rank * 12.0;
+      final py = baseY + rank * 8.0;
+      canvas.drawCircle(Offset(px, py), i == 0 ? 3.8 : 2.6, paint);
+    }
+  }
+
+  /// Shared preview for a gap obstacle. Each gate supplies its real generated
+  /// opening, so the player sees the route they can actually take—not a generic
+  /// centre-screen suggestion.
+  void renderSafeCorridorPreview(
+    Canvas canvas, {
+    required double localY,
+    required double gapLeft,
+    required double gapWidth,
+    required double progress,
+    required double pulse,
+  }) {
+    final alpha = (progress * .82).clamp(0.0, 1.0).toDouble();
+    final height = GameConfig.telegraphGatePreviewHeight;
+    final rect = Rect.fromLTWH(gapLeft, localY - height * .5, gapWidth, height);
+    final fill = Paint()
+      ..color = const Color(0xFF80DEEA).withOpacity(alpha * .20)
+      ..style = PaintingStyle.fill;
+    final edge = Paint()
+      ..color = const Color(0xFFB2EBF2).withOpacity(alpha)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(4)),
+      fill,
+    );
+    canvas.drawLine(Offset(rect.left, rect.top - 5), Offset(rect.left, rect.bottom + 5), edge);
+    canvas.drawLine(Offset(rect.right, rect.top - 5), Offset(rect.right, rect.bottom + 5), edge);
+
+    final centerX = rect.center.dx;
+    final arrowY = rect.center.dy + pulse * 2.0;
+    canvas.drawLine(Offset(centerX - 6, arrowY - 3), Offset(centerX, arrowY + 3), edge);
+    canvas.drawLine(Offset(centerX, arrowY + 3), Offset(centerX + 6, arrowY - 3), edge);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -531,6 +750,24 @@ class PowerLineObstacle extends ObstacleComponent {
     }
 
     renderTelegraph(canvas);
+  }
+
+  @override
+  void renderThreatPreview(
+    Canvas canvas,
+    double x,
+    double y,
+    double progress,
+    double pulse,
+  ) {
+    renderSafeCorridorPreview(
+      canvas,
+      localY: y + GameConfig.telegraphProjectionStartOffset + 22,
+      gapLeft: _gapX,
+      gapWidth: _gapWidth,
+      progress: progress,
+      pulse: pulse,
+    );
   }
 
   void _drawPylonTower(Canvas canvas, double x, double h) {
@@ -684,6 +921,24 @@ class BuildingObstacle extends ObstacleComponent {
     _drawBuildingTower(canvas, rightStart, rightWidth, h, isLeft: false);
 
     renderTelegraph(canvas);
+  }
+
+  @override
+  void renderThreatPreview(
+    Canvas canvas,
+    double x,
+    double y,
+    double progress,
+    double pulse,
+  ) {
+    renderSafeCorridorPreview(
+      canvas,
+      localY: y + GameConfig.telegraphProjectionStartOffset + 22,
+      gapLeft: _leftWidth,
+      gapWidth: _gapWidth,
+      progress: progress,
+      pulse: pulse,
+    );
   }
 
   void _drawBuildingTower(
@@ -1899,6 +2154,24 @@ class ClotheslineObstacle extends ObstacleComponent {
     _drawPaperDolls(canvas, rStart, w);
 
     renderTelegraph(canvas);
+  }
+
+  @override
+  void renderThreatPreview(
+    Canvas canvas,
+    double x,
+    double y,
+    double progress,
+    double pulse,
+  ) {
+    renderSafeCorridorPreview(
+      canvas,
+      localY: y + GameConfig.telegraphProjectionStartOffset + 22,
+      gapLeft: _gapX,
+      gapWidth: _gapWidth,
+      progress: progress,
+      pulse: pulse,
+    );
   }
 
   void _drawPaperDolls(Canvas canvas, double startX, double endX) {

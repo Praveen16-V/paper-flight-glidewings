@@ -332,6 +332,53 @@ extension ObstacleCombinationLabel on ObstacleCombination {
   }
 }
 
+/// Visual grammar for an off-screen hazard announcement. The component draws
+/// a shared arrival dial, then uses this profile to preview the collision shape
+/// or route before the physical obstacle enters the viewport.
+enum ObstacleTelegraphStyle {
+  pinpoint,
+  trajectory,
+  lane,
+  area,
+  formation,
+  gate,
+  boss,
+}
+
+extension ObstacleTelegraphProfile on ObstacleType {
+  ObstacleTelegraphStyle get telegraphStyle {
+    switch (this) {
+      case ObstacleType.powerLine:
+      case ObstacleType.building:
+      case ObstacleType.clothesline:
+        return ObstacleTelegraphStyle.gate;
+      case ObstacleType.lightningStrike:
+        return ObstacleTelegraphStyle.lane;
+      case ObstacleType.meteorShower:
+      case ObstacleType.tornado:
+      case ObstacleType.stormCloud:
+      case ObstacleType.whaleBreach:
+        return ObstacleTelegraphStyle.area;
+      case ObstacleType.flockMigration:
+        return ObstacleTelegraphStyle.formation;
+      case ObstacleType.paperDragon:
+        return ObstacleTelegraphStyle.boss;
+      case ObstacleType.bird:
+      case ObstacleType.drone:
+      case ObstacleType.windTurbine:
+      case ObstacleType.hotAirBalloon:
+      case ObstacleType.kite:
+      case ObstacleType.trafficPlane:
+      case ObstacleType.fireworks:
+      case ObstacleType.weatherBalloon:
+      case ObstacleType.windsock:
+        return ObstacleTelegraphStyle.trajectory;
+      case ObstacleType.treeBranch:
+        return ObstacleTelegraphStyle.pinpoint;
+    }
+  }
+}
+
 // ── Power-ups ─────────────────────────────────────────────────────────────────
 
 enum PowerUpType {

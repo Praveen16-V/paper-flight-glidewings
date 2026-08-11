@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-obstacles-7';
+  static const String balanceVersion = '2026.08-obstacles-8';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -406,6 +406,17 @@ abstract class GameConfig {
 
   /// Minimum spawn interval floor.
   static const double obstacleMinSpawnInterval = 0.55;
+
+  // ── Telegraphy 2.0 ───────────────────────────────────────────────────────
+  /// Off-screen warnings combine a filling arrival dial with a short intent
+  /// projection. These values cap the preview inside the upper screen so it
+  /// informs a route without obscuring live dodge space.
+  static const double telegraphCountdownRadius = 19.0;
+  static const double telegraphProjectionDepth = 92.0;
+  static const double telegraphProjectionStartOffset = 30.0;
+  static const int telegraphCountdownTickCount = 3;
+  static const int telegraphTrajectoryChevronCount = 3;
+  static const double telegraphGatePreviewHeight = 12.0;
 
   // ── Dynamic Difficulty ───────────────────────────────────────────────────
   /// Adaptive pacing begins gentle, then responds to confident combo building

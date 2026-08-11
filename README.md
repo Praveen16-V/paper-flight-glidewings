@@ -212,6 +212,7 @@ Key knobs to adjust during playtesting:
 - Interactive Kite Tethers advertise a cyan SNAP window; a precise paper-snap severs one nearby kite, refunds the charge, extends combo, and releases coins
 - Curated Obstacle Combinations reserve a safe corridor for readable two-part City Traffic, Storm Crossfire, Rotor Run, and Kite Relay encounters
 - Dynamic Difficulty adapts density, pressure-hazard weighting, and combination frequency to current-run distance, combo discipline, near-miss skill, and recent defensive saves
+- Telegraphy 2.0 adds arrival countdown dials, intent projections for lanes/areas/trajectories/formations, and generated safe-gap guides for gate obstacles
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts
 - `comboDrainDuration` / `comboHitRetentionFraction` — combo decay gauge pace & shield-hit penalty
