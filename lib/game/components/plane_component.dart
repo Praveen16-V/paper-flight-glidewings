@@ -1373,7 +1373,7 @@ class PlaneComponent extends PositionComponent
       canvas.translate(x, y);
       canvas.rotate(phase);
       canvas.drawOval(
-        const Rect.fromCenter(center: Offset.zero, width: 4.5, height: 2.4),
+        Rect.fromCenter(center: Offset.zero, width: 4.5, height: 2.4),
         leaf,
       );
       canvas.restore();
