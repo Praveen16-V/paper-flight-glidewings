@@ -168,6 +168,16 @@ class PowerUpComponent extends PositionComponent
     final r = size.x * 0.42;
     final tilt = math.sin(_rotationAngle * 0.5) * 0.15;
 
+    // Grounding drop shadow beneath the floating box (scales as it bobs).
+    final hover = math.sin(_bobPhase).abs() * 0.12;
+    final shadowW = r * 2.0 * (1.0 - hover);
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(cx, cy + r * 1.6), width: shadowW, height: shadowW * 0.35),
+      Paint()
+        ..color = const Color(0x33000000)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+
     canvas.save();
     canvas.translate(cx, cy);
     canvas.rotate(tilt);
@@ -238,6 +248,12 @@ class PowerUpComponent extends PositionComponent
     canvas.drawPath(topFacet, seamPaint);
     canvas.drawPath(leftFacet, seamPaint);
     canvas.drawPath(rightFacet, seamPaint);
+
+    // Specular catch-light on the lit top facet.
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(-r * 0.25, -r * 0.62), width: r * 0.7, height: r * 0.3),
+      Paint()..color = Colors.white.withOpacity(0.28),
+    );
 
     // Golden Ribbon Cross-Wrap
     final goldRibbon = Paint()
