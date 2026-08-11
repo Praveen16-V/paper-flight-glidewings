@@ -250,25 +250,56 @@ class CoinComponent extends CircleComponent
   }
 
   void _drawStandardCoin(Canvas canvas) {
-    final outerPaint = Paint()..color = const Color(0xFFFFD700);
-    final innerPaint = Paint()..color = const Color(0xFFFFC107);
-    final highlightPaint = Paint()..color = const Color(0xFFFFFF8D)..style = PaintingStyle.fill;
-
-    canvas.drawCircle(Offset.zero, radius, outerPaint);
-    canvas.drawCircle(Offset.zero, radius * 0.7, innerPaint);
-    canvas.drawCircle(Offset(-radius * 0.3, -radius * 0.3), radius * 0.15, highlightPaint);
+    // Cylinder edge: dark rim below the face sells a solid coin.
+    canvas.drawCircle(Offset(0, radius * 0.14), radius,
+        Paint()..color = const Color(0xFFB8860B));
+    // Metallic radial sheen across the face.
+    final faceRect = Rect.fromCircle(center: Offset.zero, radius: radius);
+    canvas.drawCircle(
+      Offset.zero,
+      radius,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.35, -0.4),
+          radius: 1.05,
+          colors: const [Color(0xFFFFF176), Color(0xFFFFC107), Color(0xFFB8860B)],
+          stops: const [0.0, .55, 1.0],
+        ).createShader(faceRect),
+    );
+    // Embossed inner ring.
+    canvas.drawCircle(
+      Offset.zero,
+      radius * 0.74,
+      Paint()
+        ..color = const Color(0xFFB8860B)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4,
+    );
+    // Specular glint.
+    canvas.drawCircle(Offset(-radius * 0.3, -radius * 0.34), radius * 0.18,
+        Paint()..color = const Color(0xCCFFFFFF));
+    canvas.drawCircle(Offset(-radius * 0.3, -radius * 0.34), radius * 0.09,
+        Paint()..color = const Color(0xFFFFFFFF));
   }
 
   void _draw5xCoinStack(Canvas canvas) {
-    final goldBase = Paint()..color = const Color(0xFFFFA000);
-    final goldFace = Paint()..color = const Color(0xFFFFD700);
     final goldHi = Paint()..color = const Color(0xFFFFFF8D);
 
-    // 3 stacked isometric golden disks
+    // 3 stacked isometric golden disks with edge depth + specular top.
     for (int i = 0; i < 3; i++) {
       final dy = 4.0 - (i * 4.0);
-      canvas.drawOval(Rect.fromCenter(center: Offset(0, dy + 2), width: radius * 2.2, height: radius * 1.3), goldBase);
-      canvas.drawOval(Rect.fromCenter(center: Offset(0, dy), width: radius * 2.2, height: radius * 1.3), goldFace);
+      final edgeRect = Rect.fromCenter(center: Offset(0, dy + 3), width: radius * 2.2, height: radius * 1.3);
+      canvas.drawOval(edgeRect, Paint()..color = const Color(0xFF8B5E00));
+      canvas.drawOval(
+        Rect.fromCenter(center: Offset(0, dy), width: radius * 2.2, height: radius * 1.3),
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFFFF176), Color(0xFFFFC107), Color(0xFFB8860B)],
+            stops: [0.0, .5, 1.0],
+          ).createShader(edgeRect),
+      );
     }
     canvas.drawCircle(const Offset(-4, -6), 2.2, goldHi);
 
@@ -294,17 +325,61 @@ class CoinComponent extends CircleComponent
 
     final r = radius * 1.1;
 
-    // Faceted 3D Diamond Gem
+    // Soft glow halo behind the gem.
+    canvas.drawCircle(
+      Offset.zero,
+      r * 1.3,
+      Paint()
+        ..color = const Color(0x3300E5FF)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+
+    // Faceted 3D Diamond Gem with gradient facets.
     final topFacet = Path()..moveTo(0, -r)..lineTo(r * 0.85, -r * 0.35)..lineTo(0, 0)..lineTo(-r * 0.85, -r * 0.35)..close();
     final leftFacet = Path()..moveTo(-r * 0.85, -r * 0.35)..lineTo(0, 0)..lineTo(0, r)..lineTo(-r * 0.85, -r * 0.35)..close();
     final rightFacet = Path()..moveTo(r * 0.85, -r * 0.35)..lineTo(0, 0)..lineTo(0, r)..lineTo(r * 0.85, -r * 0.35)..close();
+    final gemRect = Rect.fromCircle(center: Offset.zero, radius: r);
 
-    canvas.drawPath(topFacet, Paint()..color = const Color(0xFF80DEEA));
-    canvas.drawPath(leftFacet, Paint()..color = const Color(0xFF00ACC1));
-    canvas.drawPath(rightFacet, Paint()..color = const Color(0xFF00838F));
+    canvas.drawPath(
+      topFacet,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFE0F7FA), Color(0xFF4DD0E1)],
+        ).createShader(gemRect),
+    );
+    canvas.drawPath(
+      leftFacet,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF26C6DA), Color(0xFF00838F)],
+        ).createShader(gemRect),
+    );
+    canvas.drawPath(
+      rightFacet,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF00838F), Color(0xFF004D57)],
+        ).createShader(gemRect),
+    );
+
+    // Facet edge lines for a crisp cut.
+    final edge = Paint()
+      ..color = const Color(0x44FFFFFF)
+      ..strokeWidth = .8
+      ..style = PaintingStyle.stroke;
+    canvas.drawPath(topFacet, edge);
+    canvas.drawPath(leftFacet, edge);
+    canvas.drawPath(rightFacet, edge);
 
     // Specular glint
-    canvas.drawCircle(Offset(0, -r * 0.5), 2.0, Paint()..color = Colors.white);
+    canvas.drawCircle(Offset(-r * 0.3, -r * 0.55), 2.4, Paint()..color = Colors.white);
+    canvas.drawCircle(Offset(r * 0.15, r * 0.3), 1.2, Paint()..color = const Color(0x99FFFFFF));
 
     canvas.restore();
   }
@@ -312,12 +387,36 @@ class CoinComponent extends CircleComponent
   void _drawLetterTile(Canvas canvas) {
     final r = radius * 1.1;
 
-    // Folded parchment square
-    final bgPaint = Paint()..color = const Color(0xFFFFF8E1)..style = PaintingStyle.fill;
-    final rimPaint = Paint()..color = const Color(0xFFFF80AB)..style = PaintingStyle.stroke..strokeWidth = 1.4;
-
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset.zero, width: r * 2, height: r * 2), const Radius.circular(4)), bgPaint);
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset.zero, width: r * 2, height: r * 2), const Radius.circular(4)), rimPaint);
+    // Folded parchment square with a 3D shadowed base for lift.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(2, 3), width: r * 2, height: r * 2), const Radius.circular(4)),
+      Paint()
+        ..color = const Color(0x22000000)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
+    );
+    final tileRect = Rect.fromCenter(center: Offset.zero, width: r * 2, height: r * 2);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(tileRect, const Radius.circular(4)),
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFFEF6), Color(0xFFFFF3C4), Color(0xFFE8C77A)],
+          stops: const [0.0, .5, 1.0],
+        ).createShader(tileRect),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(tileRect, const Radius.circular(4)),
+      Paint()
+        ..color = const Color(0xFFFF80AB)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4,
+    );
+    // Top-left catch light.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTWH(-r * .8, -r * .8, r * .5, r * .5), const Radius.circular(2)),
+      Paint()..color = const Color(0x33FFFFFF),
+    );
 
     // Letter Glyph
     final tp = TextPainter(

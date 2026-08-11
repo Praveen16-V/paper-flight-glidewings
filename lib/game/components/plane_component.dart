@@ -436,11 +436,12 @@ class PlaneComponent extends PositionComponent
     canvas.rotate(-math.pi / 2);
     canvas.translate(-w / 2, -h / 2);
 
-    // 1. Soft Drop Shadow
+    // 1. Soft Drop Shadow — blurred and offset to lift the plane off the sky.
     canvas.save();
     canvas.translate(1.5, 2.5);
     final shadowPaint = Paint()
-      ..color = const Color(0x33000000)
+      ..color = const Color(0x3D000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.2)
       ..style = PaintingStyle.fill;
     _drawPlaneShape(canvas, shadowPaint, w, h, effectiveFold,
         isShadow: true, planeColor: planeColor, opacity: ghostOpacity);
