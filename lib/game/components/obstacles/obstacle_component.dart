@@ -129,6 +129,18 @@ abstract class ObstacleComponent extends PositionComponent
     animTime += dt;
     position.y += game.scrollSpeed * dt;
 
+    if (type.isCursedMagnetAttractable &&
+        game.hasCorruptedPowerUp(CorruptedPowerUpType.cursedMagnet)) {
+      final plane = game.plane;
+      final dx = plane.position.x - position.x;
+      final dy = plane.position.y - position.y;
+      final distance = math.sqrt(dx * dx + dy * dy);
+      if (distance > 1 && distance < GameConfig.cursedMagnetRadius) {
+        position += Vector2(dx / distance, dy / distance) *
+            (GameConfig.cursedMagnetObstaclePullSpeed * dt);
+      }
+    }
+
     updateObstacle(dt);
     _trackNearMiss();
 

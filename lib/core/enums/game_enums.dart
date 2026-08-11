@@ -241,6 +241,16 @@ extension ObstacleLabel on ObstacleType {
   /// Firework rockets are the current projectile-class hazard that Shield Lv2
   /// can reflect instead of consuming the shield.
   bool get isReflectableProjectile => this == ObstacleType.fireworks;
+
+  /// Dynamic hazards vulnerable to Cursed Magnet's dangerous pull.
+  bool get isCursedMagnetAttractable =>
+      this == ObstacleType.bird ||
+      this == ObstacleType.drone ||
+      this == ObstacleType.kite ||
+      this == ObstacleType.trafficPlane ||
+      this == ObstacleType.fireworks ||
+      this == ObstacleType.weatherBalloon ||
+      this == ObstacleType.hotAirBalloon;
 }
 
 // ── Power-ups ─────────────────────────────────────────────────────────────────
@@ -362,6 +372,40 @@ extension PowerUpLabel on PowerUpType {
 
 /// Named synergy states created by stacking compatible active power-ups.
 enum PowerUpCombo { phaseShield, goldVortex, timeDash }
+
+/// High-risk variants collected directly from corrupted pickups. They are
+/// intentionally separate from charge inventory: accepting the pickup starts
+/// the bargain immediately.
+enum CorruptedPowerUpType { cursedMagnet, unstableGhost }
+
+extension CorruptedPowerUpInfo on CorruptedPowerUpType {
+  String get displayName {
+    switch (this) {
+      case CorruptedPowerUpType.cursedMagnet:
+        return 'Cursed Magnet';
+      case CorruptedPowerUpType.unstableGhost:
+        return 'Unstable Ghost';
+    }
+  }
+
+  PowerUpType get baseType {
+    switch (this) {
+      case CorruptedPowerUpType.cursedMagnet:
+        return PowerUpType.magnet;
+      case CorruptedPowerUpType.unstableGhost:
+        return PowerUpType.ghost;
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case CorruptedPowerUpType.cursedMagnet:
+        return const Color(0xFFE53935);
+      case CorruptedPowerUpType.unstableGhost:
+        return const Color(0xFF7C4DFF);
+    }
+  }
+}
 
 extension PowerUpComboInfo on PowerUpCombo {
   String get displayName {

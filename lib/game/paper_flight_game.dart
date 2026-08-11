@@ -187,6 +187,8 @@ class PaperFlightGame extends FlameGame
   int _decoyCloneCharges = 0;
   int get decoyCloneCharges => _decoyCloneCharges;
 
+  double _unstableGhostTeleportTimer = 0;
+
   /// Reads persistent Hangar evolution for live component effects.
   int powerUpLevel(PowerUpType type) =>
       ref.read(saveDataProvider).getPowerUpLevel(type.index);
@@ -392,6 +394,20 @@ class PaperFlightGame extends FlameGame
       _handleGesturePowerUp();
     }
 
+    if (session.activeCorruptedPowerUps
+        .contains(CorruptedPowerUpType.unstableGhost)) {
+      _unstableGhostTeleportTimer += scaledDt;
+      if (_unstableGhostTeleportTimer >=
+          GameConfig.unstableGhostTeleportInterval) {
+        _unstableGhostTeleportTimer = 0;
+        final dx = (spawnRng.nextDouble() * 2 - 1) *
+            GameConfig.unstableGhostTeleportDistance;
+        final dy = (spawnRng.nextDouble() * 2 - 1) *
+            GameConfig.unstableGhostTeleportDistance * .45;
+        plane.applyUnstableGhostTeleport(dx: dx, dy: dy);
+      }
+    }
+
     // Apply slow-mo speed override (drives this frame's motion and the
     // distance it travels).
     double effectiveSpeed = _scrollSpeed;
@@ -591,6 +607,7 @@ class PaperFlightGame extends FlameGame
     _distanceMeters = 0;
     _timeScale = 1.0;
     _coinRushShowerTimer = 0;
+    _unstableGhostTeleportTimer = 0;
     _runTimeSeconds = 0;
     _hudUpdateAccumulator = 0;
     _runtimeStateSyncAccumulator = 0;
@@ -773,6 +790,14 @@ class PaperFlightGame extends FlameGame
     // combined effect can surface its special impact feedback.
     if (activeCombos.contains(PowerUpCombo.timeDash)) {
       plane.playTimeDashPhaseAnimation();
+      return;
+    }
+
+    // Unstable Ghost carries the normal phase benefit, offset by its forced
+    // random teleports in the flight loop.
+    if (session.activeCorruptedPowerUps
+        .contains(CorruptedPowerUpType.unstableGhost)) {
+      plane.playGhostPhaseAnimation();
       return;
     }
 
@@ -1086,6 +1111,30 @@ class PaperFlightGame extends FlameGame
   void beginCoinRush() {
     _coinRushShowerTimer = 0;
     collectibleSpawner.spawnCoinShower();
+  }
+
+  bool hasCorruptedPowerUp(CorruptedPowerUpType type) =>
+      ref.read(gameSessionProvider).activeCorruptedPowerUps.contains(type);
+
+  /// Applies an immediate risk/reward pickup. Corrupted effects intentionally
+  /// bypass charge storage: accepting the curse starts its timer at once.
+  void applyCorruptedPowerUp(CorruptedPowerUpType type) {
+    final notifier = ref.read(gameSessionProvider.notifier);
+    notifier.activateCorruptedPowerUp(
+      type,
+      GameConfig.corruptedPowerUpDuration,
+    );
+    if (type == CorruptedPowerUpType.unstableGhost) {
+      _unstableGhostTeleportTimer = 0;
+    }
+    Future.delayed(
+      Duration(
+        milliseconds: (GameConfig.corruptedPowerUpDuration * 1000).toInt(),
+      ),
+      () {
+        if (!_disposed) notifier.deactivateCorruptedPowerUp(type);
+      },
+    );
   }
 
   /// Receives a world pickup. Timed effects are banked as charges so their

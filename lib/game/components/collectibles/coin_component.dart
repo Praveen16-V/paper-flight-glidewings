@@ -80,10 +80,23 @@ class CoinComponent extends CircleComponent
 
     position.y += math.sin(_bobPhase) * 0.4;
 
-    // Magnet pull
+    // Magnet pull. Cursed Magnet overrides normal plane drawbacks and pulls
+    // every collectible harder, while its obstacle pull creates the danger.
     final session = gameRef.ref.read(gameSessionProvider);
     final plane = gameRef.plane;
-    if (plane.planeType == PlaneType.interceptor) {
+    final cursedMagnet = gameRef.hasCorruptedPowerUp(
+      CorruptedPowerUpType.cursedMagnet,
+    );
+    if (cursedMagnet) {
+      final dist = MathUtils.distance(
+        position.x, position.y,
+        plane.position.x, plane.position.y,
+      );
+      if (dist < GameConfig.cursedMagnetRadius) {
+        final dir = (plane.position - position).normalized();
+        position += dir * (GameConfig.cursedMagnetCoinPullSpeed * dt);
+      }
+    } else if (plane.planeType == PlaneType.interceptor) {
       // Interceptor downside: no coin attraction
     } else if (session.activePowerUps.contains(PowerUpType.magnet)) {
       final magnetLevel = gameRef.powerUpLevel(PowerUpType.magnet);

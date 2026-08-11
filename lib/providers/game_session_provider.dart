@@ -49,6 +49,8 @@ class GameSessionState {
     this.currentBiome = Biome.city,
     this.activePowerUps = const {},
     this.powerUpCharges = const {},
+    this.activeCorruptedPowerUps = const {},
+    this.corruptedPowerUpRemaining = const {},
     this.shieldActive = false,
     this.powerUpRemaining = const {},
     this.lastRunResult,
@@ -79,6 +81,10 @@ class GameSessionState {
 
   /// Banked charges for manually activated timed power-ups.
   final Map<PowerUpType, int> powerUpCharges;
+
+  /// Immediate risk/reward effects from corrupted world pickups.
+  final Set<CorruptedPowerUpType> activeCorruptedPowerUps;
+  final Map<CorruptedPowerUpType, double> corruptedPowerUpRemaining;
 
   /// Derived stacked effects for HUD and gameplay systems. Keeping it derived
   /// prevents stale combo state when any underlying timer expires.
@@ -113,6 +119,8 @@ class GameSessionState {
     Biome? currentBiome,
     Set<PowerUpType>? activePowerUps,
     Map<PowerUpType, int>? powerUpCharges,
+    Set<CorruptedPowerUpType>? activeCorruptedPowerUps,
+    Map<CorruptedPowerUpType, double>? corruptedPowerUpRemaining,
     bool? shieldActive,
     Map<PowerUpType, double>? powerUpRemaining,
     RunResult? lastRunResult,
@@ -135,6 +143,10 @@ class GameSessionState {
       currentBiome: currentBiome ?? this.currentBiome,
       activePowerUps: activePowerUps ?? this.activePowerUps,
       powerUpCharges: powerUpCharges ?? this.powerUpCharges,
+      activeCorruptedPowerUps:
+          activeCorruptedPowerUps ?? this.activeCorruptedPowerUps,
+      corruptedPowerUpRemaining:
+          corruptedPowerUpRemaining ?? this.corruptedPowerUpRemaining,
       shieldActive: shieldActive ?? this.shieldActive,
       powerUpRemaining: powerUpRemaining ?? this.powerUpRemaining,
       lastRunResult: lastRunResult ?? this.lastRunResult,
@@ -238,6 +250,37 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
     }
     state = state.copyWith(powerUpCharges: charges);
     return true;
+  }
+
+  void activateCorruptedPowerUp(CorruptedPowerUpType type, double duration) {
+    final active = Set<CorruptedPowerUpType>.from(state.activeCorruptedPowerUps)
+      ..add(type);
+    final remaining =
+        Map<CorruptedPowerUpType, double>.from(state.corruptedPowerUpRemaining)
+          ..[type] = duration;
+    state = state.copyWith(
+      activeCorruptedPowerUps: active,
+      corruptedPowerUpRemaining: remaining,
+    );
+  }
+
+  void deactivateCorruptedPowerUp(CorruptedPowerUpType type) {
+    final active = Set<CorruptedPowerUpType>.from(state.activeCorruptedPowerUps)
+      ..remove(type);
+    final remaining =
+        Map<CorruptedPowerUpType, double>.from(state.corruptedPowerUpRemaining)
+          ..remove(type);
+    state = state.copyWith(
+      activeCorruptedPowerUps: active,
+      corruptedPowerUpRemaining: remaining,
+    );
+  }
+
+  void setCorruptedPowerUpTimer(CorruptedPowerUpType type, double seconds) {
+    final remaining =
+        Map<CorruptedPowerUpType, double>.from(state.corruptedPowerUpRemaining)
+          ..[type] = seconds;
+    state = state.copyWith(corruptedPowerUpRemaining: remaining);
   }
 
   void deactivatePowerUp(PowerUpType type) {

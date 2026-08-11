@@ -191,6 +191,8 @@ class PlaneComponent extends PositionComponent
   bool _phaseShieldActive = false;
   bool _goldVortexActive = false;
   bool _timeDashActive = false;
+  bool _cursedMagnetActive = false;
+  bool _unstableGhostActive = false;
 
   // ── Distinct Pulse Channels ───────────────────────────────────────────────
   double _shieldPhase = 0.0;     // 1.2 Hz breathing
@@ -1394,6 +1396,8 @@ class PlaneComponent extends PositionComponent
     if (_phaseShieldActive) _drawPhaseShieldCombo(canvas, w, h);
     if (_goldVortexActive) _drawGoldVortexCombo(canvas, w, h);
     if (_timeDashActive) _drawTimeDashCombo(canvas, w, h);
+    if (_cursedMagnetActive) _drawCursedMagnetOverlay(canvas, w, h);
+    if (_unstableGhostActive) _drawUnstableGhostOverlay(canvas, w, h);
 
     // Stacking VFX: interlaced resonant aura if multiple active
     int activeCount = (_shieldActive ? 1 : 0) +
@@ -1758,6 +1762,47 @@ class PlaneComponent extends PositionComponent
     }
   }
 
+  void _drawCursedMagnetOverlay(Canvas canvas, double w, double h) {
+    final center = Offset(w / 2, h / 2);
+    final arc = Paint()
+      ..color = const Color(0xCCE53935)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: w * .86),
+      _magnetAngle * 2,
+      math.pi * .82,
+      false,
+      arc,
+    );
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: w * .86),
+      _magnetAngle * 2 + math.pi,
+      math.pi * .82,
+      false,
+      arc,
+    );
+  }
+
+  void _drawUnstableGhostOverlay(Canvas canvas, double w, double h) {
+    final jitter = math.sin(_ghostPhase * 1.8) * 4;
+    final paint = Paint()
+      ..color = const Color(0xAA7C4DFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(w / 2 + jitter, h / 2),
+          width: w + 18,
+          height: h + 18,
+        ),
+        const Radius.circular(9),
+      ),
+      paint,
+    );
+  }
+
   // ── Aerodynamic Stall / Spin Overlay ──────────────────────────────────────
 
   void _drawStallSpinOverlay(Canvas canvas, double w, double h) {
@@ -2114,6 +2159,10 @@ class PlaneComponent extends PositionComponent
     _phaseShieldActive = combos.contains(PowerUpCombo.phaseShield);
     _goldVortexActive = combos.contains(PowerUpCombo.goldVortex);
     _timeDashActive = combos.contains(PowerUpCombo.timeDash);
+    _cursedMagnetActive = session.activeCorruptedPowerUps
+        .contains(CorruptedPowerUpType.cursedMagnet);
+    _unstableGhostActive = session.activeCorruptedPowerUps
+        .contains(CorruptedPowerUpType.unstableGhost);
 
     // Update distinct pulse channels
     _shieldPhase += dt * (1.2 * 2 * math.pi);
@@ -2755,6 +2804,8 @@ class PlaneComponent extends PositionComponent
     _phaseShieldActive = false;
     _goldVortexActive = false;
     _timeDashActive = false;
+    _cursedMagnetActive = false;
+    _unstableGhostActive = false;
     _shieldHitRippleTimer = 0.0;
     _crosswindForce = 0.0;
     _wingFlexStrength = 0.0;
@@ -2855,6 +2906,21 @@ class PlaneComponent extends PositionComponent
         EffectController(duration: 0.06, reverseDuration: 0.06),
       ),
     );
+  }
+
+  void applyUnstableGhostTeleport({required double dx, required double dy}) {
+    position.x = (position.x + dx)
+        .clamp(
+          GameConfig.horizontalEdgeMargin,
+          GameConfig.designWidth - GameConfig.horizontalEdgeMargin,
+        )
+        .toDouble();
+    position.y = (position.y + dy)
+        .clamp(GameConfig.ceilingY, GameConfig.designHeight - size.y)
+        .toDouble();
+    _velocityX += dx * 1.2;
+    _velocityY += dy * .6;
+    playGhostPhaseAnimation();
   }
 
   void applyZenBounce({required double pushX, required double pushY}) {

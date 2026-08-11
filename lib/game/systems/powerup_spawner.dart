@@ -60,22 +60,28 @@ class PowerUpSpawner extends Component {
   }
 
   void _spawnPowerUp() {
-    final type = _weightedPick(
-      PowerUpType.values,
-      [
-        1.4, // shield
-        1.3, // magnet
-        1.0, // ghost
-        1.2, // slowmo
-        1.0, // coin rush
-        1.1, // double score
-        1.0, // shrink
-        1.0, // wind caller
-        0.9, // decoy clone
-        0.8, // black hole
-        0.9, // turbo dash
-      ],
-    );
+    final corrupted = random.nextDouble() < GameConfig.corruptedPowerUpSpawnChance
+        ? (random.nextBool()
+            ? CorruptedPowerUpType.cursedMagnet
+            : CorruptedPowerUpType.unstableGhost)
+        : null;
+    final type = corrupted?.baseType ??
+        _weightedPick(
+          PowerUpType.values,
+          [
+            1.4, // shield
+            1.3, // magnet
+            1.0, // ghost
+            1.2, // slowmo
+            1.0, // coin rush
+            1.1, // double score
+            1.0, // shrink
+            1.0, // wind caller
+            0.9, // decoy clone
+            0.8, // black hole
+            0.9, // turbo dash
+          ],
+        );
 
     final spawnPos = Vector2(
       GameConfig.horizontalEdgeMargin +
@@ -88,7 +94,11 @@ class PowerUpSpawner extends Component {
     );
 
     final pu = _pools[type]!.acquire();
-    pu.activate(spawnPosition: spawnPos, recycleCallback: _recycle);
+    pu.activate(
+      spawnPosition: spawnPos,
+      corruptedType: corrupted,
+      recycleCallback: _recycle,
+    );
     game.world.add(pu);
     _active.add(pu);
   }

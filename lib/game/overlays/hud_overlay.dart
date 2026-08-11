@@ -130,6 +130,7 @@ class HudOverlay extends ConsumerWidget {
             child: _PowerUpBar(
               activePowerUps: session.activePowerUps,
               activeCombos: session.activePowerUpCombos,
+              activeCorrupted: session.activeCorruptedPowerUps,
               charges: session.powerUpCharges,
               remaining: session.powerUpRemaining,
               onActivateCharge: game.triggerPowerUpCharge,
@@ -536,19 +537,21 @@ class _PowerUpBar extends StatelessWidget {
   const _PowerUpBar({
     required this.activePowerUps,
     required this.activeCombos,
+    required this.activeCorrupted,
     required this.charges,
     required this.remaining,
     required this.onActivateCharge,
   });
   final Set<PowerUpType> activePowerUps;
   final Set<PowerUpCombo> activeCombos;
+  final Set<CorruptedPowerUpType> activeCorrupted;
   final Map<PowerUpType, int> charges;
   final Map<PowerUpType, double> remaining;
   final bool Function(PowerUpType type) onActivateCharge;
 
   @override
   Widget build(BuildContext context) {
-    if (activePowerUps.isEmpty && charges.isEmpty) {
+    if (activePowerUps.isEmpty && charges.isEmpty && activeCorrupted.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -560,6 +563,11 @@ class _PowerUpBar extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: _PowerUpComboPill(combo: combo),
+          ),
+        for (final corrupted in activeCorrupted)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _CorruptedPowerUpPill(type: corrupted),
           ),
         for (final entry in charges.entries)
           Padding(
@@ -606,6 +614,31 @@ class _PowerUpComboPill extends StatelessWidget {
           color: Colors.white,
           fontSize: 8,
           letterSpacing: .7,
+        ),
+      ),
+    );
+  }
+}
+
+class _CorruptedPowerUpPill extends StatelessWidget {
+  const _CorruptedPowerUpPill({required this.type});
+  final CorruptedPowerUpType type;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: type.color.withOpacity(.88),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withOpacity(.72)),
+      ),
+      child: Text(
+        type.displayName.toUpperCase(),
+        style: AppTypography.overline.copyWith(
+          color: Colors.white,
+          fontSize: 8,
+          letterSpacing: .55,
         ),
       ),
     );
