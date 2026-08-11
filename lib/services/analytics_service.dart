@@ -140,6 +140,7 @@ class AnalyticsService {
     required String biome,
     required String crashCause,
     required bool wasRevived,
+    String? replayFingerprint,
   }) {
     return _safeEvent('run_completed', {
       'mode': mode.name,
@@ -153,6 +154,8 @@ class AnalyticsService {
       'final_biome': biome,
       'crash_cause': crashCause,
       'was_revived': wasRevived ? 1 : 0,
+      if (replayFingerprint != null && replayFingerprint.isNotEmpty)
+        'replay_fingerprint': replayFingerprint,
     });
   }
 

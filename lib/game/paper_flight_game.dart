@@ -24,6 +24,7 @@ import '../services/analytics_service.dart';
 import '../services/daily_leaderboard_service.dart';
 import '../services/daily_seed_service.dart';
 import 'events/gameplay_event_bus.dart';
+import 'replay/run_replay_trace.dart';
 import 'components/background/parallax_background.dart';
 import 'components/effects/coin_feedback.dart';
 import 'components/effects/atmosphere_component.dart';
@@ -98,6 +99,8 @@ class PaperFlightGame extends FlameGame
   RunRandom get runRandom => _runRandom;
   late RunReplayDescriptor _replayDescriptor;
   RunReplayDescriptor get replayDescriptor => _replayDescriptor;
+  late RunReplayTrace _replayTrace;
+  RunReplayTrace get replayTrace => _replayTrace;
   int _runSeed = 0;
   int get runSeed => _runSeed;
 
@@ -717,6 +720,10 @@ class PaperFlightGame extends FlameGame
     _replayDescriptor = RunReplayDescriptor(
       seed: seed,
       algorithmVersion: GameConfig.runRandomAlgorithmVersion,
+    );
+    _replayTrace = RunReplayTrace(
+      descriptor: _replayDescriptor,
+      maxEntries: GameConfig.replayTraceMaxEntries,
     );
     _spawnRng = _runRandom.stream('root');
     obstacleSpawner.random =
@@ -1504,6 +1511,7 @@ class PaperFlightGame extends FlameGame
       lifetimeRunNumber: preRunSave.totalRuns + 1,
       runsSinceLastInterstitial:
           preRunSave.runsSinceLastInterstitial + 1,
+      replayFingerprint: replayTrace.snapshot().fingerprint,
     );
 
     // Trigger the game-over transition immediately so the results screen starts

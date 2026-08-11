@@ -7,6 +7,7 @@ import '../../core/enums/game_enums.dart';
 import '../../core/utils/object_pool.dart';
 import '../components/powerups/powerup_component.dart';
 import '../paper_flight_game.dart';
+import '../replay/run_replay_trace.dart';
 
 /// Spawns power-ups procedurally on a slow timer.
 /// Ghost and Coin Rush are slightly rarer to keep them exciting.
@@ -107,6 +108,13 @@ class PowerUpSpawner extends Component {
     );
     game.world.add(pu);
     _active.add(pu);
+    game.replayTrace.record(
+      ReplayTraceKind.powerUpSpawn,
+      primary: type.index,
+      secondary: corrupted == null ? 0 : corrupted.index + 1,
+      x: pu.position.x,
+      y: pu.position.y,
+    );
   }
 
   void _recycle(PowerUpComponent pu) {

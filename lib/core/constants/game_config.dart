@@ -35,7 +35,11 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-obstacles-12';
+  static const String balanceVersion = '2026.08-obstacles-13';
+
+  /// Maximum retained trace entries for replay/soak validation. The full
+  /// fingerprint still covers every layout event after this ring buffer wraps.
+  static const int replayTraceMaxEntries = 192;
 
   /// Versioned deterministic stream algorithm used for daily/replay layouts.
   /// Increment only when an intentional generator migration breaks old seeds.

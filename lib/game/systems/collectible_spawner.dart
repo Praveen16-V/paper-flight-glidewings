@@ -10,6 +10,7 @@ import '../components/collectibles/coin_component.dart';
 import '../components/collectibles/tunnel_ring_component.dart';
 import '../components/effects/coin_feedback.dart';
 import '../paper_flight_game.dart';
+import '../replay/run_replay_trace.dart';
 
 /// Spawns coins in lanes, clusters, and optional Tunnel Rings. Pools and recycles collectibles.
 class CollectibleSpawner extends Component {
@@ -191,6 +192,13 @@ class CollectibleSpawner extends Component {
     );
     game.world.add(ring);
     _activeRings.add(ring);
+    game.replayTrace.record(
+      ReplayTraceKind.tunnelRingSpawn,
+      primary: variant.index,
+      secondary: chainId == null ? 0 : chainIndex + 1,
+      x: ring.position.x,
+      y: ring.position.y,
+    );
   }
 
   void _onTunnelRingResolved(
@@ -316,6 +324,13 @@ class CollectibleSpawner extends Component {
     );
     game.world.add(coin);
     _activeCoins.add(coin);
+    game.replayTrace.record(
+      ReplayTraceKind.collectibleSpawn,
+      primary: variant.index,
+      secondary: letter.codeUnitAt(0),
+      x: coin.position.x,
+      y: coin.position.y,
+    );
   }
 
   /// Spawns a vertical column of [count] coins spaced [spacing] px apart.

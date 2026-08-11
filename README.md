@@ -98,6 +98,8 @@ lib/
 │   ├── paper_flight_game.dart    # FlameGame root — scroll engine, crash, revive
 │   ├── events/
 │   │   └── gameplay_event_bus.dart # Per-game typed coordination signals
+│   ├── replay/
+│   │   └── run_replay_trace.dart # Bounded deterministic layout fingerprint
 │   ├── components/
 │   │   ├── plane_component.dart  # 2-axis physics, stall/spin recovery, hitbox, shield/revive anims
 │   │   ├── wingman_component.dart # Friendly formation follower
@@ -177,6 +179,7 @@ swap it for a Firestore/REST implementation without touching game code.
 | ValueNoise FBM for wind | No external package dependency; deterministic with a seed; cheap enough to sample 4 lanes per frame |
 | Typed gameplay event bus | Decouples confirmed near-miss and defensive-save signals from pacing, feedback, and future telemetry consumers without a global singleton |
 | Versioned named run RNG | Isolates layout, entity-animation, and cosmetic draws so Daily/replay seeds remain stable as systems evolve |
+| Bounded replay trace | Fingerprints all layout decisions while retaining only a fixed recent window for soak-safe divergence reports |
 | Test AdMob IDs | Always safe to commit; real IDs belong in a build-flavour env file, not source |
 
 ---
@@ -211,6 +214,7 @@ Key knobs to adjust during playtesting:
 - `AudioSynth.shieldHum` / `ghostWhisper` / `turboSpool` — synthesized power-up audio cues
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `obstaclePoolMaxRetained` / `coinPoolMaxRetained` / `powerUpPoolMaxRetained` — idle cache caps after encounter spikes
+- `replayTraceMaxEntries` / `runRandomAlgorithmVersion` — bounded replay verification and seed-generator compatibility
 - Environmental hazards: Lightning Strike, Meteor Shower, and Tornado are biome-weighted in Storm/Atmosphere
 - Flock Migration adds 10–20 dynamically hitboxed birds in a cross-screen V formation
 - Moonlit Ocean introduces slow Whale Breach hazards, sea spray, and a progression step before Atmosphere

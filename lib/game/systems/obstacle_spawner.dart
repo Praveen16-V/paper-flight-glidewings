@@ -9,6 +9,7 @@ import '../../core/utils/object_pool.dart';
 import '../components/obstacles/obstacle_component.dart';
 import '../components/obstacles/obstacle_script.dart';
 import '../paper_flight_game.dart';
+import '../replay/run_replay_trace.dart';
 
 /// Manages obstacle spawn timing, object pools, and recycling across all biomes.
 class ObstacleSpawner extends Component {
@@ -444,6 +445,15 @@ class ObstacleSpawner extends Component {
     }
     game.world.add(obstacle);
     _active.add(obstacle);
+    game.replayTrace.record(
+      ReplayTraceKind.obstacleSpawn,
+      primary: type.index,
+      secondary: combinationId == null
+          ? 0
+          : RunReplayTrace.stableToken(combinationId),
+      x: obstacle.position.x,
+      y: obstacle.position.y,
+    );
     return obstacle;
   }
 
