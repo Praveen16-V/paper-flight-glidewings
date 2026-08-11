@@ -1023,6 +1023,42 @@ extension PlanePowerUp on PlaneType {
 
 // ── Paper Skins ───────────────────────────────────────────────────────────────
 
+/// Collectibility treatment for paper skins in the Hangar and Shop.
+enum SkinRarity { common, rare, epic, legendary, mythic }
+
+extension SkinRarityInfo on SkinRarity {
+  String get label {
+    switch (this) {
+      case SkinRarity.common:
+        return 'COMMON';
+      case SkinRarity.rare:
+        return 'RARE';
+      case SkinRarity.epic:
+        return 'EPIC';
+      case SkinRarity.legendary:
+        return 'LEGENDARY';
+      case SkinRarity.mythic:
+        return 'MYTHIC';
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case SkinRarity.common:
+        return const Color(0xFF90A4AE);
+      case SkinRarity.rare:
+        return const Color(0xFF42A5F5);
+      case SkinRarity.epic:
+        return const Color(0xFFAB47BC);
+      case SkinRarity.legendary:
+        return const Color(0xFFFFB300);
+      case SkinRarity.mythic:
+        // Mythic uses a moving rainbow frame; this is its fallback badge tint.
+        return const Color(0xFFFF80AB);
+    }
+  }
+}
+
 /// Named limited-time rotations used by seasonal PaperSkin metadata.
 enum SeasonalRotation { halloween, winter, lunarNewYear }
 
@@ -1346,6 +1382,40 @@ extension PaperSkinLabel on PaperSkin {
         return 0xFF4FC3F7;
       case PaperSkin.flipbook:
         return 0xFF7C4DFF;
+    }
+  }
+
+  /// Rarity tier drives Hangar/list presentation only; all unlocked skins
+  /// remain cosmetic and do not alter gameplay unless a configured synergy
+  /// explicitly applies.
+  SkinRarity get rarity {
+    switch (this) {
+      case PaperSkin.plain:
+      case PaperSkin.newspaper:
+      case PaperSkin.graphPaper:
+      case PaperSkin.notebookDoodle:
+      case PaperSkin.receipt:
+      case PaperSkin.kraftEnvelope:
+      case PaperSkin.customCraft:
+        return SkinRarity.common;
+      case PaperSkin.watercolorWash:
+      case PaperSkin.blueprint:
+      case PaperSkin.snowflake:
+      case PaperSkin.pumpkin:
+      case PaperSkin.cherryBlossom:
+        return SkinRarity.rare;
+      case PaperSkin.carbonFiber:
+      case PaperSkin.mangaHalftone:
+      case PaperSkin.prideGradient:
+      case PaperSkin.holographicFoil:
+        return SkinRarity.epic;
+      case PaperSkin.dragonScales:
+      case PaperSkin.lavaLamp:
+      case PaperSkin.goldLeaf:
+        return SkinRarity.legendary;
+      case PaperSkin.animatedHologram:
+      case PaperSkin.flipbook:
+        return SkinRarity.mythic;
     }
   }
 

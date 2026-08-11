@@ -764,6 +764,7 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
         .clamp(0, PlaneType.values.length - 1)
         .toInt()];
     final synergy = GameConfig.synergyBonus(equippedPlane, widget.skin);
+    final rarity = widget.skin.rarity;
     final synergyDetail = synergy.trailEffect == SkinTrailEffect.petals
         ? 'PETAL TRAIL'
         : (synergy.hitboxScaleMultiplier < 1.0
@@ -871,9 +872,15 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
                                           borderRadius:
                                               BorderRadius.circular(14),
                                           border: Border.all(
-                                              color: Colors.white
-                                                  .withOpacity(0.28),
-                                              width: 1.4),
+                                            color: rarity.color.withOpacity(
+                                              rarity == SkinRarity.common
+                                                  ? .45
+                                                  : .86,
+                                            ),
+                                            width: rarity == SkinRarity.mythic
+                                                ? 2.2
+                                                : 1.4,
+                                          ),
                                           boxShadow: [
                                             BoxShadow(
                                                 color: Colors.black
@@ -896,6 +903,13 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
                                                 painter: _WearOverlayPainter(
                                                   skin: widget.skin,
                                                   wearLevel: wearLevel,
+                                                ),
+                                              ),
+                                              CustomPaint(
+                                                painter: _RarityBorderPainter(
+                                                  rarity: rarity,
+                                                  phase: t,
+                                                  radius: 13,
                                                 ),
                                               ),
                                               // paper plane silhouette centered
@@ -2374,10 +2388,15 @@ class _SkinCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLocked = !unlocked;
+    final rarity = skin.rarity;
     final borderColor = equipped
         ? AppColors.success
-        : (selected ? AppColors.accent.withOpacity(0.7) : null);
-    final borderWidth = equipped ? 2.6 : 1.4;
+        : (selected
+            ? AppColors.accent.withOpacity(0.7)
+            : rarity.color.withOpacity(rarity == SkinRarity.common ? .35 : .72));
+    final borderWidth = equipped
+        ? 2.6
+        : (rarity == SkinRarity.mythic ? 2.0 : 1.4);
     final bg = equipped ? const Color(0xFFE9F7EE) : AppColors.paper;
     return Stack(
       clipBehavior: Clip.none,
@@ -2406,6 +2425,8 @@ class _SkinCard extends StatelessWidget {
                                 color: AppColors.paperInk, fontSize: 14),
                           ),
                         ),
+                        const SizedBox(width: 6),
+                        _SkinRarityBadge(rarity: rarity, compact: true),
                         if (selected) ...[
                           const SizedBox(width: 6),
                           Container(
@@ -2499,6 +2520,7 @@ class _SkinSwatch extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = compact ? 52.0 : 52.0;
     final h = compact ? 38.0 : 38.0;
+    final rarity = skin.rarity;
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -2510,7 +2532,12 @@ class _SkinSwatch extends StatelessWidget {
             decoration: BoxDecoration(
               color: Color(skin.baseColorHex),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.white24),
+              border: Border.all(
+                color: rarity.color.withOpacity(
+                  rarity == SkinRarity.common ? .42 : .82,
+                ),
+                width: rarity == SkinRarity.mythic ? 1.8 : 1.1,
+              ),
               boxShadow: [
                 BoxShadow(
                     color: Colors.black.withOpacity(0.18),
@@ -2519,6 +2546,16 @@ class _SkinSwatch extends StatelessWidget {
               ],
             ),
             child: CustomPaint(painter: _SkinPatternPainter(skin: skin)),
+          ),
+        ),
+        IgnorePointer(
+          child: CustomPaint(
+            size: Size(w, h),
+            painter: _RarityBorderPainter(
+              rarity: rarity,
+              phase: 0,
+              radius: 8,
+            ),
           ),
         ),
         if (!unlocked)
@@ -2743,6 +2780,110 @@ class _WearOverlayPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _WearOverlayPainter old) =>
       old.skin != skin || (old.wearLevel - wearLevel).abs() > .001;
+}
+
+class _SkinRarityBadge extends StatelessWidget {
+  const _SkinRarityBadge({required this.rarity, this.compact = false});
+
+  final SkinRarity rarity;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final isMythic = rarity == SkinRarity.mythic;
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 5 : 8,
+        vertical: compact ? 2 : 3,
+      ),
+      decoration: BoxDecoration(
+        gradient: isMythic
+            ? const LinearGradient(
+                colors: [
+                  Color(0xFFFF80AB),
+                  Color(0xFF80D8FF),
+                  Color(0xFFB9F6CA),
+                  Color(0xFFFFD740),
+                ],
+              )
+            : null,
+        color: isMythic ? null : rarity.color.withOpacity(.16),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isMythic ? Colors.white.withOpacity(.8) : rarity.color,
+        ),
+      ),
+      child: Text(
+        rarity.label,
+        style: AppTypography.overline.copyWith(
+          color: isMythic ? AppColors.paperInk : rarity.color,
+          fontSize: compact ? 6.8 : 8,
+          letterSpacing: compact ? .45 : .8,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _RarityBorderPainter extends CustomPainter {
+  const _RarityBorderPainter({
+    required this.rarity,
+    required this.phase,
+    required this.radius,
+  });
+
+  final SkinRarity rarity;
+  final double phase;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    ).deflate(.8);
+    if (rarity == SkinRarity.mythic) {
+      final glow = Paint()
+        ..color = const Color(0x88E1BEE7)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+      canvas.drawRRect(rect, glow);
+      final frame = Paint()
+        ..shader = SweepGradient(
+          colors: const [
+            Color(0xFFFF80AB),
+            Color(0xFF80D8FF),
+            Color(0xFFB9F6CA),
+            Color(0xFFFFD740),
+            Color(0xFFFF80AB),
+          ],
+          transform: GradientRotation(phase * math.pi * 2),
+        ).createShader(Offset.zero & size)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.1;
+      canvas.drawRRect(rect, frame);
+      return;
+    }
+
+    final glow = Paint()
+      ..color = rarity.color.withOpacity(.26)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    final frame = Paint()
+      ..color = rarity.color.withOpacity(rarity == SkinRarity.common ? .48 : .88)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.25;
+    canvas.drawRRect(rect, glow);
+    canvas.drawRRect(rect, frame);
+  }
+
+  @override
+  bool shouldRepaint(covariant _RarityBorderPainter old) =>
+      old.rarity != rarity || (old.phase - phase).abs() > .001 ||
+          old.radius != radius;
 }
 
 // ── Action chips — hierarchy ────────────────────────────────────────────────

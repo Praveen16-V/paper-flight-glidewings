@@ -194,6 +194,7 @@ Key knobs to adjust during playtesting:
 - `GameConfig.synergyBonus(...)` — exact plane + skin combo bonuses and visual trail effects
 - `PaperSkin.seasonalAvailability` — limited-shop rotation windows and countdowns
 - `CustomSkinManager.maxPatternBytes` — workshop image-import size guard
+- `PaperSkin.rarity` — common → mythic Hangar/list treatment
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts
