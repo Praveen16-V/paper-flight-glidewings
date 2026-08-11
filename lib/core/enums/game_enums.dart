@@ -1023,6 +1023,85 @@ extension PlanePowerUp on PlaneType {
 
 // ── Paper Skins ───────────────────────────────────────────────────────────────
 
+/// Named limited-time rotations used by seasonal PaperSkin metadata.
+enum SeasonalRotation { halloween, winter, lunarNewYear }
+
+/// Calendar window for a limited-time paper skin. Windows use the device's
+/// local calendar, which keeps the Shop countdown intuitive in every region.
+class SeasonalAvailability {
+  const SeasonalAvailability({
+    required this.rotation,
+    required this.startMonth,
+    required this.startDay,
+    required this.endMonth,
+    required this.endDay,
+  });
+
+  final SeasonalRotation rotation;
+  final int startMonth;
+  final int startDay;
+  final int endMonth;
+  final int endDay;
+
+  String get displayName {
+    switch (rotation) {
+      case SeasonalRotation.halloween:
+        return 'Halloween Flight';
+      case SeasonalRotation.winter:
+        return 'Winter Flight';
+      case SeasonalRotation.lunarNewYear:
+        return 'Lunar New Year';
+    }
+  }
+
+  String get icon {
+    switch (rotation) {
+      case SeasonalRotation.halloween:
+        return '🎃';
+      case SeasonalRotation.winter:
+        return '❄️';
+      case SeasonalRotation.lunarNewYear:
+        return '🏮';
+    }
+  }
+
+  bool get _crossesYear =>
+      startMonth > endMonth ||
+      (startMonth == endMonth && startDay > endDay);
+
+  bool isAvailableOn(DateTime now) {
+    final startThisYear = DateTime(now.year, startMonth, startDay);
+    if (!_crossesYear) {
+      return !now.isBefore(startThisYear) &&
+          !now.isAfter(_endForYear(now.year));
+    }
+
+    if (!now.isBefore(startThisYear)) {
+      return !now.isAfter(_endForYear(now.year + 1));
+    }
+    return !now.isBefore(DateTime(now.year - 1, startMonth, startDay)) &&
+        !now.isAfter(_endForYear(now.year));
+  }
+
+  DateTime? activeEndsAt(DateTime now) {
+    if (!isAvailableOn(now)) return null;
+    final startThisYear = DateTime(now.year, startMonth, startDay);
+    return !_crossesYear || now.isBefore(startThisYear)
+        ? _endForYear(now.year)
+        : _endForYear(now.year + 1);
+  }
+
+  DateTime nextStartsAt(DateTime now) {
+    final startThisYear = DateTime(now.year, startMonth, startDay);
+    return now.isBefore(startThisYear)
+        ? startThisYear
+        : DateTime(now.year + 1, startMonth, startDay);
+  }
+
+  DateTime _endForYear(int year) =>
+      DateTime(year, endMonth, endDay, 23, 59, 59, 999);
+}
+
 enum PaperSkin {
   plain,            // default white / gold
   newspaper,        // newspaper print with lorem squiggles
@@ -1124,11 +1203,11 @@ extension PaperSkinLabel on PaperSkin {
       case PaperSkin.prideGradient:
         return 'Animated rainbow pride spectrum wave';
       case PaperSkin.dragonScales:
-        return 'Origami dragon jade & ruby faceted scale mosaic';
+        return 'Lunar New Year dragon scales with lantern-gold embers';
       case PaperSkin.snowflake:
-        return 'Winter seasonal crystalline snowflake paper';
+        return 'Winter rotation crystalline snowflake paper';
       case PaperSkin.pumpkin:
-        return 'Autumn harvest pumpkin paper with leaf stamps';
+        return 'Halloween rotation pumpkin paper with drifting leaves';
       case PaperSkin.cherryBlossom:
         return 'Spring seasonal sakura petals & blossom twig';
       case PaperSkin.lavaLamp:
@@ -1278,6 +1357,42 @@ extension PaperSkinLabel on PaperSkin {
       this == PaperSkin.flipbook;
 
   int get animationFrameCount => usesFrameAnimation ? 8 : 0;
+
+  /// Null for evergreen skins. Seasonal skins remain usable after unlock, but
+  /// can only be newly purchased during this calendar window.
+  SeasonalAvailability? get seasonalAvailability {
+    switch (this) {
+      case PaperSkin.pumpkin:
+        return const SeasonalAvailability(
+          rotation: SeasonalRotation.halloween,
+          startMonth: 10,
+          startDay: 15,
+          endMonth: 11,
+          endDay: 5,
+        );
+      case PaperSkin.snowflake:
+        return const SeasonalAvailability(
+          rotation: SeasonalRotation.winter,
+          startMonth: 12,
+          startDay: 1,
+          endMonth: 1,
+          endDay: 10,
+        );
+      case PaperSkin.dragonScales:
+        return const SeasonalAvailability(
+          rotation: SeasonalRotation.lunarNewYear,
+          startMonth: 1,
+          startDay: 20,
+          endMonth: 2,
+          endDay: 20,
+        );
+      default:
+        return null;
+    }
+  }
+
+  bool isAvailableForPurchaseAt(DateTime now) =>
+      seasonalAvailability?.isAvailableOn(now) ?? true;
 }
 
 // ── Challenge System ────────────────────────────────────────────────────────

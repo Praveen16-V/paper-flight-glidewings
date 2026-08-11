@@ -405,6 +405,7 @@ class PlaneComponent extends PositionComponent
       width: w,
       height: h,
     );
+    _drawSeasonalSkinParticles(canvas, w, h);
 
     // ── Aviation Wing Navigation Lights ──────────────────────────────────────
     _drawWingNavLights(canvas, w, h);
@@ -1171,6 +1172,72 @@ class PlaneComponent extends PositionComponent
         canvas.drawCircle(Offset(w * 0.4, h * 0.4), 4, Paint()..color = Colors.white.withOpacity(0.35)..style = PaintingStyle.stroke..strokeWidth = 0.9);
         canvas.drawCircle(Offset(w * 0.6, h * 0.6), 4, Paint()..color = Colors.white.withOpacity(0.35)..style = PaintingStyle.stroke..strokeWidth = 0.9);
         break;
+    }
+  }
+
+  // ── Seasonal Skin Particles ───────────────────────────────────────────────
+
+  void _drawSeasonalSkinParticles(Canvas canvas, double w, double h) {
+    switch (paperSkin) {
+      case PaperSkin.pumpkin:
+        _drawHalloweenLeafParticles(canvas, w, h);
+        break;
+      case PaperSkin.snowflake:
+        _drawWinterSnowParticles(canvas, w, h);
+        break;
+      case PaperSkin.dragonScales:
+        _drawLunarEmberParticles(canvas, w, h);
+        break;
+      default:
+        break;
+    }
+  }
+
+  void _drawHalloweenLeafParticles(Canvas canvas, double w, double h) {
+    final leaf = Paint()..style = PaintingStyle.fill;
+    for (var i = 0; i < 5; i++) {
+      final phase = _animTime * (1.7 + i.toDouble() * .12) + i.toDouble() * 1.9;
+      final x = w * (.12 + i.toDouble() * .19) + math.sin(phase) * 7;
+      final y = h * .15 + ((phase * 11) % (h * .92));
+      leaf.color = i.isEven
+          ? const Color(0xCCFF7043)
+          : const Color(0xCCFFCA28);
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(phase);
+      canvas.drawOval(
+        const Rect.fromCenter(center: Offset.zero, width: 4.5, height: 2.4),
+        leaf,
+      );
+      canvas.restore();
+    }
+  }
+
+  void _drawWinterSnowParticles(Canvas canvas, double w, double h) {
+    final snow = Paint()
+      ..color = const Color(0xDDE1F5FE)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .75;
+    for (var i = 0; i < 6; i++) {
+      final phase = _animTime * (2.2 + i.toDouble() * .10) + i.toDouble() * 1.3;
+      final x = w * (.08 + i.toDouble() * .17) + math.sin(phase) * 3;
+      final y = (phase * 15) % (h * .98);
+      final radius = 1.4 + (i % 2).toDouble() * .55;
+      canvas.drawLine(Offset(x - radius, y), Offset(x + radius, y), snow);
+      canvas.drawLine(Offset(x, y - radius), Offset(x, y + radius), snow);
+    }
+  }
+
+  void _drawLunarEmberParticles(Canvas canvas, double w, double h) {
+    final ember = Paint()..style = PaintingStyle.fill;
+    for (var i = 0; i < 5; i++) {
+      final phase = _animTime * (2.8 + i.toDouble() * .16) + i.toDouble() * 2.2;
+      final x = w * (.16 + i.toDouble() * .17) + math.sin(phase * 1.3) * 5;
+      final y = h * .82 - ((phase * 10) % (h * .72));
+      ember.color = i.isEven
+          ? const Color(0xFFFFD740)
+          : const Color(0xFFFF5252);
+      canvas.drawCircle(Offset(x, y), 1.1 + (i % 2).toDouble() * .55, ember);
     }
   }
 

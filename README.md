@@ -190,6 +190,7 @@ Key knobs to adjust during playtesting:
 - `goldLeafCoinSparkleDuration` / `holographicNearMissShiftDuration` — reactive skin response windows
 - `skinWearDistanceForVeteran` / `skinWearCrashImpact` — cosmetic patina pace and crash marks
 - `GameConfig.synergyBonus(...)` — exact plane + skin combo bonuses and visual trail effects
+- `PaperSkin.seasonalAvailability` — limited-shop rotation windows and countdowns
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts

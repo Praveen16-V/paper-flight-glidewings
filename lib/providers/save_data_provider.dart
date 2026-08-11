@@ -260,10 +260,12 @@ class SaveDataNotifier extends Notifier<SaveData> {
       state.unlockedSkinIndices.contains(skinIndex);
 
   Future<bool> unlockSkin(int skinIndex, int coinCost, int gemCost) async {
+    if (skinIndex < 0 || skinIndex >= PaperSkin.values.length) return false;
+    final skin = PaperSkin.values[skinIndex];
+    if (!skin.isAvailableForPurchaseAt(DateTime.now())) return false;
     if (!isSkinUnlocked(skinIndex) &&
         state.coins >= coinCost &&
-        state.gems >= gemCost) {
-      state = await PersistenceService.instance.updateSave((s) {
+        state.gems >= gemCost) {      state = await PersistenceService.instance.updateSave((s) {
         s.coins -= coinCost;
         s.gems -= gemCost;
         if (!s.unlockedSkinIndices.contains(skinIndex)) {

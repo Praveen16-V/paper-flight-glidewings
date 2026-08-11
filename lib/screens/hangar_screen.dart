@@ -670,7 +670,10 @@ class _SkinsTabState extends ConsumerState<_SkinsTab> {
                       final isSel = selected == index;
                       final canAffordCoins = save.coins >= s.unlockCostCoins;
                       final canAffordGems = save.gems >= s.unlockCostGems;
-                      final canAfford = canAffordCoins && canAffordGems;
+                      final seasonOpen =
+                          s.isAvailableForPurchaseAt(DateTime.now());
+                      final canAfford =
+                          canAffordCoins && canAffordGems && seasonOpen;
                       return _SkinCard(
                         skin: s,
                         unlocked: unl,

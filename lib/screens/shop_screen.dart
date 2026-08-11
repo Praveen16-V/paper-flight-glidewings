@@ -11,6 +11,7 @@ import '../core/widgets/currency_chip.dart';
 import '../core/widgets/paper_button.dart';
 import '../core/widgets/paper_card.dart';
 import '../core/widgets/paper_icons.dart';
+import '../models/save_data.dart';
 import '../providers/save_data_provider.dart';
 import '../services/ad_service.dart';
 import '../services/analytics_service.dart';
@@ -27,18 +28,26 @@ class ShopScreen extends ConsumerStatefulWidget {
 
 class _ShopScreenState extends ConsumerState<ShopScreen> {
   StreamSubscription<PurchaseEvent>? _purchaseSub;
+  Timer? _seasonalTicker;
+  DateTime _seasonalNow = DateTime.now();
   bool _loading = false;
 
   @override
   void initState() {
     super.initState();
     _purchaseSub = IapService.instance.purchaseStream.listen(_onPurchaseEvent);
+    // Shop countdowns are calendar-facing, so refresh once a second without
+    // touching game-loop state or any persistence.
+    _seasonalTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _seasonalNow = DateTime.now());
+    });
     AnalyticsService.instance.logScreenView('shop');
   }
 
   @override
   void dispose() {
     _purchaseSub?.cancel();
+    _seasonalTicker?.cancel();
     super.dispose();
   }
 
@@ -93,6 +102,25 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
   void _buy(String productId) {
     setState(() => _loading = true);
     IapService.instance.buy(productId);
+  }
+
+  Future<void> _unlockSeasonalSkin(PaperSkin skin) async {
+    final availability = skin.seasonalAvailability;
+    if (availability == null || !availability.isAvailableOn(_seasonalNow)) {
+      return;
+    }
+    final success = await ref.read(saveDataProvider.notifier).unlockSkin(
+          skin.index,
+          skin.unlockCostCoins,
+          skin.unlockCostGems,
+        );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(success
+          ? '${skin.displayName} unlocked!'
+          : 'Not enough coins or gems.'),
+      backgroundColor: success ? AppColors.success : AppColors.danger,
+    ));
   }
 
   @override
@@ -180,6 +208,14 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                             ribbon: const _RibbonTag(label: 'STARTER PACK', color: Color(0xFFF5A623)),
                             illustration: const _IllustratedChest(kind: ChestKind.starter, accent: AppColors.warning),
                             onTap: () => _buy(IapProductIds.starterPack),
+                          ),
+                          const SizedBox(height: 24),
+                          _SectionHeader(title: 'Seasonal Rotation'),
+                          const SizedBox(height: 12),
+                          _SeasonalRotationSection(
+                            now: _seasonalNow,
+                            save: save,
+                            onUnlock: _unlockSeasonalSkin,
                           ),
                           const SizedBox(height: 24),
                           _SectionHeader(title: 'Coins'),
@@ -349,6 +385,167 @@ class _SectionHeader extends StatelessWidget {
       ],
     );
   }
+}
+
+// ── Limited-time seasonal skin rotation ───────────────────────────────────────
+
+class _SeasonalRotationSection extends StatelessWidget {
+  const _SeasonalRotationSection({
+    required this.now,
+    required this.save,
+    required this.onUnlock,
+  });
+
+  final DateTime now;
+  final SaveData save;
+  final Future<void> Function(PaperSkin skin) onUnlock;
+
+  @override
+  Widget build(BuildContext context) {
+    final skins = PaperSkin.values
+        .where((skin) => skin.seasonalAvailability != null)
+        .toList(growable: false);
+    return Column(
+      children: [
+        for (var i = 0; i < skins.length; i++) ...[
+          _SeasonalSkinCard(
+            skin: skins[i],
+            now: now,
+            unlocked: save.unlockedSkinIndices.contains(skins[i].index),
+            canAfford: save.coins >= skins[i].unlockCostCoins &&
+                save.gems >= skins[i].unlockCostGems,
+            onUnlock: () {
+              onUnlock(skins[i]);
+            },
+          ),
+          if (i < skins.length - 1) const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+}
+
+class _SeasonalSkinCard extends StatelessWidget {
+  const _SeasonalSkinCard({
+    required this.skin,
+    required this.now,
+    required this.unlocked,
+    required this.canAfford,
+    required this.onUnlock,
+  });
+
+  final PaperSkin skin;
+  final DateTime now;
+  final bool unlocked;
+  final bool canAfford;
+  final VoidCallback onUnlock;
+
+  @override
+  Widget build(BuildContext context) {
+    final availability = skin.seasonalAvailability!;
+    final active = availability.isAvailableOn(now);
+    final transition = active
+        ? availability.activeEndsAt(now)!
+        : availability.nextStartsAt(now);
+    final remaining = transition.difference(now);
+    final countdown = _formatSeasonalCountdown(remaining);
+    final status = unlocked
+        ? 'OWNED • YOURS TO KEEP'
+        : (active ? 'ENDS IN $countdown' : 'RETURNS IN $countdown');
+    final seasonalColor = switch (availability.rotation) {
+      SeasonalRotation.halloween => const Color(0xFFFF7043),
+      SeasonalRotation.winter => const Color(0xFF80D8FF),
+      SeasonalRotation.lunarNewYear => const Color(0xFFFF5252),
+    };
+
+    return PaperCard(
+      color: active ? AppColors.paperWarm : AppColors.paper.withOpacity(.82),
+      padding: const EdgeInsets.all(12),
+      borderColor: active ? seasonalColor.withOpacity(.75) : null,
+      borderWidth: active ? 1.5 : 1.0,
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: seasonalColor.withOpacity(active ? .18 : .08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: seasonalColor.withOpacity(.45)),
+            ),
+            child: Text(availability.icon, style: const TextStyle(fontSize: 25)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  skin.displayName,
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: AppColors.paperInk,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  availability.displayName,
+                  style: AppTypography.caption.copyWith(
+                    color: seasonalColor.withOpacity(active ? 1.0 : .68),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 10,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  status,
+                  style: AppTypography.overline.copyWith(
+                    color: active
+                        ? AppColors.paperInkSoft
+                        : AppColors.paperInkSoft.withOpacity(.72),
+                    fontSize: 8,
+                    letterSpacing: .8,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (unlocked)
+            const Icon(Icons.check_circle_rounded,
+                color: AppColors.success, size: 26)
+          else
+            SizedBox(
+              width: 98,
+              child: PaperButton(
+                label: active
+                    ? '${skin.unlockCostCoins} ●'
+                    : 'LOCKED',
+                compact: true,
+                color: active ? seasonalColor : AppColors.paperInkSoft,
+                textColor: Colors.white,
+                semanticLabel: active
+                    ? 'Unlock ${skin.displayName}'
+                    : '${skin.displayName} returns in $countdown',
+                onPressed: active && canAfford ? onUnlock : null,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+String _formatSeasonalCountdown(Duration duration) {
+  if (duration.isNegative) return 'SOON';
+  if (duration.inDays > 0) {
+    return '${duration.inDays}D ${duration.inHours.remainder(24)}H';
+  }
+  if (duration.inHours > 0) {
+    return '${duration.inHours}H ${duration.inMinutes.remainder(60)}M';
+  }
+  return '${duration.inMinutes.remainder(60)}M ${duration.inSeconds.remainder(60)}S';
 }
 
 // ── Ribbon tag ───────────────────────────────────────────────────────────────
