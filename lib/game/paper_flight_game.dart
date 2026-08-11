@@ -748,10 +748,17 @@ class PaperFlightGame extends FlameGame
 
     // Spawner activity per mode: trials are fully scripted; zen keeps
     // obstacles + coins but no power-ups; classic/daily run everything.
+    // The Paper Dart is the pure basic flight — no power-ups spawn at all.
     obstacleSpawner.spawnEnabled = mode != GameMode.trial;
     collectibleSpawner.autoSpawn = mode != GameMode.trial;
+    final equippedPlaneType = PlaneType.values[ref
+        .read(saveDataProvider)
+        .equippedPlaneIndex
+        .clamp(0, PlaneType.values.length - 1)
+        .toInt()];
     powerUpSpawner.autoSpawn =
-        mode == GameMode.classic || mode == GameMode.daily;
+        (mode == GameMode.classic || mode == GameMode.daily) &&
+            equippedPlaneType != PlaneType.dart;
 
     // Trials: attach the course director + scripted wind.
     trialDirector?.removeFromParent();
