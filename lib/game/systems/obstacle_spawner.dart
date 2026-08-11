@@ -19,7 +19,7 @@ class ObstacleSpawner extends Component {
   math.Random random = math.Random();
   bool spawnEnabled = true;
 
-  // Per-type object pools for all 14 obstacle types.
+  // Per-type object pools for every obstacle type.
   late final ObjectPool<PowerLineObstacle> _powerLinePool;
   late final ObjectPool<BuildingObstacle> _buildingPool;
   late final ObjectPool<TreeBranchObstacle> _branchPool;
@@ -39,6 +39,7 @@ class ObstacleSpawner extends Component {
   late final ObjectPool<TornadoObstacle> _tornadoPool;
   late final ObjectPool<FlockMigrationObstacle> _flockMigrationPool;
   late final ObjectPool<WhaleBreachObstacle> _whaleBreachPool;
+  late final ObjectPool<PaperDragonObstacle> _paperDragonPool;
 
   final List<ObstacleComponent> _active = [];
   List<ObstacleComponent> get activeObstacles => _active;
@@ -74,6 +75,7 @@ class ObstacleSpawner extends Component {
     _flockMigrationPool =
         ObjectPool(create: FlockMigrationObstacle.new, initialSize: 2);
     _whaleBreachPool = ObjectPool(create: WhaleBreachObstacle.new, initialSize: 1);
+    _paperDragonPool = ObjectPool(create: PaperDragonObstacle.new, initialSize: 1);
 
     await super.onLoad();
   }
@@ -165,14 +167,18 @@ class ObstacleSpawner extends Component {
     // Local weather is seeded by a real obstacle event rather than a detached
     // global timer. Gate obstacles use their planned corridor as the anchor so
     // a cell appears beside the route instead of arbitrarily at world x = 0.
-    final isGate = chosen == ObstacleType.powerLine ||
-        chosen == ObstacleType.building ||
-        chosen == ObstacleType.clothesline;
-    game.windSystem.spawnTurbulenceAlongsideObstacle(
-      anchorX: isGate ? _safeCorridorX : spawnX,
-      safeCorridorX: _safeCorridorX,
-      obstacleType: chosen,
-    );
+    // A Paper Dragon already owns the full readability budget of the screen,
+    // so it deliberately never gains an additional turbulence pocket.
+    if (!chosen.isBoss) {
+      final isGate = chosen == ObstacleType.powerLine ||
+          chosen == ObstacleType.building ||
+          chosen == ObstacleType.clothesline;
+      game.windSystem.spawnTurbulenceAlongsideObstacle(
+        anchorX: isGate ? _safeCorridorX : spawnX,
+        safeCorridorX: _safeCorridorX,
+        obstacleType: chosen,
+      );
+    }
     return true;
   }
 
@@ -205,6 +211,12 @@ class ObstacleSpawner extends Component {
   }
 
   bool _hasSafeReactionWindow(ObstacleType proposed) {
+    // A boss telegraph means "one challenge at a time". Do not place another
+    // obstacle into its S-curve, and only start the encounter after the sky is
+    // clear so the long warning remains a fair decision point.
+    if (_active.any((obstacle) => obstacle.type.isBoss)) return false;
+    if (proposed.isBoss) return _active.isEmpty;
+
     final isGate = proposed == ObstacleType.powerLine ||
         proposed == ObstacleType.building ||
         proposed == ObstacleType.clothesline;
@@ -298,6 +310,8 @@ class ObstacleSpawner extends Component {
         return _flockMigrationPool.acquire();
       case ObstacleType.whaleBreach:
         return _whaleBreachPool.acquire();
+      case ObstacleType.paperDragon:
+        return _paperDragonPool.acquire();
     }
   }
 
@@ -345,6 +359,8 @@ class ObstacleSpawner extends Component {
         _flockMigrationPool.release(obs as FlockMigrationObstacle);
       case ObstacleType.whaleBreach:
         _whaleBreachPool.release(obs as WhaleBreachObstacle);
+      case ObstacleType.paperDragon:
+        _paperDragonPool.release(obs as PaperDragonObstacle);
     }
   }
 }

@@ -171,6 +171,7 @@ enum ObstacleType {
   tornado,        // rotating wind column that pulls the plane
   flockMigration, // 10–20 birds crossing in a V formation
   whaleBreach,    // massive slow ocean hazard with splash particles
+  paperDragon,    // serpentine multi-segment paper boss
 }
 
 extension ObstacleLabel on ObstacleType {
@@ -214,6 +215,8 @@ extension ObstacleLabel on ObstacleType {
         return 'Flock Migration';
       case ObstacleType.whaleBreach:
         return 'Whale Breach';
+      case ObstacleType.paperDragon:
+        return 'Paper Dragon';
     }
   }
 
@@ -257,6 +260,8 @@ extension ObstacleLabel on ObstacleType {
         return 'flock_migration';
       case ObstacleType.whaleBreach:
         return 'whale_breach';
+      case ObstacleType.paperDragon:
+        return 'paper_dragon';
     }
   }
 
@@ -269,6 +274,9 @@ extension ObstacleLabel on ObstacleType {
   /// Firework rockets are the current projectile-class hazard that Shield Lv2
   /// can reflect instead of consuming the shield.
   bool get isReflectableProjectile => this == ObstacleType.fireworks;
+
+  /// Boss passes reserve the sky so their telegraph and route remain readable.
+  bool get isBoss => this == ObstacleType.paperDragon;
 
   /// Dynamic hazards vulnerable to Cursed Magnet's dangerous pull.
   bool get isCursedMagnetAttractable =>

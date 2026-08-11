@@ -172,6 +172,7 @@ class BiomeManager extends Component {
           ObstacleType.lightningStrike: 0.25,
           ObstacleType.meteorShower: 0.0,
           ObstacleType.tornado: 0.15,
+          ObstacleType.paperDragon: 0.10,
         }[type] ?? 0.0;
       case Biome.ocean:
         return const {
@@ -182,6 +183,7 @@ class BiomeManager extends Component {
           ObstacleType.trafficPlane: 0.18,
           ObstacleType.tornado: 0.10,
           ObstacleType.flockMigration: 0.08,
+          ObstacleType.paperDragon: 0.24,
         }[type] ?? 0.0;
       case Biome.atmosphere:
         return const {
@@ -202,6 +204,7 @@ class BiomeManager extends Component {
           ObstacleType.lightningStrike: 0.35,
           ObstacleType.meteorShower: 1.45,
           ObstacleType.tornado: 0.50,
+          ObstacleType.paperDragon: 0.40,
         }[type] ?? 0.0;
     }
   }

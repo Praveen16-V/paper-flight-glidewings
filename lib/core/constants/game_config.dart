@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-obstacles-3';
+  static const String balanceVersion = '2026.08-obstacles-4';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -406,6 +406,32 @@ abstract class GameConfig {
 
   /// Minimum spawn interval floor.
   static const double obstacleMinSpawnInterval = 0.55;
+
+  // ── Paper Dragon Boss ────────────────────────────────────────────────────
+  /// The dragon is a single, deliberately readable boss pass instead of a
+  /// dense obstacle stack. Its hitboxes trace these reusable paper segments.
+  static const int paperDragonSegmentCount = 11;
+  static const double paperDragonBodyHeight = 380.0;
+  static const double paperDragonHeadOffsetY = 48.0;
+  static const double paperDragonSegmentSpacing = 30.0;
+  static const double paperDragonSegmentRadius = 18.0;
+  static const double paperDragonHitboxRadius = 14.5;
+  static const double paperDragonTailScale = 0.72;
+
+  /// Horizontal wave tuning makes the body read as a serpentine route rather
+  /// than a solid wall. The head wanders independently by a smaller amount.
+  static const double paperDragonWaveAmplitude = 98.0;
+  static const double paperDragonWaveTailAmplitudeMultiplier = 0.78;
+  static const double paperDragonWaveAngularSpeed = 2.25;
+  static const double paperDragonWavePhaseStep = 0.72;
+  static const double paperDragonHeadWanderAmplitude = 26.0;
+  static const double paperDragonHeadWanderAngularSpeed = 1.05;
+
+  /// A long lead gives the boss its own crimson telegraph before any body
+  /// segment enters the viewport. It travels slightly slower than the world
+  /// so the player has time to read the full S-shaped route.
+  static const double paperDragonTelegraphLeadDistance = 440.0;
+  static const double paperDragonScrollSpeedMultiplier = 0.72;
 
   /// Upper-third Y threshold (fraction) for hazard density bias.
   static const double upperHazardBiasThreshold = 0.33;
