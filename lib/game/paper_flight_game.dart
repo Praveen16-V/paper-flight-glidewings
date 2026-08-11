@@ -24,6 +24,7 @@ import '../services/daily_seed_service.dart';
 import 'components/background/parallax_background.dart';
 import 'components/effects/coin_feedback.dart';
 import 'components/effects/atmosphere_component.dart';
+import 'components/effects/powerup_screen_effect_component.dart';
 import 'components/joystick_component.dart';
 import 'components/obstacles/obstacle_component.dart';
 import 'components/plane_component.dart';
@@ -125,6 +126,7 @@ class PaperFlightGame extends FlameGame
 
   /// Juice layer — adaptive audio, dynamic camera, streaks, chimes & haptics.
   late final GameFeelSystem gameFeelSystem;
+  late final PowerUpScreenEffectComponent powerUpScreenEffects;
 
   // ── Core Components ───────────────────────────────────────────────────────
 
@@ -284,6 +286,10 @@ class PaperFlightGame extends FlameGame
     // on top of the whole world.
     gameFeelSystem = GameFeelSystem();
     world.add(gameFeelSystem);
+
+    // Screen-space compositing renders after the world but beneath Flutter HUD.
+    powerUpScreenEffects = PowerUpScreenEffectComponent();
+    world.add(powerUpScreenEffects);
 
     // Sync initial control scheme + sensitivity from persisted settings.
     try {

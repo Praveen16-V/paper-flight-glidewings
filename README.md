@@ -105,7 +105,8 @@ lib/
 │   │   ├── collectibles/
 │   │   │   └── coin_component.dart       # Coin with magnet + combo integration
 │   │   ├── effects/
-│   │   │   └── thermal_column_component.dart # Visible local updrafts + orbit surfing
+│   │   │   ├── thermal_column_component.dart # Visible local updrafts + orbit surfing
+│   │   │   └── powerup_screen_effect_component.dart # Ghost/Slow-Mo/Black Hole composite VFX
 │   │   ├── skins/
 │   │   │   ├── animated_paper_skin.dart # 8-frame SpriteAnimation skin overlays
 │   │   │   ├── custom_pattern_skin_overlay.dart # Imported Custom Craft image overlay
@@ -200,6 +201,7 @@ Key knobs to adjust during playtesting:
 - `magnetLevel2Radius` / `shieldEvolutionLevel2Cost` — Hangar power-up evolution tuning
 - `corruptedPowerUpSpawnChance` / `unstableGhostTeleportInterval` — risk/reward pickup tuning
 - `empoweredPowerUpBurstDuration` / `empoweredMagnetRadius` — three-charge crafting reward strength
+- `PowerUpScreenEffectComponent` — Ghost, Slow-Mo, and Black Hole screen-space visual treatment
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts
