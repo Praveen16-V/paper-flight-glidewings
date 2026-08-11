@@ -185,6 +185,7 @@ class ScoringSystem extends Component {
   }) {
     _nearMissesThisRun++;
     game.ref.read(gameSessionProvider.notifier).addNearMiss();
+    game.dynamicDifficultySystem.registerNearMiss(tier);
     var points = tier.points;
     // Stunt Fold: +50%..+100% near-miss score
     try {

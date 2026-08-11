@@ -211,6 +211,7 @@ Key knobs to adjust during playtesting:
 - Paper Dragon is a telegraphed, single-pass serpentine boss with 11 moving segment hitboxes across Night, Ocean, and Atmosphere
 - Interactive Kite Tethers advertise a cyan SNAP window; a precise paper-snap severs one nearby kite, refunds the charge, extends combo, and releases coins
 - Curated Obstacle Combinations reserve a safe corridor for readable two-part City Traffic, Storm Crossfire, Rotor Run, and Kite Relay encounters
+- Dynamic Difficulty adapts density, pressure-hazard weighting, and combination frequency to current-run distance, combo discipline, near-miss skill, and recent defensive saves
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts
 - `comboDrainDuration` / `comboHitRetentionFraction` — combo decay gauge pace & shield-hit penalty

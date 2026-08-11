@@ -153,7 +153,9 @@ class ObstacleSpawner extends Component {
       Biome.ocean => .96,
       Biome.atmosphere => .90,
     };
-    return baseInterval * biomeSpacing;
+    return baseInterval *
+        biomeSpacing *
+        game.dynamicDifficultySystem.spawnIntervalMultiplier;
   }
 
   bool _spawnObstacle() {
@@ -166,7 +168,10 @@ class ObstacleSpawner extends Component {
 
     final types = ObstacleType.values;
     final weights = types
-        .map((type) => game.biomeManager.obstacleWeight(type))
+        .map(
+          (type) => game.biomeManager.obstacleWeight(type) *
+              game.dynamicDifficultySystem.obstacleWeightMultiplier(type),
+        )
         .toList();
 
     final totalWeight = weights.fold<double>(0, (sum, weight) => sum + weight);
@@ -219,9 +224,11 @@ class ObstacleSpawner extends Component {
         _combinationCooldown > 0) {
       return null;
     }
-    if (random.nextDouble() > GameConfig.obstacleCombinationSpawnChance) {
-      return null;
-    }
+    final combinationChance = (GameConfig.obstacleCombinationSpawnChance *
+            game.dynamicDifficultySystem.combinationChanceMultiplier)
+        .clamp(0.0, 0.72)
+        .toDouble();
+    if (random.nextDouble() > combinationChance) return null;
 
     final combinations = ObstacleCombination.values;
     final weights = combinations

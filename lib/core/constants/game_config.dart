@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-obstacles-6';
+  static const String balanceVersion = '2026.08-obstacles-7';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -406,6 +406,64 @@ abstract class GameConfig {
 
   /// Minimum spawn interval floor.
   static const double obstacleMinSpawnInterval = 0.55;
+
+  // ── Dynamic Difficulty ───────────────────────────────────────────────────
+  /// Adaptive pacing begins gentle, then responds to confident combo building
+  /// and deliberate near-misses. A safety intervention temporarily gives the
+  /// player more room instead of escalating a run that is already under strain.
+  static const double dynamicDifficultyBaseIntensity = 0.14;
+  static const double dynamicDifficultyMinimumIntensity = 0.05;
+  static const double dynamicDifficultyMaximumIntensity = 0.90;
+  static const double dynamicDifficultyDistanceStartMeters = 350.0;
+  static const double dynamicDifficultyDistanceRangeMeters = 2800.0;
+  static const double dynamicDifficultyDistanceWeight = 0.18;
+  static const double dynamicDifficultyComboWeight = 0.30;
+  static const double dynamicDifficultyNearMissWeight = 0.28;
+  static const double dynamicDifficultySafetyReliefWeight = 0.38;
+  static const double dynamicDifficultyResponsePerSecond = 1.7;
+
+  /// Skill momentum is event driven, then naturally settles back toward the
+  /// current combo/distance baseline. Tiered passes deliberately have a larger
+  /// influence than a routine close shave.
+  static const double dynamicDifficultyCloseShaveMomentum = 0.10;
+  static const double dynamicDifficultyHairThinMomentum = 0.18;
+  static const double dynamicDifficultyDeathDefyingMomentum = 0.30;
+  static const double dynamicDifficultyMomentumDecayPerSecond = 0.075;
+  static const double dynamicDifficultySafetyReliefPerHit = 0.55;
+  static const double dynamicDifficultySafetyReliefDecayPerSecond = 0.13;
+
+  /// Adaptive intensity converts to bounded pacing modifiers. Higher skill
+  /// shortens obstacle gaps and makes curated pairs a little more likely, but
+  /// never removes the telegraph/reaction-time guarantees of the spawner.
+  static double dynamicDifficultySpawnIntervalMultiplier(double intensity) =>
+      (1.12 - 0.38 * intensity.clamp(0.0, 1.0)).clamp(0.74, 1.12).toDouble();
+
+  static double dynamicDifficultyCombinationChanceMultiplier(double intensity) =>
+      (0.76 + 0.62 * intensity.clamp(0.0, 1.0)).clamp(0.76, 1.38).toDouble();
+
+  /// Pure target evaluator shared by runtime code and balance tests.
+  static double dynamicDifficultyTarget({
+    required double distanceMeters,
+    required double comboGaugeFraction,
+    required double nearMissMomentum,
+    required double safetyRelief,
+  }) {
+    final distanceProgress = ((distanceMeters - dynamicDifficultyDistanceStartMeters) /
+            dynamicDifficultyDistanceRangeMeters)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final target = dynamicDifficultyBaseIntensity +
+        distanceProgress * dynamicDifficultyDistanceWeight +
+        comboGaugeFraction.clamp(0.0, 1.0) * dynamicDifficultyComboWeight +
+        nearMissMomentum.clamp(0.0, 1.0) * dynamicDifficultyNearMissWeight -
+        safetyRelief.clamp(0.0, 1.0) * dynamicDifficultySafetyReliefWeight;
+    return target
+        .clamp(
+          dynamicDifficultyMinimumIntensity,
+          dynamicDifficultyMaximumIntensity,
+        )
+        .toDouble();
+  }
 
   // ── Curated Obstacle Combinations ─────────────────────────────────────────
   /// Linked pairs begin after the opening lesson and always reserve the sky

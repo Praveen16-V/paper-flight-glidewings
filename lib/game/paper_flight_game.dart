@@ -34,6 +34,7 @@ import 'systems/obstacle_spawner.dart';
 import 'systems/collectible_spawner.dart';
 import 'systems/powerup_spawner.dart';
 import 'systems/scoring_system.dart';
+import 'systems/dynamic_difficulty_system.dart';
 import 'systems/streak_system.dart';
 import 'systems/trial_director.dart';
 import 'systems/wind_system.dart';
@@ -122,6 +123,7 @@ class PaperFlightGame extends FlameGame
   late final ThermalColumnSystem thermalColumnSystem;
   late final WingmanSystem wingmanSystem;
   late final ScoringSystem scoringSystem;
+  late final DynamicDifficultySystem dynamicDifficultySystem;
   late final StreakSystem streakSystem;
   late final BiomeManager biomeManager;
   late final ObstacleSpawner obstacleSpawner;
@@ -233,6 +235,7 @@ class PaperFlightGame extends FlameGame
     thermalColumnSystem = ThermalColumnSystem(game: this, seed: windSeed);
     wingmanSystem = WingmanSystem(game: this, seed: windSeed);
     scoringSystem = ScoringSystem(game: this);
+    dynamicDifficultySystem = DynamicDifficultySystem(game: this);
     streakSystem = StreakSystem();
     biomeManager = BiomeManager(game: this);
 
@@ -242,8 +245,11 @@ class PaperFlightGame extends FlameGame
     // them, so their particle column and lift field always agree.
     world.add(thermalColumnSystem);
     world.add(scoringSystem);
-    world.add(streakSystem);
     world.add(biomeManager);
+    // Reads confirmed score/near-miss state before the spawner decides its
+    // next pacing interval, so adaptation remains frame-order deterministic.
+    world.add(dynamicDifficultySystem);
+    world.add(streakSystem);
     // Friendly formation planes render behind hazards/player and only activate
     // in Zen or Daily Flight.
     world.add(wingmanSystem);
@@ -750,6 +756,7 @@ class PaperFlightGame extends FlameGame
     collectibleSpawner.reset();
     powerUpSpawner.reset();
     scoringSystem.reset();
+    dynamicDifficultySystem.reset();
     streakSystem.reset();
     biomeManager.reset(mode);
     windSystem.reset();
@@ -857,6 +864,7 @@ class PaperFlightGame extends FlameGame
       plane.playGhostPhaseAnimation();
       gameFeelSystem.onShieldBreak();
       scoringSystem.onObstacleHit();
+      dynamicDifficultySystem.registerSafetyIntervention(severity: .65);
       if (_decoyCloneCharges <= 0) {
         ref.read(gameSessionProvider.notifier).deactivatePowerUp(PowerUpType.decoyClone);
       }
@@ -876,6 +884,7 @@ class PaperFlightGame extends FlameGame
       // Simplest: let it continue but add brief ghost immunity via shield hit?
       // We give a tiny scale pulse and keep flying.
       scoringSystem.onObstacleHit(); // slight combo penalty but not crash
+      dynamicDifficultySystem.registerSafetyIntervention(severity: .50);
       return;
     }
 
@@ -887,6 +896,7 @@ class PaperFlightGame extends FlameGame
         obstacle.deflectByShield();
         plane.playShieldHitAnimation();
         gameFeelSystem.onShieldBreak();
+        dynamicDifficultySystem.registerSafetyIntervention(severity: .30);
         world.add(ColoredBurst(
           position: plane.position.clone(),
           color: const Color(0xFFFFD740),
@@ -898,6 +908,7 @@ class PaperFlightGame extends FlameGame
         plane.playShieldHitAnimation();
         gameFeelSystem.onShieldBreak();
         scoringSystem.onObstacleHit();
+        dynamicDifficultySystem.registerSafetyIntervention(severity: .65);
         return;
       } else {
         _shieldChargesRemaining = 0;
@@ -905,6 +916,7 @@ class PaperFlightGame extends FlameGame
         scoringSystem.onObstacleHit();
         plane.playShieldHitAnimation();
         gameFeelSystem.onShieldBreak();
+        dynamicDifficultySystem.registerSafetyIntervention(severity: .85);
         return;
       }
     }
@@ -975,6 +987,7 @@ class PaperFlightGame extends FlameGame
     );
     gameFeelSystem.onShieldBreak(); // soft haptic + chime, no penalty
     scoringSystem.onObstacleHit(); // tiny combo penalty, nothing else
+    dynamicDifficultySystem.registerSafetyIntervention(severity: .45);
   }
 
   /// Ends a Zen flight from the pause menu: records the personal best
