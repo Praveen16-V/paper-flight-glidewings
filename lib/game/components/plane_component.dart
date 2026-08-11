@@ -187,6 +187,11 @@ class PlaneComponent extends PositionComponent
   bool _blackHoleActive = false;
   bool _turboDashActive = false;
 
+  // Stacked power-up synergy channels.
+  bool _phaseShieldActive = false;
+  bool _goldVortexActive = false;
+  bool _timeDashActive = false;
+
   // ── Distinct Pulse Channels ───────────────────────────────────────────────
   double _shieldPhase = 0.0;     // 1.2 Hz breathing
   double _ghostPhase = 0.0;      // 8.0 Hz rapid ethereal flicker
@@ -1386,6 +1391,10 @@ class PlaneComponent extends PositionComponent
     if (_blackHoleActive) _drawBlackHoleVortex(canvas, w, h);
     if (_turboDashActive) _drawTurboDashBlaze(canvas, w, h);
 
+    if (_phaseShieldActive) _drawPhaseShieldCombo(canvas, w, h);
+    if (_goldVortexActive) _drawGoldVortexCombo(canvas, w, h);
+    if (_timeDashActive) _drawTimeDashCombo(canvas, w, h);
+
     // Stacking VFX: interlaced resonant aura if multiple active
     int activeCount = (_shieldActive ? 1 : 0) +
         (_ghostActive ? 1 : 0) +
@@ -1678,6 +1687,75 @@ class PlaneComponent extends PositionComponent
       ..lineTo(w / 2 + 20, h / 2 + 10)
       ..close();
     canvas.drawPath(cone, blaze);
+  }
+
+  // ── Stacked Power-Up Combo Overlays ───────────────────────────────────────
+
+  void _drawPhaseShieldCombo(Canvas canvas, double w, double h) {
+    final center = Offset(w / 2, h / 2);
+    final pulse = .78 + math.sin(_shieldPhase * 1.7) * .18;
+    final radius = w * .78 * pulse;
+    final rim = Paint()
+      ..color = const Color(0xFF80DEEA).withOpacity(.78)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+    final ghostRim = Paint()
+      ..color = const Color(0x99E1BEE7)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1;
+    canvas.drawCircle(center, radius, rim);
+    for (var i = 0; i < 6; i++) {
+      final a = _ghostPhase * .12 + i * math.pi / 3;
+      final x = center.dx + math.cos(a) * radius;
+      final y = center.dy + math.sin(a) * radius;
+      canvas.drawCircle(Offset(x, y), 2.1, ghostRim);
+    }
+  }
+
+  void _drawGoldVortexCombo(Canvas canvas, double w, double h) {
+    final center = Offset(w / 2, h / 2);
+    final vortex = Paint()
+      ..color = const Color(0xCCFFD740)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.7;
+    for (var i = 0; i < 3; i++) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: w * (.48 + i * .16)),
+        _magnetAngle * 2 + i.toDouble() * 1.4,
+        math.pi * 1.15,
+        false,
+        vortex,
+      );
+    }
+    final coin = Paint()..color = const Color(0xFFFFF59D);
+    for (var i = 0; i < 5; i++) {
+      final a = _magnetAngle * 2 + i.toDouble() * (math.pi * 2 / 5);
+      canvas.drawCircle(
+        Offset(
+          center.dx + math.cos(a) * w * .72,
+          center.dy + math.sin(a) * h * .62,
+        ),
+        2.1,
+        coin,
+      );
+    }
+  }
+
+  void _drawTimeDashCombo(Canvas canvas, double w, double h) {
+    final center = Offset(w / 2, h / 2);
+    final ring = Paint()
+      ..color = const Color(0xCCB388FF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8;
+    canvas.drawCircle(center, w * .82, ring);
+    for (var i = 0; i < 4; i++) {
+      final y = h * (.18 + i.toDouble() * .20);
+      final line = Paint()
+        ..color = const Color(0x8864FFDA)
+        ..strokeWidth = 1.2;
+      final shift = math.sin(_turboDashPhase * .65 + i.toDouble()) * 5;
+      canvas.drawLine(Offset(w * .05 + shift, y), Offset(w * .95 + shift, y), line);
+    }
   }
 
   // ── Aerodynamic Stall / Spin Overlay ──────────────────────────────────────
@@ -2032,6 +2110,10 @@ class PlaneComponent extends PositionComponent
     _decoyCloneActive = session.activePowerUps.contains(PowerUpType.decoyClone) || game.decoyCloneCharges > 0;
     _blackHoleActive = session.activePowerUps.contains(PowerUpType.blackHole);
     _turboDashActive = session.activePowerUps.contains(PowerUpType.turboDash);
+    final combos = session.activePowerUpCombos;
+    _phaseShieldActive = combos.contains(PowerUpCombo.phaseShield);
+    _goldVortexActive = combos.contains(PowerUpCombo.goldVortex);
+    _timeDashActive = combos.contains(PowerUpCombo.timeDash);
 
     // Update distinct pulse channels
     _shieldPhase += dt * (1.2 * 2 * math.pi);
@@ -2670,6 +2752,9 @@ class PlaneComponent extends PositionComponent
     _decoyCloneActive = false;
     _blackHoleActive = false;
     _turboDashActive = false;
+    _phaseShieldActive = false;
+    _goldVortexActive = false;
+    _timeDashActive = false;
     _shieldHitRippleTimer = 0.0;
     _crosswindForce = 0.0;
     _wingFlexStrength = 0.0;
@@ -2736,6 +2821,28 @@ class PlaneComponent extends PositionComponent
       ScaleEffect.by(
         Vector2.all(1.25),
         EffectController(duration: 0.08, reverseDuration: 0.08),
+      ),
+    );
+  }
+
+  void playPhaseShieldHitAnimation() {
+    onGameEvent(SkinGameEvent.shieldHit);
+    _shieldHitRippleTimer = 1.0;
+    children.whereType<ScaleEffect>().toList().forEach(remove);
+    add(
+      ScaleEffect.by(
+        Vector2.all(1.30),
+        EffectController(duration: 0.07, reverseDuration: 0.10),
+      ),
+    );
+  }
+
+  void playTimeDashPhaseAnimation() {
+    children.whereType<ScaleEffect>().toList().forEach(remove);
+    add(
+      ScaleEffect.by(
+        Vector2(1.34, .94),
+        EffectController(duration: 0.06, reverseDuration: 0.10),
       ),
     );
   }

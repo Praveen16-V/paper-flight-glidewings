@@ -195,6 +195,7 @@ Key knobs to adjust during playtesting:
 - `PaperSkin.seasonalAvailability` — limited-shop rotation windows and countdowns
 - `CustomSkinManager.maxPatternBytes` — workshop image-import size guard
 - `PaperSkin.rarity` — common → mythic Hangar/list treatment
+- `goldVortexCoinValueMultiplier` / `timeDashWorldSpeedMultiplier` — stacked power-up combo strength
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts

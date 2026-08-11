@@ -391,7 +391,10 @@ class PaperFlightGame extends FlameGame
     // Apply slow-mo speed override (drives this frame's motion and the
     // distance it travels).
     double effectiveSpeed = _scrollSpeed;
-    if (session.activePowerUps.contains(PowerUpType.slowMo)) {
+    final activeCombos = session.activePowerUpCombos;
+    if (activeCombos.contains(PowerUpCombo.timeDash)) {
+      effectiveSpeed *= GameConfig.timeDashWorldSpeedMultiplier;
+    } else if (session.activePowerUps.contains(PowerUpType.slowMo)) {
       effectiveSpeed *= GameConfig.slowMoPowerUpMultiplier;
     }
 
@@ -749,6 +752,23 @@ class PaperFlightGame extends FlameGame
           _finalizeTrial(completed: false, timedOut: false);
         },
       );
+      return;
+    }
+
+    final activeCombos = session.activePowerUpCombos;
+
+    // Phase Shield makes the dual protection explicit: obstacle contact phases
+    // through while the shield remains charged for a later non-ghost impact.
+    if (activeCombos.contains(PowerUpCombo.phaseShield)) {
+      plane.playPhaseShieldHitAnimation();
+      return;
+    }
+
+    // Time Dash inherits Turbo's invulnerability while Slow-Mo owns the world
+    // speed; keep the dedicated branch before base ghost/turbo handling so the
+    // combined effect can surface its special impact feedback.
+    if (activeCombos.contains(PowerUpCombo.timeDash)) {
+      plane.playTimeDashPhaseAnimation();
       return;
     }
 

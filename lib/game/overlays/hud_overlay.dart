@@ -129,6 +129,7 @@ class HudOverlay extends ConsumerWidget {
             left: 16,
             child: _PowerUpBar(
               activePowerUps: session.activePowerUps,
+              activeCombos: session.activePowerUpCombos,
               remaining: session.powerUpRemaining,
             ),
           ),
@@ -530,8 +531,13 @@ class _ComboDisplay extends StatelessWidget {
 }
 
 class _PowerUpBar extends StatelessWidget {
-  const _PowerUpBar({required this.activePowerUps, required this.remaining});
+  const _PowerUpBar({
+    required this.activePowerUps,
+    required this.activeCombos,
+    required this.remaining,
+  });
   final Set<PowerUpType> activePowerUps;
+  final Set<PowerUpCombo> activeCombos;
   final Map<PowerUpType, double> remaining;
 
   @override
@@ -541,12 +547,50 @@ class _PowerUpBar extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
-      children: activePowerUps.map((type) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: _PowerUpIcon(type: type, remaining: remaining[type]),
-        );
-      }).toList(),
+      children: [
+        for (final combo in activeCombos)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _PowerUpComboPill(combo: combo),
+          ),
+        ...activePowerUps.map((type) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _PowerUpIcon(type: type, remaining: remaining[type]),
+          );
+        }),
+      ],
+    );
+  }
+}
+
+class _PowerUpComboPill extends StatelessWidget {
+  const _PowerUpComboPill({required this.combo});
+  final PowerUpCombo combo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: combo.color.withOpacity(.86),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withOpacity(.72)),
+        boxShadow: [
+          BoxShadow(
+            color: combo.color.withOpacity(.45),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: Text(
+        combo.displayName.toUpperCase(),
+        style: AppTypography.overline.copyWith(
+          color: Colors.white,
+          fontSize: 8,
+          letterSpacing: .7,
+        ),
+      ),
     );
   }
 }

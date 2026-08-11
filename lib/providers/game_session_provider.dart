@@ -75,6 +75,12 @@ class GameSessionState {
   final double comboGauge;
   final Biome currentBiome;
   final Set<PowerUpType> activePowerUps;
+
+  /// Derived stacked effects for HUD and gameplay systems. Keeping it derived
+  /// prevents stale combo state when any underlying timer expires.
+  Set<PowerUpCombo> get activePowerUpCombos =>
+      powerUpCombosFor(activePowerUps);
+
   final bool shieldActive;
   final Map<PowerUpType, double> powerUpRemaining;
   final RunResult? lastRunResult;

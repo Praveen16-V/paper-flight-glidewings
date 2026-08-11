@@ -311,6 +311,50 @@ extension PowerUpLabel on PowerUpType {
   }
 }
 
+/// Named synergy states created by stacking compatible active power-ups.
+enum PowerUpCombo { phaseShield, goldVortex, timeDash }
+
+extension PowerUpComboInfo on PowerUpCombo {
+  String get displayName {
+    switch (this) {
+      case PowerUpCombo.phaseShield:
+        return 'Phase Shield';
+      case PowerUpCombo.goldVortex:
+        return 'Gold Vortex';
+      case PowerUpCombo.timeDash:
+        return 'Time Dash';
+    }
+  }
+
+  Set<PowerUpType> get ingredients {
+    switch (this) {
+      case PowerUpCombo.phaseShield:
+        return const {PowerUpType.shield, PowerUpType.ghost};
+      case PowerUpCombo.goldVortex:
+        return const {PowerUpType.magnet, PowerUpType.coinRush};
+      case PowerUpCombo.timeDash:
+        return const {PowerUpType.slowMo, PowerUpType.turboDash};
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case PowerUpCombo.phaseShield:
+        return const Color(0xFF80DEEA);
+      case PowerUpCombo.goldVortex:
+        return const Color(0xFFFFD740);
+      case PowerUpCombo.timeDash:
+        return const Color(0xFFB388FF);
+    }
+  }
+}
+
+Set<PowerUpCombo> powerUpCombosFor(Set<PowerUpType> activePowerUps) {
+  return PowerUpCombo.values
+      .where((combo) => activePowerUps.containsAll(combo.ingredients))
+      .toSet();
+}
+
 // ── Plane Types ───────────────────────────────────────────────────────────────
 
 enum PlaneType {

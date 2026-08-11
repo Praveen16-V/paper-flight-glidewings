@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-skins-7';
+  static const String balanceVersion = '2026.08-powerups-1';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -502,6 +502,14 @@ abstract class GameConfig {
 
   /// Coin score multiplier while Coin Rush is active.
   static const double coinRushValueMultiplier = 2.0;
+
+  // ── Stacked Power-Up Combos ───────────────────────────────────────────────
+  /// Magnet + Coin Rush upgrades coin value to a Gold Vortex multiplier.
+  static const double goldVortexCoinValueMultiplier = 3.0;
+
+  /// Slow-Mo + Turbo Dash creates Time Dash: invincible Turbo flight while the
+  /// world runs even slower than ordinary Slow-Mo.
+  static const double timeDashWorldSpeedMultiplier = 0.35;
 
   /// How often Coin Rush rains down a coin shower (seconds).
   static const double coinRushShowerInterval = 0.8;
