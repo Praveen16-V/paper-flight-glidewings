@@ -12,6 +12,7 @@ import '../../../core/enums/game_enums.dart';
 import '../../../core/utils/math_utils.dart';
 import '../../../providers/game_session_provider.dart';
 import '../../paper_flight_game.dart';
+import '../effects/coin_feedback.dart';
 import '../plane_component.dart';
 import 'obstacle_script.dart';
 
@@ -109,13 +110,27 @@ abstract class ObstacleComponent extends PositionComponent
   /// Shield Lv2 can reflect projectile-class hazards. Recycling through the
   /// original callback preserves object-pool ownership and avoids a duplicate
   /// collision on the next frame.
-  void deflectByShield() {
+  void deflectByShield() => recycleAfterInteraction();
+
+  /// Resolves a player-driven obstacle interaction (a shield reflection, a
+  /// severed tether, or a future gadget response) through the same pool-safe
+  /// recycle path. Subclasses should award their feedback before calling this.
+  void recycleAfterInteraction() {
     if (!_active) return;
     _active = false;
     onRecycle?.call(this);
   }
 
   void onActivate(double scrollSpeed) {}
+
+  /// Returns a squared distance when this obstacle is inside a live paper-snap
+  /// interaction envelope, otherwise `null`. Keeping target selection on the
+  /// obstacle lets every future interactive family define its own fair shape.
+  double? snapInteractionDistanceSquaredTo(Vector2 planePosition) => null;
+
+  /// Handles the selected paper-snap interaction. A `true` result consumes the
+  /// current snap pulse, so only one nearby target can resolve per burst.
+  bool resolveSnapInteraction(Vector2 planePosition) => false;
 
   void _playThreatCue() {
     final cue = switch (type) {
@@ -1463,7 +1478,7 @@ class StormCloudObstacle extends ObstacleComponent {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 9. KiteObstacle — Exact Polygon Diamond Hitbox, Flowing Tail
+// 9. KiteObstacle — Snap-Interactive Tether, Diamond Hitbox & Flowing Tail
 // ─────────────────────────────────────────────────────────────────────────────
 
 class KiteObstacle extends ObstacleComponent {
@@ -1472,6 +1487,20 @@ class KiteObstacle extends ObstacleComponent {
   double _flutterPhase = 0;
   double _spawnX = 0;
   double _driftAmp = 50;
+  double _snapHintStrength = 0;
+
+  final TextPainter _snapPrompt = TextPainter(
+    text: const TextSpan(
+      text: 'SNAP',
+      style: TextStyle(
+        color: Color(0xFFB2EBF2),
+        fontSize: 8,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 1.1,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
 
   @override
   Color get telegraphColor => const Color(0xFFFF4081);
@@ -1482,9 +1511,10 @@ class KiteObstacle extends ObstacleComponent {
     _spawnX = position.x;
     _driftAmp = script?.driftAmp ?? rngRange(35, 65);
     _flutterPhase = rngRange(0, math.pi * 2);
+    _snapHintStrength = 0;
 
     removeAll(children.whereType<ShapeHitbox>().toList());
-    // Refined exact 4-point diamond PolygonHitbox
+    // Refined exact 4-point diamond PolygonHitbox.
     add(PolygonHitbox([
       Vector2(size.x * 0.5, 2),
       Vector2(size.x * 0.5 + 14, 20),
@@ -1496,10 +1526,80 @@ class KiteObstacle extends ObstacleComponent {
   @override
   void updateObstacle(double dt) {
     _flutterPhase += dt * 3.5;
-    position.x = (_spawnX + math.sin(_flutterPhase) * _driftAmp * dynamicMovementFactor).clamp(
-      GameConfig.horizontalEdgeMargin + 20,
-      GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 20,
+    position.x = (_spawnX +
+            math.sin(_flutterPhase) * _driftAmp * dynamicMovementFactor)
+        .clamp(
+          GameConfig.horizontalEdgeMargin + 20,
+          GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 20,
+        )
+        .toDouble();
+    _updateSnapHint(dt);
+  }
+
+  void _updateSnapHint(double dt) {
+    // Precision Trials stay authored and do not surface optional shortcuts.
+    final target = game.mode != GameMode.trial &&
+            _isWithinSnapHintEnvelope(game.plane.position)
+        ? 1.0
+        : 0.0;
+    final blend = (GameConfig.kiteTetherHintFadeRate * dt)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    _snapHintStrength = MathUtils.lerp(_snapHintStrength, target, blend);
+  }
+
+  bool _isWithinSnapHintEnvelope(Vector2 planePosition) {
+    final dx = position.x - planePosition.x;
+    final dy = position.y + 20.0 - planePosition.y;
+    return dx.abs() <= GameConfig.kiteTetherHintHorizontalReach &&
+        dy >= -GameConfig.kiteTetherHintReachAhead &&
+        dy <= GameConfig.kiteTetherHintReachBehind;
+  }
+
+  @override
+  double? snapInteractionDistanceSquaredTo(Vector2 planePosition) {
+    if (!isActive || !type.isSnapInteractive) return null;
+    final dx = position.x - planePosition.x;
+    final dy = position.y + 20.0 - planePosition.y;
+    if (dx.abs() > GameConfig.kiteTetherSnapHorizontalReach ||
+        dy < -GameConfig.kiteTetherSnapReachAhead ||
+        dy > GameConfig.kiteTetherSnapReachBehind) {
+      return null;
+    }
+    return dx * dx + dy * dy;
+  }
+
+  @override
+  bool resolveSnapInteraction(Vector2 planePosition) {
+    if (snapInteractionDistanceSquaredTo(planePosition) == null) return false;
+
+    final releasePosition = Vector2(position.x, position.y + 20.0);
+    game.scoringSystem
+        .awardComboNotches(GameConfig.kiteTetherSnapComboNotches);
+    game.inputManager.restoreSnapCharge(GameConfig.kiteTetherSnapChargeRefund);
+    game.collectibleSpawner.spawnCoinLine(
+      x: releasePosition.x,
+      startY: releasePosition.y,
+      count: GameConfig.kiteTetherSnapRewardCoinCount,
+      spacing: GameConfig.kiteTetherSnapRewardCoinSpacing,
     );
+    game.world.add(
+      ColoredBurst(
+        position: releasePosition.clone(),
+        color: const Color(0xFF80DEEA),
+      ),
+    );
+    game.world.add(
+      FloatingScoreText(
+        position: releasePosition.clone(),
+        text: 'TETHER CUT! +2 COMBO',
+        color: const Color(0xFF80DEEA),
+        fontSize: 15,
+      ),
+    );
+    game.gameFeelSystem.onCoinCollected(game.scoringSystem.comboCount);
+    recycleAfterInteraction();
+    return true;
   }
 
   @override
@@ -1508,21 +1608,86 @@ class KiteObstacle extends ObstacleComponent {
     const kiteY = 20.0;
     final tilt = math.sin(_flutterPhase) * 0.25;
 
+    _drawTetherTail(canvas, cx, kiteY);
+
     canvas.save();
     canvas.translate(cx, kiteY);
     canvas.rotate(tilt);
 
-    final topF = Path()..moveTo(0, -18)..lineTo(-14, 0)..lineTo(0, 0)..close();
+    final topF = Path()
+      ..moveTo(0, -18)
+      ..lineTo(-14, 0)
+      ..lineTo(0, 0)
+      ..close();
     canvas.drawPath(topF, Paint()..color = const Color(0xFFFF5252));
-    final rightF = Path()..moveTo(0, -18)..lineTo(14, 0)..lineTo(0, 0)..close();
+    final rightF = Path()
+      ..moveTo(0, -18)
+      ..lineTo(14, 0)
+      ..lineTo(0, 0)
+      ..close();
     canvas.drawPath(rightF, Paint()..color = const Color(0xFF00E5FF));
-    final botLeftF = Path()..moveTo(-14, 0)..lineTo(0, 18)..lineTo(0, 0)..close();
+    final botLeftF = Path()
+      ..moveTo(-14, 0)
+      ..lineTo(0, 18)
+      ..lineTo(0, 0)
+      ..close();
     canvas.drawPath(botLeftF, Paint()..color = const Color(0xFFFFEB3B));
-    final botRightF = Path()..moveTo(14, 0)..lineTo(0, 18)..lineTo(0, 0)..close();
+    final botRightF = Path()
+      ..moveTo(14, 0)
+      ..lineTo(0, 18)
+      ..lineTo(0, 0)
+      ..close();
     canvas.drawPath(botRightF, Paint()..color = const Color(0xFF7C4DFF));
 
     canvas.restore();
+    _drawSnapHint(canvas, cx, kiteY);
     renderTelegraph(canvas);
+  }
+
+  void _drawTetherTail(Canvas canvas, double cx, double kiteY) {
+    final tailPaint = Paint()
+      ..color = const Color(0xFF5D4037).withOpacity(.74)
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+    var previous = Offset(cx, kiteY + 18);
+    for (var i = 0; i < 4; i++) {
+      final y = kiteY + 34 + i * 16.0;
+      final x = cx + math.sin(_flutterPhase + i * .9) * (5 + i * 2.0);
+      final current = Offset(x, y);
+      canvas.drawLine(previous, current, tailPaint);
+      canvas.drawCircle(
+        current,
+        2.2,
+        Paint()..color = i.isEven ? const Color(0xFFFFD740) : const Color(0xFF80DEEA),
+      );
+      previous = current;
+    }
+  }
+
+  void _drawSnapHint(Canvas canvas, double cx, double kiteY) {
+    final strength = _snapHintStrength;
+    if (strength <= .02) return;
+    final pulse = .75 + math.sin(_flutterPhase * 2.0) * .25;
+    final ring = Paint()
+      ..color = const Color(0xFF80DEEA).withOpacity(strength * .72)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4
+      ..strokeCap = StrokeCap.round;
+    final cut = Paint()
+      ..color = const Color(0xFFE0F7FA).withOpacity(strength)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawCircle(Offset(cx, kiteY), 24 + pulse * 3, ring);
+    canvas.drawLine(Offset(cx - 8, kiteY - 7), Offset(cx + 8, kiteY + 7), cut);
+    canvas.drawLine(Offset(cx - 8, kiteY + 7), Offset(cx + 8, kiteY - 7), cut);
+    if (strength > .42) {
+      _snapPrompt.paint(
+        canvas,
+        Offset(cx - _snapPrompt.width * .5, kiteY - 37),
+      );
+    }
   }
 }
 

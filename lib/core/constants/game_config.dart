@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-obstacles-4';
+  static const String balanceVersion = '2026.08-obstacles-5';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -432,6 +432,29 @@ abstract class GameConfig {
   /// so the player has time to read the full S-shaped route.
   static const double paperDragonTelegraphLeadDistance = 440.0;
   static const double paperDragonScrollSpeedMultiplier = 0.72;
+
+  // ── Interactive Obstacles ────────────────────────────────────────────────
+  /// A paper-snap is also a short, precise interaction pulse. It lets pilots
+  /// sever a kite tether while the target is ahead of the plane, rather than
+  /// turning every boost into a wide, unconditional obstacle clear.
+  static const double snapInteractionDuration = 0.42;
+  static const double kiteTetherSnapReachAhead = 155.0;
+  static const double kiteTetherSnapReachBehind = 42.0;
+  static const double kiteTetherSnapHorizontalReach = 72.0;
+
+  /// The cyan knot starts advertising itself before the exact interaction
+  /// window, giving a pilot time to line up a deliberate paper-snap.
+  static const double kiteTetherHintReachAhead = 215.0;
+  static const double kiteTetherHintReachBehind = 70.0;
+  static const double kiteTetherHintHorizontalReach = 106.0;
+  static const double kiteTetherHintFadeRate = 7.0;
+
+  /// A successful sever returns the spent snap, banks a small combo extension,
+  /// and drops a compact line of coins at the released kite position.
+  static const int kiteTetherSnapChargeRefund = 1;
+  static const double kiteTetherSnapComboNotches = 2.0;
+  static const int kiteTetherSnapRewardCoinCount = 3;
+  static const double kiteTetherSnapRewardCoinSpacing = 26.0;
 
   /// Upper-third Y threshold (fraction) for hazard density bias.
   static const double upperHazardBiasThreshold = 0.33;

@@ -278,6 +278,10 @@ extension ObstacleLabel on ObstacleType {
   /// Boss passes reserve the sky so their telegraph and route remain readable.
   bool get isBoss => this == ObstacleType.paperDragon;
 
+  /// Obstacles that answer the paper-snap interaction pulse instead of only
+  /// being dodged. More interaction families can join this taxonomy later.
+  bool get isSnapInteractive => this == ObstacleType.kite;
+
   /// Dynamic hazards vulnerable to Cursed Magnet's dangerous pull.
   bool get isCursedMagnetAttractable =>
       this == ObstacleType.bird ||

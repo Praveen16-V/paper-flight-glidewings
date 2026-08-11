@@ -104,6 +104,28 @@ class ObstacleSpawner extends Component {
     _active.clear();
   }
 
+  /// Resolves one target for the plane's current paper-snap pulse. The closest
+  /// eligible target wins, preserving deliberate aim when two kites briefly
+  /// overlap the envelope. Precision Trials remain authored obstacle courses,
+  /// so their scripted kites deliberately do not become optional shortcuts.
+  bool resolveSnapInteraction(Vector2 planePosition) {
+    if (game.mode == GameMode.trial) return false;
+
+    ObstacleComponent? target;
+    var bestDistanceSquared = double.infinity;
+    for (final obstacle in _active) {
+      if (!obstacle.type.isSnapInteractive) continue;
+      final distanceSquared =
+          obstacle.snapInteractionDistanceSquaredTo(planePosition);
+      if (distanceSquared == null || distanceSquared >= bestDistanceSquared) {
+        continue;
+      }
+      target = obstacle;
+      bestDistanceSquared = distanceSquared;
+    }
+    return target?.resolveSnapInteraction(planePosition) ?? false;
+  }
+
   // ── Internals ─────────────────────────────────────────────────────────────
 
   double _currentSpawnInterval() {

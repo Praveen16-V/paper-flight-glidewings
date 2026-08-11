@@ -214,6 +214,17 @@ class PlaneComponent extends PositionComponent
   double _ghostFlickerPhase = 0.0;
   double _snapFlashTimer = 0.0;
 
+  /// A snap burst briefly exposes a precise interaction envelope ahead of the
+  /// plane. The spawner resolves at most one target and marks it consumed.
+  double _snapInteractionTimer = 0.0;
+  bool _snapInteractionResolved = false;
+  bool get snapInteractionActive =>
+      _snapInteractionTimer > 0 && !_snapInteractionResolved;
+
+  void markSnapInteractionResolved() {
+    _snapInteractionResolved = true;
+  }
+
   // ── Children ───────────────────────────────────────────────────────────────
 
   late final PlaneTrailComponent _trail;
@@ -2282,6 +2293,11 @@ class PlaneComponent extends PositionComponent
     if (_snapFlashTimer > 0) {
       _snapFlashTimer = (_snapFlashTimer - dt).clamp(0.0, 10.0);
     }
+    if (_snapInteractionTimer > 0) {
+      _snapInteractionTimer = (_snapInteractionTimer - dt)
+          .clamp(0.0, GameConfig.snapInteractionDuration)
+          .toDouble();
+    }
     if (_ceilingStallTimer > 0) {
       _ceilingStallTimer = (_ceilingStallTimer - dt).clamp(0.0, 10.0);
     }
@@ -2387,6 +2403,8 @@ class PlaneComponent extends PositionComponent
       _velocityY = GameConfig.snapBurstVelocity * snapMult;
       _glideArcActive = false;
       _stallSnapGraceTimer = GameConfig.stallSnapGraceSeconds;
+      _snapInteractionTimer = GameConfig.snapInteractionDuration;
+      _snapInteractionResolved = false;
       _triggerSnapFlash();
       _playSnapBurstEffect();
     }
@@ -2885,6 +2903,8 @@ class PlaneComponent extends PositionComponent
     _spinDirection = 1.0;
     _spinRecovery = 0.0;
     _snapFlashTimer = 0.0;
+    _snapInteractionTimer = 0.0;
+    _snapInteractionResolved = false;
     _inThermal = false;
     _surfingThermalColumn?.resetPilotOrbit(clearBonus: true);
     _surfingThermalColumn = null;
@@ -2942,6 +2962,8 @@ class PlaneComponent extends PositionComponent
     _spinDirection = 1.0;
     _spinRecovery = 0.0;
     _snapFlashTimer = 0.0;
+    _snapInteractionTimer = 0.0;
+    _snapInteractionResolved = false;
     _crumpleAmount = 0.0;
     _inThermal = false;
     _surfingThermalColumn?.resetPilotOrbit(clearBonus: true);

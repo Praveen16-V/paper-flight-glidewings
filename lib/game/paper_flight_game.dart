@@ -461,6 +461,16 @@ class PaperFlightGame extends FlameGame
 
     super.update(dt);
 
+    // A paper-snap can do more than climb: while its short interaction pulse
+    // is alive, the obstacle spawner selects one nearby tether and resolves
+    // it. This happens after the world update so target geometry is current
+    // regardless of whether Flame updated the plane or obstacles first.
+    if (_phase == GamePhase.playing &&
+        plane.snapInteractionActive &&
+        obstacleSpawner.resolveSnapInteraction(plane.position)) {
+      plane.markSnapInteractionResolved();
+    }
+
     // Coin Rush: keep raining coin showers down for the power-up's duration.
     if (session.activePowerUps.contains(PowerUpType.coinRush)) {
       _coinRushShowerTimer += scaledDt;
