@@ -1,10 +1,49 @@
+import 'dart:math' as math;
+
+import '../enums/game_enums.dart';
+
+/// Extra visual trail supplied by a specific plane + paper-skin pairing.
+enum SkinTrailEffect { none, petals }
+
+/// Data-driven bonus returned by [GameConfig.synergyBonus]. All neutral values
+/// are deliberately safe defaults, so adding a skin never changes an airframe
+/// unless an explicit pairing is configured.
+class SkinSynergyBonus {
+  const SkinSynergyBonus({
+    this.label = '',
+    this.hitboxScaleMultiplier = 1.0,
+    this.thermalLiftMultiplier = 1.0,
+    this.trailEffect = SkinTrailEffect.none,
+  });
+
+  static const SkinSynergyBonus none = SkinSynergyBonus();
+
+  final String label;
+  final double hitboxScaleMultiplier;
+  final double thermalLiftMultiplier;
+  final SkinTrailEffect trailEffect;
+
+  bool get isActive =>
+      hitboxScaleMultiplier != 1.0 ||
+      thermalLiftMultiplier != 1.0 ||
+      trailEffect != SkinTrailEffect.none;
+}
+
 /// Central tuning knobs for all gameplay systems.
 /// Adjust here — never hard-code magic numbers in components.
 abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-baseline-1';
+  static const String balanceVersion = '2026.08-obstacles-13';
+
+  /// Maximum retained trace entries for replay/soak validation. The full
+  /// fingerprint still covers every layout event after this ring buffer wraps.
+  static const int replayTraceMaxEntries = 192;
+
+  /// Versioned deterministic stream algorithm used for daily/replay layouts.
+  /// Increment only when an intentional generator migration breaks old seeds.
+  static const int runRandomAlgorithmVersion = 1;
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -25,15 +64,36 @@ abstract class GameConfig {
   /// past the plane as distance accumulates (see [scrollSpeedPerMeter]).
   static const double baseScrollSpeed = 80.0;
 
-  /// Maximum scroll speed cap — prevents unplayable frame windows.
+  /// Neutral-airframe scroll-speed cap. Long-haul airframes may scale this via
+  /// their own cap multiplier while still using it as the balance base.
   static const double maxScrollSpeed = 480.0;
 
   /// Scroll speed gained (px/s) per meter the player has traveled.
   ///
   /// Speed is a pure function of distance reached, not of elapsed time — so the
   /// world only speeds up as you fly further, ramping in gradually and smoothly.
-  /// (base + 0.16 × meters, clamped to maxScrollSpeed ≈ 2500 m.)
+  /// (baseline: base + 0.16 × meters, capped around 2500 m; individual
+  /// airframes adjust the ramp/cap through their speed-curve data.)
   static const double scrollSpeedPerMeter = 0.16;
+
+  /// Evaluates a distance-based world-speed curve for a specific airframe.
+  /// [curveMultiplier] changes how quickly the world accelerates; [capMultiplier]
+  /// permits slow-ramping long-haul folds to eventually exceed the neutral cap.
+  /// Keeping this pure makes balance comparisons deterministic and testable.
+  static double curvedScrollSpeedForDistance({
+    required double meters,
+    required double baseSpeed,
+    required double speedPerMeter,
+    required double maxSpeed,
+    required double curveMultiplier,
+    required double capMultiplier,
+  }) {
+    final safeMeters = meters < 0 ? 0.0 : meters;
+    final multipliedCap = maxSpeed * capMultiplier;
+    final cap = multipliedCap < baseSpeed ? baseSpeed : multipliedCap;
+    final speed = baseSpeed + speedPerMeter * curveMultiplier * safeMeters;
+    return speed.clamp(baseSpeed, cap).toDouble();
+  }
 
   /// Distance (meters) at which dynamic obstacles (birds, kites, balloons,
   /// drones) begin to gain any lateral movement. Below this they scroll
@@ -69,10 +129,35 @@ abstract class GameConfig {
   /// This is deliberately small: sensor samples ease into the steering target.
   static const double tiltLowPassAlpha = 0.10;
 
-  /// Per-frame blend used when the plane follows its filtered tilt target.
-  /// Kept small (below the input filter) so lateral direction changes ease in
-  /// gradually and the bank never snaps from side to side.
-  static const double tiltVelocityResponse = 0.05;
+  // ── Dynamic Wing Loading / Turn Momentum ─────────────────────────────────
+  /// Neutral (wing-loading 1.0) lateral response in inverse seconds. The
+  /// response is converted to a frame-rate-independent exponential blend by
+  /// [InputManager]. Lower wing loading responds much faster; high loading
+  /// retains a deliberate, weighty turn arc.
+  static const double turnMomentumResponsePerSecond = 7.5;
+
+  /// Exponent applied to a plane's relative wing loading. A little more than
+  /// linear scaling makes the Bomber and Rocket visibly carry momentum without
+  /// making the neutral Paper Dart feel sluggish.
+  static const double wingLoadingResponseExponent = 1.35;
+
+  /// Releasing lateral input should let an airframe coast rather than snapping
+  /// straight. This multiplier is applied to response while no steering input
+  /// is present; high-wing-loading planes therefore drift longest.
+  static const double turnMomentumCoastResponseMultiplier = 0.48;
+
+  /// Counter-steering is intentionally slower than continuing a bank. It gives
+  /// heavier planes a readable turn commitment while light folds can recover
+  /// almost immediately.
+  static const double turnMomentumReversalResponseMultiplier = 0.68;
+
+  /// Input magnitude below which a plane is considered to be coasting.
+  static const double turnMomentumInputDeadZone = 0.04;
+
+  /// Safety cap for the composed steering + wind velocity. This is well above
+  /// normal full-input movement, while preventing a pathological wind stack
+  /// from throwing a plane through the world edge in one frame.
+  static const double maxTurnMomentumSpeed = 380.0;
 
   /// Default tilt sensitivity (1.0 = neutral, range 0.3–2.0 via settings).
   static const double defaultTiltSensitivity = 1.0;
@@ -134,6 +219,67 @@ abstract class GameConfig {
   /// the plane is still moving upward — gives that "float" moment.
   static const double glideNoseUpBias = 0.09;
 
+  // ── Stall / Spin Recovery ────────────────────────────────────────────────
+  /// Stalls only arm after the onboarding-speed opening, so a new run's first
+  /// lift or BOOST burst cannot surprise the player before they have space.
+  static const double stallArmDistanceMeters = 140.0;
+
+  /// Forward world speed below which an over-pitched fold can lose lift.
+  static const double stallLowAirspeedThreshold = 190.0;
+
+  /// Extreme effective angle of attack required to build a stall (radians).
+  static const double stallAngleOfAttackThreshold = 0.98;
+
+  /// Small additional pitch demand while the player is holding lift.
+  static const double stallHoldingPitchBias = 18.0;
+
+  /// Computes effective angle of attack from forward world speed and vertical
+  /// air motion. This deliberately does not use render bank angle: a hard bank
+  /// is safe, while an over-pitched, slow climb is the stall risk.
+  static double angleOfAttackFor({
+    required double forwardAirspeed,
+    required double verticalVelocity,
+    required bool holdingLift,
+  }) {
+    final forward = math.max(1.0, forwardAirspeed).toDouble();
+    final climb = math.max(0.0, -verticalVelocity).toDouble();
+    final commandBias = holdingLift ? stallHoldingPitchBias : 0.0;
+    return math.atan2(climb + commandBias, forward);
+  }
+
+  /// Time spent above the stall threshold before the spin begins.
+  static const double stallBuildUpDuration = 0.55;
+
+  /// How quickly the warning gauge drains once the pilot unloads the wing.
+  static const double stallRiskDecayPerSecond = 1.9;
+
+  /// A short grace window after a snap burst; sustained high-angle climbing
+  /// afterwards can still stall, but the ability never self-punishes on tap.
+  static const double stallSnapGraceSeconds = 0.36;
+
+  /// Spin dynamics and the deliberate counter-steer recovery input.
+  static const double spinAngularVelocity = 9.5;
+  static const double spinGravityMultiplier = 1.75;
+  static const double spinLateralAcceleration = 240.0;
+  static const double spinRecoveryInputThreshold = 0.42;
+  static const double spinRecoveryDuration = 0.58;
+  static const double spinRecoveryDecayPerSecond = 0.85;
+  static const double spinRecoveryVerticalKick = -42.0;
+
+  // ── Friendly Wingmen / Formation Flying ─────────────────────────────────
+  /// Zen and Daily Flights launch two non-colliding friendly paper planes.
+  static const int wingmanCount = 2;
+  static const double wingmanFollowResponsePerSecond = 2.4;
+  static const double wingmanFormationRadius = 102.0;
+  static const double wingmanFormationJoinSeconds = 0.85;
+  static const double wingmanFormationGraceSeconds = 0.32;
+
+  /// Formation rewards: periodic combo support plus a score bonus on every
+  /// collected coin while the squad is locked in formation.
+  static const double wingmanComboPulseInterval = 2.4;
+  static const double wingmanComboBonusNotches = 0.5;
+  static const double wingmanCoinScoreMultiplier = 1.25;
+
   // ── Wing Squish Effect ────────────────────────────────────────────────────
 
   /// Scale Y at peak squish when hold is pressed (< 1.0 = compressed).
@@ -166,8 +312,34 @@ abstract class GameConfig {
   /// Max lateral wind push force (px/s).
   static const double maxWindForce = 90.0;
 
-  /// Thermal (updraft) lift force (px/s) when plane is in thermal lane.
+  /// Thermal (updraft) lift force (px/s) when plane is in a thermal column.
   static const double thermalLiftForce = 160.0;
+
+  // ── Visible Thermal Columns / Thermal Surfing ────────────────────────────
+  /// A lane advertises favourable air, but the actual updraft is a visible,
+  /// local column the player can choose to enter and ride.
+  static const double thermalColumnMinRadius = 32.0;
+  static const double thermalColumnMaxRadius = 46.0;
+  static const double thermalColumnMinimumLift = 12.0;
+  static const int thermalColumnParticleCount = 22;
+  static const double thermalColumnFadeInRate = 5.5;
+  static const double thermalColumnFadeOutRate = 2.4;
+
+  /// Centre of the visual/surfing core, expressed as a screen-height fraction.
+  static const double thermalColumnCoreYFraction = 0.56;
+
+  /// Thermal surfing measures an orbit around the core rather than merely
+  /// rewarding time spent inside it. Completing a clockwise or counter-clockwise
+  /// loop earns a temporary stronger updraft.
+  static const double thermalSurfOrbitHorizontalRadiusMultiplier = 0.45;
+  static const double thermalSurfOrbitVerticalRadius = 92.0;
+  static const double thermalSurfMinOrbitRadius = 0.34;
+  static const double thermalSurfMaxOrbitRadius = 1.10;
+  static const double thermalSurfRequiredRadians = 6.283185307179586;
+  static const double thermalSurfProgressLiftBonus = 0.18;
+  static const double thermalSurfLiftMultiplier = 1.45;
+  static const double thermalSurfBonusDuration = 2.5;
+  static const double thermalSurfMinimumInfluence = 0.50;
 
   /// Noise time scale — controls how fast wind patterns evolve.
   static const double windNoiseTimeScale = 0.4;
@@ -177,6 +349,55 @@ abstract class GameConfig {
 
   /// Turbulence pocket control reduction (0–1, fraction of input ignored).
   static const double turbulenceControlReduction = 0.35;
+
+  // ── Crosswind Wing Flex ─────────────────────────────────────────────────
+  /// Baseline procedural paper flutter, even in calm air.
+  static const double wingFlexBaseNoiseAmplitude = 0.07;
+
+  /// Additional flutter amplitude at full crosswind strength. This is applied
+  /// to PlaneComponent's existing noise, so flex stays organic rather than
+  /// becoming a binary wind/no-wind animation.
+  static const double wingFlexCrosswindNoiseBoost = 0.14;
+
+  /// Lateral force (px/s) that reads as a fully bent wing on screen.
+  static const double wingFlexForceForFullStrength = 135.0;
+
+  /// How quickly visual flex follows changing gusts (per second).
+  static const double wingFlexResponseRate = 5.5;
+
+  /// Max wing-crease bend in local plane pixels at full crosswind.
+  static const double wingFlexMaxBendPixels = 6.0;
+
+  /// Converts signed lateral wind into a stable 0..1 flex amount.
+  static double wingFlexStrengthForForce(double lateralForce) =>
+      (lateralForce.abs() / wingFlexForceForFullStrength)
+          .clamp(0.0, 1.0)
+          .toDouble();
+
+  // ── Micro-biome Turbulence Pockets ───────────────────────────────────────
+  /// Natural pockets persist long enough to be read and corrected for, rather
+  /// than behaving like a single-frame random gust.
+  static const double turbulencePocketMinDuration = 5.0;
+  static const double turbulencePocketMaxDuration = 10.0;
+
+  /// Pockets are narrow, local weather cells expressed as a fraction of screen
+  /// width. A pilot can fly around one, but cannot simply ignore its gusts.
+  static const double turbulencePocketMinRadius = 0.09;
+  static const double turbulencePocketMaxRadius = 0.16;
+  static const int turbulencePocketMaxActive = 2;
+
+  /// Spawn pacing is driven by obstacle events. The cooldown prevents a dense
+  /// obstacle sequence from layering several cells into an unreadable wall.
+  static const double turbulencePocketSpawnCooldown = 3.25;
+  static const double turbulencePocketBaseSpawnChance = 0.28;
+  static const double turbulencePocketStormSpawnChance = 0.58;
+
+  /// Strength and direction-change rate for the cell's rapidly shifting wind.
+  /// The signed force cycles through opposing gusts at this many cycles/second.
+  static const double turbulencePocketMinIntensity = 0.62;
+  static const double turbulencePocketMaxIntensity = 0.94;
+  static const double turbulencePocketMinShiftHz = 1.6;
+  static const double turbulencePocketMaxShiftHz = 2.8;
 
   // ── Obstacles ────────────────────────────────────────────────────────────
   /// Minimum vertical gap between spawned obstacles (px).
@@ -193,6 +414,199 @@ abstract class GameConfig {
 
   /// Minimum spawn interval floor.
   static const double obstacleMinSpawnInterval = 0.55;
+
+  // ── Pool Lifecycle / Capacity Tuning ────────────────────────────────────
+  /// Idle component caps bound memory after spike-heavy encounters while each
+  /// pool still expands transiently when a run genuinely needs more live items.
+  static const int obstaclePoolMaxRetained = 6;
+  static const int largeObstaclePoolMaxRetained = 2;
+  static const int coinPoolMaxRetained = 48;
+  static const int tunnelRingPoolMaxRetained = 12;
+  static const int powerUpPoolMaxRetained = 4;
+
+  // ── Tunnel Ring Runs ────────────────────────────────────────────────────
+  /// Tunnel rings arrive as occasional single gates or short linked runs. A
+  /// full perfect run is a precision reward, not a random coin shower.
+  static const double tunnelRingSpawnInterval = 9.5;
+  static const double tunnelRingChainSpawnChance = 0.42;
+  static const int tunnelRingChainMinLength = 2;
+  static const int tunnelRingChainMaxLength = 3;
+  static const double tunnelRingChainVerticalSpacing = 118.0;
+  static const double tunnelRingChainHorizontalStep = 42.0;
+  static const double tunnelRingApertureWidthFraction = 0.55;
+  static const double tunnelRingApertureHeightFraction = 0.72;
+  static const double tunnelRingStandardPerfectHalfWidth = 26.0;
+  static const double tunnelRingPrecisionPerfectHalfWidth = 16.0;
+  static const double tunnelRingPrecisionScale = 0.80;
+  static const double tunnelRingDriftingScale = 0.92;
+  static const double tunnelRingDriftAmplitude = 42.0;
+  static const double tunnelRingDriftAngularSpeed = 1.8;
+  static const double tunnelRingClearComboNotches = 2.0;
+  static const double tunnelRingPerfectComboNotches = 5.0;
+  static const double tunnelRingPrecisionComboNotches = 7.0;
+  static const double tunnelRingChainCompletionComboNotches = 6.0;
+  static const int tunnelRingChainCompletionSnapRefund = 1;
+  static const int tunnelRingChainCompletionCoinCount = 5;
+
+  // ── Obstacle Synergies ──────────────────────────────────────────────────
+  /// Complementary hazards can enter a linked state when their planned routes
+  /// overlap. The link distances are deliberately generous enough for a
+  /// staggered combo, while remaining local enough to avoid cross-screen noise.
+  static const double obstacleSynergyMaxHorizontalSeparation = 150.0;
+  static const double obstacleSynergyMaxVerticalSeparation = 360.0;
+  static const double obstacleSynergyRotorSpeedMultiplier = 1.45;
+  static const double obstacleSynergyKiteDriftMultiplier = 1.35;
+  static const double obstacleSynergyTrafficSpeedMultiplier = 1.35;
+  static const double obstacleSynergyStormStrikeDuration = 0.48;
+
+  /// Rotor Run's bird already has a longer early-warning lead than the turbine;
+  /// it does not need the generic extra vertical stagger to share the wake.
+  static const double obstacleCombinationRotorRunFollowSpawnYOffset = 0.0;
+
+  // ── Destructible Obstacles ───────────────────────────────────────────────
+  /// Paper-snap reaches a destructible target just ahead of the plane. Final
+  /// breaks refund the tactical snap and pay a compact reward; partial damage
+  /// intentionally does not, so armoured targets remain a real commitment.
+  static const double destructibleSnapReachAhead = 165.0;
+  static const double destructibleSnapReachBehind = 46.0;
+  static const double destructibleSnapHorizontalReach = 78.0;
+  static const int destructibleSnapChargeRefund = 1;
+  static const double destructibleDestroyComboNotches = 3.0;
+  static const int destructibleDestroyCoinCount = 4;
+  static const double destructibleDestroyCoinSpacing = 24.0;
+
+  // ── Telegraphy 2.0 ───────────────────────────────────────────────────────
+  /// Off-screen warnings combine a filling arrival dial with a short intent
+  /// projection. These values cap the preview inside the upper screen so it
+  /// informs a route without obscuring live dodge space.
+  static const double telegraphCountdownRadius = 19.0;
+  static const double telegraphProjectionDepth = 92.0;
+  static const double telegraphProjectionStartOffset = 30.0;
+  static const int telegraphCountdownTickCount = 3;
+  static const int telegraphTrajectoryChevronCount = 3;
+  static const double telegraphGatePreviewHeight = 12.0;
+
+  // ── Dynamic Difficulty ───────────────────────────────────────────────────
+  /// Adaptive pacing begins gentle, then responds to confident combo building
+  /// and deliberate near-misses. A safety intervention temporarily gives the
+  /// player more room instead of escalating a run that is already under strain.
+  static const double dynamicDifficultyBaseIntensity = 0.14;
+  static const double dynamicDifficultyMinimumIntensity = 0.05;
+  static const double dynamicDifficultyMaximumIntensity = 0.90;
+  static const double dynamicDifficultyDistanceStartMeters = 350.0;
+  static const double dynamicDifficultyDistanceRangeMeters = 2800.0;
+  static const double dynamicDifficultyDistanceWeight = 0.18;
+  static const double dynamicDifficultyComboWeight = 0.30;
+  static const double dynamicDifficultyNearMissWeight = 0.28;
+  static const double dynamicDifficultySafetyReliefWeight = 0.38;
+  static const double dynamicDifficultyResponsePerSecond = 1.7;
+
+  /// Skill momentum is event driven, then naturally settles back toward the
+  /// current combo/distance baseline. Tiered passes deliberately have a larger
+  /// influence than a routine close shave.
+  static const double dynamicDifficultyCloseShaveMomentum = 0.10;
+  static const double dynamicDifficultyHairThinMomentum = 0.18;
+  static const double dynamicDifficultyDeathDefyingMomentum = 0.30;
+  static const double dynamicDifficultyMomentumDecayPerSecond = 0.075;
+  static const double dynamicDifficultySafetyReliefPerHit = 0.55;
+  static const double dynamicDifficultySafetyReliefDecayPerSecond = 0.13;
+
+  /// Adaptive intensity converts to bounded pacing modifiers. Higher skill
+  /// shortens obstacle gaps and makes curated pairs a little more likely, but
+  /// never removes the telegraph/reaction-time guarantees of the spawner.
+  static double dynamicDifficultySpawnIntervalMultiplier(double intensity) =>
+      (1.12 - 0.38 * intensity.clamp(0.0, 1.0)).clamp(0.74, 1.12).toDouble();
+
+  static double dynamicDifficultyCombinationChanceMultiplier(double intensity) =>
+      (0.76 + 0.62 * intensity.clamp(0.0, 1.0)).clamp(0.76, 1.38).toDouble();
+
+  /// Pure target evaluator shared by runtime code and balance tests.
+  static double dynamicDifficultyTarget({
+    required double distanceMeters,
+    required double comboGaugeFraction,
+    required double nearMissMomentum,
+    required double safetyRelief,
+  }) {
+    final distanceProgress = ((distanceMeters - dynamicDifficultyDistanceStartMeters) /
+            dynamicDifficultyDistanceRangeMeters)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final target = dynamicDifficultyBaseIntensity +
+        distanceProgress * dynamicDifficultyDistanceWeight +
+        comboGaugeFraction.clamp(0.0, 1.0) * dynamicDifficultyComboWeight +
+        nearMissMomentum.clamp(0.0, 1.0) * dynamicDifficultyNearMissWeight -
+        safetyRelief.clamp(0.0, 1.0) * dynamicDifficultySafetyReliefWeight;
+    return target
+        .clamp(
+          dynamicDifficultyMinimumIntensity,
+          dynamicDifficultyMaximumIntensity,
+        )
+        .toDouble();
+  }
+
+  // ── Curated Obstacle Combinations ─────────────────────────────────────────
+  /// Linked pairs begin after the opening lesson and always reserve the sky
+  /// until both members have cleared. This keeps a combination a readable
+  /// pattern rather than an accidental pile-up from independent timers.
+  static const double obstacleCombinationStartMeters = 450.0;
+  static const double obstacleCombinationSpawnChance = 0.24;
+  static const double obstacleCombinationCooldown = 6.5;
+
+  /// Both members sit on the spacious side of the planned corridor. The lead
+  /// is farther out; its partner trails from a slightly nearer, delayed lane.
+  static const double obstacleCombinationLeadLaneOffset = 118.0;
+  static const double obstacleCombinationFollowLaneOffset = 82.0;
+  static const double obstacleCombinationLaneEdgeMargin = 92.0;
+  static const double obstacleCombinationFollowSpawnYOffset = -132.0;
+
+  // ── Paper Dragon Boss ────────────────────────────────────────────────────
+  /// The dragon is a single, deliberately readable boss pass instead of a
+  /// dense obstacle stack. Its hitboxes trace these reusable paper segments.
+  static const int paperDragonSegmentCount = 11;
+  static const double paperDragonBodyHeight = 380.0;
+  static const double paperDragonHeadOffsetY = 48.0;
+  static const double paperDragonSegmentSpacing = 30.0;
+  static const double paperDragonSegmentRadius = 18.0;
+  static const double paperDragonHitboxRadius = 14.5;
+  static const double paperDragonTailScale = 0.72;
+
+  /// Horizontal wave tuning makes the body read as a serpentine route rather
+  /// than a solid wall. The head wanders independently by a smaller amount.
+  static const double paperDragonWaveAmplitude = 98.0;
+  static const double paperDragonWaveTailAmplitudeMultiplier = 0.78;
+  static const double paperDragonWaveAngularSpeed = 2.25;
+  static const double paperDragonWavePhaseStep = 0.72;
+  static const double paperDragonHeadWanderAmplitude = 26.0;
+  static const double paperDragonHeadWanderAngularSpeed = 1.05;
+
+  /// A long lead gives the boss its own crimson telegraph before any body
+  /// segment enters the viewport. It travels slightly slower than the world
+  /// so the player has time to read the full S-shaped route.
+  static const double paperDragonTelegraphLeadDistance = 440.0;
+  static const double paperDragonScrollSpeedMultiplier = 0.72;
+
+  // ── Interactive Obstacles ────────────────────────────────────────────────
+  /// A paper-snap is also a short, precise interaction pulse. It lets pilots
+  /// sever a kite tether while the target is ahead of the plane, rather than
+  /// turning every boost into a wide, unconditional obstacle clear.
+  static const double snapInteractionDuration = 0.42;
+  static const double kiteTetherSnapReachAhead = 155.0;
+  static const double kiteTetherSnapReachBehind = 42.0;
+  static const double kiteTetherSnapHorizontalReach = 72.0;
+
+  /// The cyan knot starts advertising itself before the exact interaction
+  /// window, giving a pilot time to line up a deliberate paper-snap.
+  static const double kiteTetherHintReachAhead = 215.0;
+  static const double kiteTetherHintReachBehind = 70.0;
+  static const double kiteTetherHintHorizontalReach = 106.0;
+  static const double kiteTetherHintFadeRate = 7.0;
+
+  /// A successful sever returns the spent snap, banks a small combo extension,
+  /// and drops a compact line of coins at the released kite position.
+  static const int kiteTetherSnapChargeRefund = 1;
+  static const double kiteTetherSnapComboNotches = 2.0;
+  static const int kiteTetherSnapRewardCoinCount = 3;
+  static const double kiteTetherSnapRewardCoinSpacing = 26.0;
 
   /// Upper-third Y threshold (fraction) for hazard density bias.
   static const double upperHazardBiasThreshold = 0.33;
@@ -283,6 +697,36 @@ abstract class GameConfig {
   static const double blackHoleDuration = 1.5; // seconds — cosmic vacuum
   static const double turboDashDuration = 2.0; // seconds — invincible thrust dash
 
+  // Timed pickups are banked, then tapped deliberately instead of starting
+  // their countdown at an inconvenient moment.
+  static const int chargePowerUpMaxCharges = 3;
+  static const double chargePowerUpBurstDuration = 3.0;
+
+  // Three matching banked charges craft into one Empowered burst.
+  static const int empoweredPowerUpMaxCharges = 2;
+  static const double empoweredPowerUpBurstDuration = 5.0;
+  static const double empoweredMagnetRadius = 300.0;
+  static const double empoweredMagnetPullSpeed = 500.0;
+  static const double empoweredSlowMoMultiplier = 0.25;
+  static const double empoweredCoinRushValueMultiplier = 3.0;
+  static const double empoweredGoldVortexCoinValueMultiplier = 4.0;
+  static const double empoweredShrinkHitboxScale = 0.27;
+  static const double empoweredShrinkVisualScale = 0.56;
+
+  // ── Active Power-Up Status Ring ───────────────────────────────────────────
+  static const double powerUpStatusRingRadius = 45.0;
+  static const double powerUpStatusRingStrokeWidth = 3.5;
+  static const double powerUpStatusRingGapRadians = 0.12;
+
+  // ── Corrupted Power-Ups ───────────────────────────────────────────────────
+  static const double corruptedPowerUpSpawnChance = 0.12;
+  static const double corruptedPowerUpDuration = 3.0;
+  static const double cursedMagnetRadius = 235.0;
+  static const double cursedMagnetCoinPullSpeed = 390.0;
+  static const double cursedMagnetObstaclePullSpeed = 150.0;
+  static const double unstableGhostTeleportInterval = 0.72;
+  static const double unstableGhostTeleportDistance = 78.0;
+
   /// Shrink micro-fold hitbox and visual scale factors.
   static const double shrinkHitboxScale = 0.35;
   static const double shrinkVisualScale = 0.68;
@@ -290,11 +734,27 @@ abstract class GameConfig {
   /// Coin score multiplier while Coin Rush is active.
   static const double coinRushValueMultiplier = 2.0;
 
+  // ── Stacked Power-Up Combos ───────────────────────────────────────────────
+  /// Magnet + Coin Rush upgrades coin value to a Gold Vortex multiplier.
+  static const double goldVortexCoinValueMultiplier = 3.0;
+
+  /// Slow-Mo + Turbo Dash creates Time Dash: invincible Turbo flight while the
+  /// world runs even slower than ordinary Slow-Mo.
+  static const double timeDashWorldSpeedMultiplier = 0.35;
+
   /// How often Coin Rush rains down a coin shower (seconds).
   static const double coinRushShowerInterval = 0.8;
 
   /// Coin magnet pull speed (px/s) while Magnet is active.
   static const double coinMagnetPullSpeed = 340.0;
+
+  // ── Power-Up Evolution ───────────────────────────────────────────────────
+  static const int powerUpEvolutionMaxLevel = 2;
+  static const int magnetEvolutionLevel2Cost = 1200;
+  static const int shieldEvolutionLevel2Cost = 1500;
+  static const double magnetLevel2Radius = 245.0;
+  static const double magnetLevel2PullSpeed = 430.0;
+  static const double magnetLevel2GemAutoCollectRadius = 210.0;
 
   // ── Monetization / Ad Timing ──────────────────────────────────────────────
   /// Minimum runs before first interstitial is ever shown.
@@ -309,7 +769,8 @@ abstract class GameConfig {
   static const double biomeStormEnd = 1500.0;
   static const double biomeMountainEnd = 2500.0;
   static const double biomeNightEnd = 4000.0;
-  // Edge of Atmosphere = beyond 4000 m, endgame loop
+  static const double biomeOceanEnd = 5200.0;
+  // Edge of Atmosphere = beyond 5200 m, endgame loop
 
   // ── Virtual Joystick Steering ────────────────────────────────────────────
   /// Radius (px) of the floating joystick base. The knob travels within this
@@ -438,6 +899,43 @@ abstract class GameConfig {
     'Watercolor Wash',
     'Gold Leaf',
   ];
+
+  /// Short visual response windows for gameplay-reactive paper finishes.
+  static const double goldLeafCoinSparkleDuration = 0.52;
+  static const double holographicNearMissShiftDuration = 0.72;
+  static const double dragonScaleShieldPulseDuration = 0.62;
+
+  // Progressive paper weathering: distance adds gentle patina while a final
+  // crash leaves a more visible memory in the currently equipped sheet.
+  static const double skinWearDistanceForVeteran = 60000.0;
+  static const double skinWearMaxDistanceIncrementPerRun = 0.08;
+  static const double skinWearCrashImpact = 0.10;
+
+  // ── Plane + Skin Synergies ────────────────────────────────────────────────
+  /// Returns the bonus for an exact plane/paper pairing. Keep this method the
+  /// single source of truth so gameplay, hitboxes, and visual trails cannot
+  /// drift out of balance from one another.
+  static SkinSynergyBonus synergyBonus(PlaneType plane, PaperSkin skin) {
+    if (plane == PlaneType.stealthJet && skin == PaperSkin.carbonFiber) {
+      return const SkinSynergyBonus(
+        label: 'Shadow Weave',
+        hitboxScaleMultiplier: .88,
+      );
+    }
+    if (plane == PlaneType.butterfly && skin == PaperSkin.cherryBlossom) {
+      return const SkinSynergyBonus(
+        label: 'Petal Drift',
+        trailEffect: SkinTrailEffect.petals,
+      );
+    }
+    if (plane == PlaneType.glider && skin == PaperSkin.graphPaper) {
+      return const SkinSynergyBonus(
+        label: 'Drafting Current',
+        thermalLiftMultiplier: 1.10,
+      );
+    }
+    return SkinSynergyBonus.none;
+  }
 
   // ── Challenges ─────────────────────────────────────────────────────────────
   /// Daily: 3 challenges refreshed at midnight.

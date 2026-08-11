@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flame/components.dart';
 import 'package:flutter/services.dart';
@@ -123,6 +124,89 @@ class InputManager extends Component {
   }
 
   int get snapCharges => _snapCharges;
+
+  /// The composed lateral airspeed after applying dynamic wing-loading
+  /// momentum. Exposed for diagnostics and the plane's bank animation; input
+  /// remains authoritative only for intent, not instantaneous velocity.
+  double get turnMomentumVelocity => _turnMomentumVelocity;
+
+  /// Applies a plane's turn authority to a desired lateral velocity.
+  ///
+  /// This is intentionally owned by the input layer so every control scheme
+  /// (tilt, touch zones, and joystick) shares the exact same airframe feel.
+  /// [desiredVelocity] may include local wind; a heavy plane therefore also
+  /// takes longer to be displaced by a sudden crosswind. The exponential
+  /// response makes the result stable at 30, 60, and 120 Hz.
+  double resolveTurnMomentum({
+    required PlaneType planeType,
+    required double desiredVelocity,
+    required bool hasSteeringInput,
+    required double dt,
+  }) {
+    if (dt <= 0 || !dt.isFinite) return _turnMomentumVelocity;
+
+    // Equipping a different fold mid-session should never inherit the old
+    // airframe's velocity response. The next call begins from a neutral bank.
+    if (_turnMomentumPlaneType != planeType) {
+      _turnMomentumPlaneType = planeType;
+      _turnMomentumVelocity = 0.0;
+    }
+
+    final loading = planeType.wingLoading;
+    var response = GameConfig.turnMomentumResponsePerSecond /
+        math.pow(loading, GameConfig.wingLoadingResponseExponent).toDouble();
+
+    final isReversing = _turnMomentumVelocity.abs() >
+            GameConfig.turnMomentumInputDeadZone &&
+        desiredVelocity.abs() > GameConfig.turnMomentumInputDeadZone &&
+        _turnMomentumVelocity.sign != desiredVelocity.sign;
+
+    if (!hasSteeringInput) {
+      response *= GameConfig.turnMomentumCoastResponseMultiplier;
+    }
+    if (isReversing) {
+      response *= GameConfig.turnMomentumReversalResponseMultiplier;
+    }
+
+    // e^(-response × dt) is frame-rate independent; unlike a fixed per-frame
+    // lerp it preserves the intended light-vs-heavy handling at every refresh
+    // rate. Clamp the target as a final safety guard around stacked wind.
+    final target = desiredVelocity
+        .clamp(
+          -GameConfig.maxTurnMomentumSpeed,
+          GameConfig.maxTurnMomentumSpeed,
+        )
+        .toDouble();
+    final blend = (1.0 - math.exp(-response * dt)).clamp(0.0, 1.0).toDouble();
+    _turnMomentumVelocity = MathUtils.lerp(
+      _turnMomentumVelocity,
+      target,
+      blend,
+    ).clamp(
+      -GameConfig.maxTurnMomentumSpeed,
+      GameConfig.maxTurnMomentumSpeed,
+    ).toDouble();
+    return _turnMomentumVelocity;
+  }
+
+  /// Removes velocity that is trying to push through a world boundary. The
+  /// momentum state is clamped alongside the plane so a heavy airframe does
+  /// not remain stuck to an edge after a gust.
+  void blockTurnMomentumAtEdge({bool left = false, bool right = false}) {
+    if ((left && _turnMomentumVelocity < 0) ||
+        (right && _turnMomentumVelocity > 0)) {
+      _turnMomentumVelocity = 0.0;
+    }
+  }
+
+  /// Clears the transient airframe state on a new run/revive. Keeping this
+  /// separate from [reset] makes it safe for a component that changes plane
+  /// types while the hangar preview is alive.
+  void resetTurnMomentum() {
+    _turnMomentumVelocity = 0.0;
+    _turnMomentumPlaneType = null;
+  }
+
   double get snapRechargeProgress => _snapRechargeProgress; // 0..1 toward next charge
   double get snapRechargeFraction {
     if (_snapCharges >= GameConfig.snapMaxCharges) return 1.0;
@@ -139,6 +223,11 @@ class InputManager extends Component {
   int _snapCharges = GameConfig.snapMaxCharges;
   bool _snapQueued = false;
   double _snapRechargeProgress = 0.0;
+
+  // Dynamic wing-loading state. This lives beside input intent rather than in
+  // a single control scheme, so joystick/touch/tilt all share one turn model.
+  double _turnMomentumVelocity = 0.0;
+  PlaneType? _turnMomentumPlaneType;
 
   // Generic gesture → power-up action (flick-up / double-tap).
   bool _gestureActionQueued = false;
@@ -233,6 +322,7 @@ class InputManager extends Component {
     }
     // Reset transient steering state when switching schemes.
     _filteredTilt = 0.0;
+    resetTurnMomentum();
     _touchLeft = false;
     _touchRight = false;
     if (scheme != ControlScheme.joystick) {
@@ -316,6 +406,7 @@ class InputManager extends Component {
     _isHolding = false;
     _filteredTilt = 0.0;
     _rawTilt = 0.0;
+    resetTurnMomentum();
     _snapCharges = GameConfig.snapMaxCharges;
     _snapQueued = false;
     _snapRechargeProgress = 0.0;

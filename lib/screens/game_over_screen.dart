@@ -124,6 +124,9 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen>
           biome: _result!.finalBiome.name,
           crashCause: _result!.crashCause,
           wasRevived: _result!.wasRevived,
+          replayFingerprint: _result!.replayFingerprint.isEmpty
+              ? null
+              : _result!.replayFingerprint,
         );
         if (_result!.isNewHighScore) {
           await AnalyticsService.instance.logNewHighScore(_result!.score);

@@ -64,6 +64,7 @@ class BiomeManager extends Component {
     if (meters < GameConfig.biomeStormEnd) return Biome.storm;
     if (meters < GameConfig.biomeMountainEnd) return Biome.mountain;
     if (meters < GameConfig.biomeNightEnd) return Biome.night;
+    if (meters < GameConfig.biomeOceanEnd) return Biome.ocean;
     return Biome.atmosphere;
   }
 
@@ -94,6 +95,7 @@ class BiomeManager extends Component {
           ObstacleType.stormCloud: 0.0,
           ObstacleType.fireworks: 0.0,
           ObstacleType.weatherBalloon: 0.0,
+          ObstacleType.flockMigration: 0.32,
         }[type] ?? 0.0;
       case Biome.city:
         return const {
@@ -111,6 +113,7 @@ class BiomeManager extends Component {
           ObstacleType.stormCloud: 0.0,
           ObstacleType.fireworks: 0.0,
           ObstacleType.weatherBalloon: 0.0,
+          ObstacleType.flockMigration: 0.18,
         }[type] ?? 0.0;
       case Biome.storm:
         return const {
@@ -128,6 +131,9 @@ class BiomeManager extends Component {
           ObstacleType.clothesline: 0.0,
           ObstacleType.fireworks: 0.0,
           ObstacleType.weatherBalloon: 0.0,
+          ObstacleType.lightningStrike: 1.25,
+          ObstacleType.meteorShower: 0.0,
+          ObstacleType.tornado: 0.70,
         }[type] ?? 0.0;
       case Biome.mountain:
         return const {
@@ -145,6 +151,7 @@ class BiomeManager extends Component {
           ObstacleType.drone: 0.1,
           ObstacleType.clothesline: 0.0,
           ObstacleType.fireworks: 0.0,
+          ObstacleType.flockMigration: 0.78,
         }[type] ?? 0.0;
       case Biome.night:
         return const {
@@ -162,6 +169,21 @@ class BiomeManager extends Component {
           ObstacleType.windsock: 0.2,
           ObstacleType.weatherBalloon: 0.1,
           ObstacleType.clothesline: 0.0,
+          ObstacleType.lightningStrike: 0.25,
+          ObstacleType.meteorShower: 0.0,
+          ObstacleType.tornado: 0.15,
+          ObstacleType.paperDragon: 0.10,
+        }[type] ?? 0.0;
+      case Biome.ocean:
+        return const {
+          ObstacleType.whaleBreach: 1.45,
+          ObstacleType.weatherBalloon: 0.35,
+          ObstacleType.kite: 0.30,
+          ObstacleType.bird: 0.28,
+          ObstacleType.trafficPlane: 0.18,
+          ObstacleType.tornado: 0.10,
+          ObstacleType.flockMigration: 0.08,
+          ObstacleType.paperDragon: 0.24,
         }[type] ?? 0.0;
       case Biome.atmosphere:
         return const {
@@ -179,7 +201,46 @@ class BiomeManager extends Component {
           ObstacleType.building: 0.1,
           ObstacleType.treeBranch: 0.0,
           ObstacleType.clothesline: 0.0,
+          ObstacleType.lightningStrike: 0.35,
+          ObstacleType.meteorShower: 1.45,
+          ObstacleType.tornado: 0.50,
+          ObstacleType.paperDragon: 0.40,
         }[type] ?? 0.0;
+    }
+  }
+
+  /// Returns the authored-combination weight for this biome. Normal obstacle
+  /// weights still drive all other spawns; a nonzero result only authorizes a
+  /// curated pair once the spawner's cadence and safety gates approve it.
+  double obstacleCombinationWeight(ObstacleCombination combination) {
+    switch (_currentBiome) {
+      case Biome.backyard:
+        return 0.0;
+      case Biome.city:
+        return combination == ObstacleCombination.cityTrafficStack ? .72 : 0.0;
+      case Biome.storm:
+        return combination == ObstacleCombination.stormCrossfire ? .90 : 0.0;
+      case Biome.mountain:
+        return switch (combination) {
+          ObstacleCombination.rotorRun => .88,
+          ObstacleCombination.kiteRelay => .34,
+          _ => 0.0,
+        };
+      case Biome.night:
+        return switch (combination) {
+          ObstacleCombination.cityTrafficStack => .44,
+          ObstacleCombination.stormCrossfire => .30,
+          _ => 0.0,
+        };
+      case Biome.ocean:
+        return combination == ObstacleCombination.kiteRelay ? .56 : 0.0;
+      case Biome.atmosphere:
+        return switch (combination) {
+          ObstacleCombination.stormCrossfire => .62,
+          ObstacleCombination.cityTrafficStack => .32,
+          ObstacleCombination.rotorRun => .24,
+          _ => 0.0,
+        };
     }
   }
 }

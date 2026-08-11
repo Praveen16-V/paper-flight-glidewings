@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
 import '../models/save_data.dart';
 import '../models/challenge_definitions.dart';
@@ -253,16 +254,50 @@ class SaveDataNotifier extends Notifier<SaveData> {
     return true;
   }
 
+  // ── Power-Up Evolution ───────────────────────────────────────────────────
+
+  int getPowerUpLevel(PowerUpType type) => state.getPowerUpLevel(type.index);
+
+  Future<bool> upgradePowerUp(PowerUpType type) async {
+    if (!type.hasEvolution) return false;
+    final current = getPowerUpLevel(type);
+    final next = current + 1;
+    if (next > GameConfig.powerUpEvolutionMaxLevel) return false;
+    final cost = type.evolutionCost(next);
+    if (cost <= 0 || state.coins < cost) return false;
+
+    state = await PersistenceService.instance.updateSave((s) {
+      final levels = List<int>.from(s.powerUpUpgradeLevels);
+      while (levels.length <= type.index) {
+        levels.add(1);
+      }
+      levels[type.index] = next;
+      s.powerUpUpgradeLevels = levels;
+      s.coins -= cost;
+      return s;
+    });
+    _logEconomy(
+      currency: 'coin',
+      direction: 'sink',
+      amount: cost,
+      balanceAfter: state.coins,
+      reason: 'powerup_evolution_${type.name}_lv$next',
+    );
+    return true;
+  }
+
   // ── Skin Unlocks ─────────────────────────────────────────────────────────
 
   bool isSkinUnlocked(int skinIndex) =>
       state.unlockedSkinIndices.contains(skinIndex);
 
   Future<bool> unlockSkin(int skinIndex, int coinCost, int gemCost) async {
+    if (skinIndex < 0 || skinIndex >= PaperSkin.values.length) return false;
+    final skin = PaperSkin.values[skinIndex];
+    if (!skin.isAvailableForPurchaseAt(DateTime.now())) return false;
     if (!isSkinUnlocked(skinIndex) &&
         state.coins >= coinCost &&
-        state.gems >= gemCost) {
-      state = await PersistenceService.instance.updateSave((s) {
+        state.gems >= gemCost) {      state = await PersistenceService.instance.updateSave((s) {
         s.coins -= coinCost;
         s.gems -= gemCost;
         if (!s.unlockedSkinIndices.contains(skinIndex)) {
@@ -301,11 +336,49 @@ class SaveDataNotifier extends Notifier<SaveData> {
     int? primaryHex,
     int? accentHex,
     int? stampIndex,
+    String? patternBase64,
+    String? patternName,
   }) async {
     state = await PersistenceService.instance.updateSave((s) {
       if (primaryHex != null) s.customSkinPrimaryHex = primaryHex;
       if (accentHex != null) s.customSkinAccentHex = accentHex;
       if (stampIndex != null) s.customSkinStamp = stampIndex;
+      if (patternBase64 != null) s.customSkinPatternBase64 = patternBase64;
+      if (patternName != null) s.customSkinPatternName = patternName;
+      return s;
+    });
+  }
+
+  // ── Skin Weathering ───────────────────────────────────────────────────────
+
+  double skinWearLevel(int skinIndex) => state.skinWearLevelFor(skinIndex);
+
+  /// Permanently ages a skin from completed flight distance and a final crash.
+  /// The write happens once per run (never from the frame loop), so the visual
+  /// story persists without adding pressure to gameplay performance.
+  Future<void> accrueSkinWear({
+    required int skinIndex,
+    required double distanceMeters,
+    required bool crashed,
+  }) async {
+    if (skinIndex < 0) return;
+    final distanceWear = (distanceMeters /
+            GameConfig.skinWearDistanceForVeteran)
+        .clamp(0.0, GameConfig.skinWearMaxDistanceIncrementPerRun)
+        .toDouble();
+    final delta = distanceWear +
+        (crashed ? GameConfig.skinWearCrashImpact : 0.0);
+    if (delta <= 0) return;
+
+    state = await PersistenceService.instance.updateSave((s) {
+      final levels = List<double>.from(s.skinWearLevels);
+      while (levels.length <= skinIndex) {
+        levels.add(0.0);
+      }
+      levels[skinIndex] = (levels[skinIndex] + delta)
+          .clamp(0.0, 1.0)
+          .toDouble();
+      s.skinWearLevels = levels;
       return s;
     });
   }

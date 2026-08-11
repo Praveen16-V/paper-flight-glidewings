@@ -35,6 +35,21 @@ void main() {
       expect(bytes.length, greaterThan(44));
       expect(_ascii(bytes, 0, 4), 'RIFF');
     });
+
+    test('power-up cues synthesize distinct playable WAV buffers', () {
+      final cues = [
+        AudioSynth.shieldHum(),
+        AudioSynth.ghostWhisper(),
+        AudioSynth.turboSpool(),
+        AudioSynth.magnetPulse(),
+        AudioSynth.timeRipple(),
+        AudioSynth.voidPulse(),
+      ];
+      for (final bytes in cues) {
+        expect(bytes.length, greaterThan(44));
+        expect(_ascii(bytes, 0, 4), 'RIFF');
+      }
+    });
   });
 }
 

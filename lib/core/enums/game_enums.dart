@@ -16,6 +16,23 @@ enum GamePhase {
   reviving,  // watching rewarded ad to revive
 }
 
+/// Moment-to-moment aerodynamic control state for the player plane.
+///
+/// This is intentionally separate from [GamePhase]: a spin is recoverable play
+/// state, while dying/game over are terminal run states.
+enum FlightControlState {
+  stable,
+  stallWarning,
+  spinning,
+}
+
+/// Gameplay signals forwarded from the plane to its active paper-skin painter.
+enum SkinGameEvent {
+  coinCollected,
+  nearMiss,
+  shieldHit,
+}
+
 // ── Game Modes (Task 8) ─────────────────────────────────────────────────────
 
 enum GameMode {
@@ -107,6 +124,7 @@ enum Biome {
   storm,       // rain, lightning, strong gusts
   mountain,    // thermals, birds of prey, canyon
   night,       // drones, spotlights, firefly coins
+  ocean,       // moonlit open water, whale breaches and sea spray
   atmosphere,  // endgame — meteors, thin air
 }
 
@@ -123,6 +141,8 @@ extension BiomeLabel on Biome {
         return 'Mountain Pass';
       case Biome.night:
         return 'Night Sky';
+      case Biome.ocean:
+        return 'Moonlit Ocean';
       case Biome.atmosphere:
         return 'Edge of Atmosphere';
     }
@@ -146,6 +166,12 @@ enum ObstacleType {
   weatherBalloon, // satellite dish & tethered weather probe balloon cluster
   clothesline,    // backyard clothesline with fluttering paper dolls & clothespins
   windsock,       // aviation windsock cone pointing in direction of local wind
+  lightningStrike,// telegraphed vertical lightning bolt
+  meteorShower,   // atmosphere cluster with warning shadows
+  tornado,        // rotating wind column that pulls the plane
+  flockMigration, // 10–20 birds crossing in a V formation
+  whaleBreach,    // massive slow ocean hazard with splash particles
+  paperDragon,    // serpentine multi-segment paper boss
 }
 
 extension ObstacleLabel on ObstacleType {
@@ -179,6 +205,18 @@ extension ObstacleLabel on ObstacleType {
         return 'Paper Clothesline';
       case ObstacleType.windsock:
         return 'Airfield Windsock';
+      case ObstacleType.lightningStrike:
+        return 'Lightning Strike';
+      case ObstacleType.meteorShower:
+        return 'Meteor Shower';
+      case ObstacleType.tornado:
+        return 'Tornado';
+      case ObstacleType.flockMigration:
+        return 'Flock Migration';
+      case ObstacleType.whaleBreach:
+        return 'Whale Breach';
+      case ObstacleType.paperDragon:
+        return 'Paper Dragon';
     }
   }
 
@@ -212,6 +250,18 @@ extension ObstacleLabel on ObstacleType {
         return 'clothesline';
       case ObstacleType.windsock:
         return 'windsock';
+      case ObstacleType.lightningStrike:
+        return 'lightning_strike';
+      case ObstacleType.meteorShower:
+        return 'meteor_shower';
+      case ObstacleType.tornado:
+        return 'tornado';
+      case ObstacleType.flockMigration:
+        return 'flock_migration';
+      case ObstacleType.whaleBreach:
+        return 'whale_breach';
+      case ObstacleType.paperDragon:
+        return 'paper_dragon';
     }
   }
 
@@ -220,6 +270,201 @@ extension ObstacleLabel on ObstacleType {
 
   /// True for building gap obstacles — used for challenge tracking.
   bool get isBuildingGap => this == ObstacleType.building;
+
+  /// Firework rockets are the current projectile-class hazard that Shield Lv2
+  /// can reflect instead of consuming the shield.
+  bool get isReflectableProjectile => this == ObstacleType.fireworks;
+
+  /// Boss passes reserve the sky so their telegraph and route remain readable.
+  bool get isBoss => this == ObstacleType.paperDragon;
+
+  /// Obstacles that answer the paper-snap interaction pulse instead of only
+  /// being dodged. More interaction families can join this taxonomy later.
+  bool get isSnapInteractive => this == ObstacleType.kite;
+
+  /// Breakable paper/technology hazards with a small visible integrity budget.
+  /// Drones need two deliberate snap hits; balloons and fireworks are fragile.
+  int get destructibleHitPoints {
+    switch (this) {
+      case ObstacleType.drone:
+        return 2;
+      case ObstacleType.hotAirBalloon:
+      case ObstacleType.fireworks:
+      case ObstacleType.weatherBalloon:
+        return 1;
+      default:
+        return 0;
+    }
+  }
+
+  bool get isDestructible => destructibleHitPoints > 0;
+
+  /// Dynamic hazards vulnerable to Cursed Magnet's dangerous pull.
+  bool get isCursedMagnetAttractable =>
+      this == ObstacleType.bird ||
+      this == ObstacleType.drone ||
+      this == ObstacleType.kite ||
+      this == ObstacleType.trafficPlane ||
+      this == ObstacleType.fireworks ||
+      this == ObstacleType.weatherBalloon ||
+      this == ObstacleType.hotAirBalloon;
+}
+
+/// A hand-authored, readable two-obstacle encounter. These are not random
+/// overlap: the spawner reserves a planned safe corridor and staggers the
+/// pair so pilots can learn the pattern before it reaches the plane row.
+enum ObstacleCombination {
+  cityTrafficStack,
+  stormCrossfire,
+  rotorRun,
+  kiteRelay,
+}
+
+extension ObstacleCombinationLabel on ObstacleCombination {
+  String get displayName {
+    switch (this) {
+      case ObstacleCombination.cityTrafficStack:
+        return 'City Traffic Stack';
+      case ObstacleCombination.stormCrossfire:
+        return 'Storm Crossfire';
+      case ObstacleCombination.rotorRun:
+        return 'Rotor Run';
+      case ObstacleCombination.kiteRelay:
+        return 'Kite Relay';
+    }
+  }
+
+  /// The lead and trailing members, in their authored encounter order.
+  List<ObstacleType> get members {
+    switch (this) {
+      case ObstacleCombination.cityTrafficStack:
+        return const [ObstacleType.drone, ObstacleType.trafficPlane];
+      case ObstacleCombination.stormCrossfire:
+        return const [ObstacleType.stormCloud, ObstacleType.lightningStrike];
+      case ObstacleCombination.rotorRun:
+        return const [ObstacleType.windTurbine, ObstacleType.bird];
+      case ObstacleCombination.kiteRelay:
+        return const [ObstacleType.windsock, ObstacleType.kite];
+    }
+  }
+}
+
+/// A local interaction between two complementary hazards. Unlike a spawn
+/// combination, a synergy may also emerge from procedural overlap; each member
+/// exposes a small, readable behaviour change while the link is active.
+enum ObstacleSynergy {
+  stormCharge,
+  droneTrafficLink,
+  rotorWake,
+  windTether,
+}
+
+extension ObstacleSynergyLabel on ObstacleSynergy {
+  String get displayName {
+    switch (this) {
+      case ObstacleSynergy.stormCharge:
+        return 'Storm Charge';
+      case ObstacleSynergy.droneTrafficLink:
+        return 'Drone Traffic Link';
+      case ObstacleSynergy.rotorWake:
+        return 'Rotor Wake';
+      case ObstacleSynergy.windTether:
+        return 'Wind Tether';
+    }
+  }
+
+  List<ObstacleType> get members {
+    switch (this) {
+      case ObstacleSynergy.stormCharge:
+        return const [ObstacleType.stormCloud, ObstacleType.lightningStrike];
+      case ObstacleSynergy.droneTrafficLink:
+        return const [ObstacleType.drone, ObstacleType.trafficPlane];
+      case ObstacleSynergy.rotorWake:
+        return const [ObstacleType.windTurbine, ObstacleType.bird];
+      case ObstacleSynergy.windTether:
+        return const [ObstacleType.windsock, ObstacleType.kite];
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case ObstacleSynergy.stormCharge:
+        return const Color(0xFFFFF176);
+      case ObstacleSynergy.droneTrafficLink:
+        return const Color(0xFF80DEEA);
+      case ObstacleSynergy.rotorWake:
+        return const Color(0xFFB9F6CA);
+      case ObstacleSynergy.windTether:
+        return const Color(0xFFB2EBF2);
+    }
+  }
+}
+
+/// Visual grammar for an off-screen hazard announcement. The component draws
+/// a shared arrival dial, then uses this profile to preview the collision shape
+/// or route before the physical obstacle enters the viewport.
+enum ObstacleTelegraphStyle {
+  pinpoint,
+  trajectory,
+  lane,
+  area,
+  formation,
+  gate,
+  boss,
+}
+
+extension ObstacleTelegraphProfile on ObstacleType {
+  ObstacleTelegraphStyle get telegraphStyle {
+    switch (this) {
+      case ObstacleType.powerLine:
+      case ObstacleType.building:
+      case ObstacleType.clothesline:
+        return ObstacleTelegraphStyle.gate;
+      case ObstacleType.lightningStrike:
+        return ObstacleTelegraphStyle.lane;
+      case ObstacleType.meteorShower:
+      case ObstacleType.tornado:
+      case ObstacleType.stormCloud:
+      case ObstacleType.whaleBreach:
+        return ObstacleTelegraphStyle.area;
+      case ObstacleType.flockMigration:
+        return ObstacleTelegraphStyle.formation;
+      case ObstacleType.paperDragon:
+        return ObstacleTelegraphStyle.boss;
+      case ObstacleType.bird:
+      case ObstacleType.drone:
+      case ObstacleType.windTurbine:
+      case ObstacleType.hotAirBalloon:
+      case ObstacleType.kite:
+      case ObstacleType.trafficPlane:
+      case ObstacleType.fireworks:
+      case ObstacleType.weatherBalloon:
+      case ObstacleType.windsock:
+        return ObstacleTelegraphStyle.trajectory;
+      case ObstacleType.treeBranch:
+        return ObstacleTelegraphStyle.pinpoint;
+    }
+  }
+}
+
+/// Behaviour and reward profile for an origami tunnel ring gate.
+enum TunnelRingVariant {
+  standard,
+  precision,
+  drifting,
+}
+
+extension TunnelRingVariantLabel on TunnelRingVariant {
+  String get displayName {
+    switch (this) {
+      case TunnelRingVariant.standard:
+        return 'Ring Gate';
+      case TunnelRingVariant.precision:
+        return 'Precision Ring';
+      case TunnelRingVariant.drifting:
+        return 'Drift Ring';
+    }
+  }
 }
 
 // ── Power-ups ─────────────────────────────────────────────────────────────────
@@ -239,6 +484,78 @@ enum PowerUpType {
 }
 
 extension PowerUpLabel on PowerUpType {
+  /// Timed effects are stored as charges and manually fired as a short burst.
+  bool get isChargeBased => switch (this) {
+        PowerUpType.magnet ||
+        PowerUpType.ghost ||
+        PowerUpType.slowMo ||
+        PowerUpType.coinRush ||
+        PowerUpType.doubleScore ||
+        PowerUpType.shrink ||
+        PowerUpType.windCaller ||
+        PowerUpType.blackHole ||
+        PowerUpType.turboDash => true,
+        PowerUpType.shield || PowerUpType.decoyClone => false,
+      };
+
+  /// Hangar-evolvable effects currently supported by the live game loop.
+  bool get hasEvolution =>
+      this == PowerUpType.magnet || this == PowerUpType.shield;
+
+  int evolutionCost(int toLevel) {
+    if (toLevel != 2) return 0;
+    switch (this) {
+      case PowerUpType.magnet:
+        return GameConfig.magnetEvolutionLevel2Cost;
+      case PowerUpType.shield:
+        return GameConfig.shieldEvolutionLevel2Cost;
+      default:
+        return 0;
+    }
+  }
+
+  String evolutionDescription(int level) {
+    switch (this) {
+      case PowerUpType.magnet:
+        return level >= 2
+            ? 'Lv2 • 245px pull + auto-collect gems'
+            : 'Lv1 • Standard coin pull';
+      case PowerUpType.shield:
+        return level >= 2
+            ? 'Lv2 • Reflects firework projectiles'
+            : 'Lv1 • Absorbs one impact';
+      default:
+        return 'No evolution installed';
+    }
+  }
+
+  Color get visualColor {
+    switch (this) {
+      case PowerUpType.shield:
+        return const Color(0xFF64B5F6);
+      case PowerUpType.magnet:
+        return const Color(0xFFAB47BC);
+      case PowerUpType.ghost:
+        return const Color(0xFF80DEEA);
+      case PowerUpType.slowMo:
+        return const Color(0xFF64FFDA);
+      case PowerUpType.coinRush:
+        return const Color(0xFFFFD740);
+      case PowerUpType.doubleScore:
+        return const Color(0xFFFF7043);
+      case PowerUpType.shrink:
+        return const Color(0xFFCE93D8);
+      case PowerUpType.windCaller:
+        return const Color(0xFF00E5FF);
+      case PowerUpType.decoyClone:
+        return const Color(0xFF9FA8DA);
+      case PowerUpType.blackHole:
+        return const Color(0xFF7C4DFF);
+      case PowerUpType.turboDash:
+        return const Color(0xFFFF3D00);
+    }
+  }
+
   String get displayName {
     switch (this) {
       case PowerUpType.shield:
@@ -292,6 +609,84 @@ extension PowerUpLabel on PowerUpType {
         return 'turbo_dash';
     }
   }
+}
+
+/// Named synergy states created by stacking compatible active power-ups.
+enum PowerUpCombo { phaseShield, goldVortex, timeDash }
+
+/// High-risk variants collected directly from corrupted pickups. They are
+/// intentionally separate from charge inventory: accepting the pickup starts
+/// the bargain immediately.
+enum CorruptedPowerUpType { cursedMagnet, unstableGhost }
+
+extension CorruptedPowerUpInfo on CorruptedPowerUpType {
+  String get displayName {
+    switch (this) {
+      case CorruptedPowerUpType.cursedMagnet:
+        return 'Cursed Magnet';
+      case CorruptedPowerUpType.unstableGhost:
+        return 'Unstable Ghost';
+    }
+  }
+
+  PowerUpType get baseType {
+    switch (this) {
+      case CorruptedPowerUpType.cursedMagnet:
+        return PowerUpType.magnet;
+      case CorruptedPowerUpType.unstableGhost:
+        return PowerUpType.ghost;
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case CorruptedPowerUpType.cursedMagnet:
+        return const Color(0xFFE53935);
+      case CorruptedPowerUpType.unstableGhost:
+        return const Color(0xFF7C4DFF);
+    }
+  }
+}
+
+extension PowerUpComboInfo on PowerUpCombo {
+  String get displayName {
+    switch (this) {
+      case PowerUpCombo.phaseShield:
+        return 'Phase Shield';
+      case PowerUpCombo.goldVortex:
+        return 'Gold Vortex';
+      case PowerUpCombo.timeDash:
+        return 'Time Dash';
+    }
+  }
+
+  Set<PowerUpType> get ingredients {
+    switch (this) {
+      case PowerUpCombo.phaseShield:
+        return const {PowerUpType.shield, PowerUpType.ghost};
+      case PowerUpCombo.goldVortex:
+        return const {PowerUpType.magnet, PowerUpType.coinRush};
+      case PowerUpCombo.timeDash:
+        return const {PowerUpType.slowMo, PowerUpType.turboDash};
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case PowerUpCombo.phaseShield:
+        return const Color(0xFF80DEEA);
+      case PowerUpCombo.goldVortex:
+        return const Color(0xFFFFD740);
+      case PowerUpCombo.timeDash:
+        return const Color(0xFFB388FF);
+    }
+  }
+}
+
+Set<PowerUpCombo> powerUpCombosFor(Set<PowerUpType> activePowerUps) {
+  return PowerUpCombo.values
+      .where((combo) => activePowerUps.containsAll(combo.ingredients))
+      .toSet();
 }
 
 // ── Plane Types ───────────────────────────────────────────────────────────────
@@ -374,9 +769,9 @@ extension PlaneLabel on PlaneType {
   String get tagline {
     switch (this) {
       case PlaneType.dart:
-        return 'Reliable starter — +15% distance score';
+        return 'Reliable starter — +15% distance score, fast ramp';
       case PlaneType.glider:
-        return 'Floats longer, attracts coins, +20% thermal';
+        return 'Floats longer — slow ramp, long-haul cruise';
       case PlaneType.stuntFold:
         return 'Snappy turns, 2× snap, +50% near-miss';
       case PlaneType.crane:
@@ -386,9 +781,9 @@ extension PlaneLabel on PlaneType {
       case PlaneType.butterfly:
         return 'Flutters gracefully — fall 0.75, auto-sway, +40% thermal';
       case PlaneType.bomber:
-        return 'Heavy fortress — spawns with 2 shield charges';
+        return 'Heavy fortress — slow ramp, highest cruise cap';
       case PlaneType.interceptor:
-        return 'Agile turn 1.25 — camera zoom-out, 0 coin attract';
+        return 'Agile turn 1.25 — fastest speed ramp';
       case PlaneType.albatross:
         return 'Master glider — 2× streak, endless glide combo';
       case PlaneType.biplane:
@@ -396,7 +791,7 @@ extension PlaneLabel on PlaneType {
       case PlaneType.ninjaStar:
         return 'Ultra-snappy turns, fast snap burst recharge';
       case PlaneType.rocket:
-        return 'High-speed streamlined dart, rapid dive penetration';
+        return 'Fast-ramping dart with 1.10× cruise cap';
     }
   }
 
@@ -432,13 +827,13 @@ extension PlaneLabel on PlaneType {
       case PlaneType.butterfly:
         return [
           'Floaty fall rate (0.75)',
-          'Aerodynamic auto-sway',
+          'Auto-sway + light, instant turns',
           '+40% thermal lift bonus',
         ];
       case PlaneType.bomber:
         return [
           'Starts with 2 shield charges',
-          'Heavy sturdy paper frame',
+          'Heavy frame — committed momentum turns',
           'Turn 0.80 / Fall 1.15',
         ];
       case PlaneType.interceptor:
@@ -449,7 +844,7 @@ extension PlaneLabel on PlaneType {
         ];
       case PlaneType.albatross:
         return [
-          'Endless glide combo bonus',
+          'Endless glide combo, instant correction',
           '2× clean glide streak points',
           '50% slower combo decay in glide',
         ];
@@ -468,7 +863,7 @@ extension PlaneLabel on PlaneType {
       case PlaneType.rocket:
         return [
           'High speed cruise (1.15)',
-          'Streamlined needle hitbox (0.40)',
+          'Needle hitbox (0.40), carries a bank',
           'Instant dive recovery',
         ];
     }
@@ -555,6 +950,136 @@ extension PlaneLabel on PlaneType {
         return 1.25; // ultra snappy
       case PlaneType.rocket:
         return 1.15; // high response
+    }
+  }
+
+  /// Distance-ramp multiplier for world speed (1.0 = baseline world-speed
+  /// curve). Higher values reach cruising pace early; lower values reserve
+  /// their strength for a longer, deliberate build.
+  double get speedCurveMultiplier {
+    switch (this) {
+      case PlaneType.dart:
+        return 1.20;
+      case PlaneType.glider:
+        return 0.72;
+      case PlaneType.stuntFold:
+        return 1.08;
+      case PlaneType.crane:
+        return 0.90;
+      case PlaneType.stealthJet:
+        return 1.12;
+      case PlaneType.butterfly:
+        return 0.82;
+      case PlaneType.bomber:
+        return 0.68;
+      case PlaneType.interceptor:
+        return 1.28;
+      case PlaneType.albatross:
+        return 0.78;
+      case PlaneType.biplane:
+        return 0.94;
+      case PlaneType.ninjaStar:
+        return 1.15;
+      case PlaneType.rocket:
+        return 1.17;
+    }
+  }
+
+  /// Multiplier for the world-speed cap. Long-haul airframes intentionally
+  /// trade a slow early ramp for a ceiling beyond the neutral 480 px/s cap.
+  double get speedCapMultiplier {
+    switch (this) {
+      case PlaneType.dart:
+        return 1.00;
+      case PlaneType.glider:
+        return 1.13;
+      case PlaneType.stuntFold:
+        return 1.00;
+      case PlaneType.crane:
+        return 1.04;
+      case PlaneType.stealthJet:
+        return 1.05;
+      case PlaneType.butterfly:
+        return 0.96;
+      case PlaneType.bomber:
+        return 1.16;
+      case PlaneType.interceptor:
+        return 1.04;
+      case PlaneType.albatross:
+        return 1.12;
+      case PlaneType.biplane:
+        return 1.06;
+      case PlaneType.ninjaStar:
+        return 1.00;
+      case PlaneType.rocket:
+        return 1.10;
+    }
+  }
+
+  /// Human-readable speed behaviour for the hangar, where one SPD radar value
+  /// cannot communicate both acceleration and a separate end-game cap.
+  String get speedProfileLabel {
+    switch (this) {
+      case PlaneType.dart:
+        return 'Fast ramp • standard cruise cap';
+      case PlaneType.glider:
+        return 'Slow ramp • 1.13× long-haul cap';
+      case PlaneType.stuntFold:
+        return 'Quick ramp • standard cruise cap';
+      case PlaneType.crane:
+        return 'Gentle ramp • 1.04× cruise cap';
+      case PlaneType.stealthJet:
+        return 'Fast ramp • 1.05× cruise cap';
+      case PlaneType.butterfly:
+        return 'Soft ramp • lower calm-sky cap';
+      case PlaneType.bomber:
+        return 'Slow ramp • 1.16× long-haul cap';
+      case PlaneType.interceptor:
+        return 'Very fast ramp • 1.04× cruise cap';
+      case PlaneType.albatross:
+        return 'Slow ramp • 1.12× long-haul cap';
+      case PlaneType.biplane:
+        return 'Steady ramp • 1.06× cruise cap';
+      case PlaneType.ninjaStar:
+        return 'Fast ramp • standard cruise cap';
+      case PlaneType.rocket:
+        return 'Fast ramp • 1.10× cruise cap';
+    }
+  }
+
+  /// Relative wing loading (1.0 = the balanced Paper Dart).
+  ///
+  /// This is deliberately independent from [turnSpeedMultiplier]: turn speed
+  /// describes how much authority a fold can generate, while wing loading
+  /// describes how quickly it can change direction. The result is a light
+  /// Butterfly or Albatross that reacts almost at once and a Bomber/Rocket
+  /// that has to commit to a bank and carries that momentum through a turn.
+  double get wingLoading {
+    switch (this) {
+      case PlaneType.dart:
+        return 1.00;
+      case PlaneType.glider:
+        return 0.72;
+      case PlaneType.stuntFold:
+        return 0.88;
+      case PlaneType.crane:
+        return 0.78;
+      case PlaneType.stealthJet:
+        return 0.86;
+      case PlaneType.butterfly:
+        return 0.50;
+      case PlaneType.bomber:
+        return 1.85;
+      case PlaneType.interceptor:
+        return 0.68;
+      case PlaneType.albatross:
+        return 0.58;
+      case PlaneType.biplane:
+        return 1.05;
+      case PlaneType.ninjaStar:
+        return 0.52;
+      case PlaneType.rocket:
+        return 1.52;
     }
   }
 
@@ -876,6 +1401,121 @@ extension PlanePowerUp on PlaneType {
 
 // ── Paper Skins ───────────────────────────────────────────────────────────────
 
+/// Collectibility treatment for paper skins in the Hangar and Shop.
+enum SkinRarity { common, rare, epic, legendary, mythic }
+
+extension SkinRarityInfo on SkinRarity {
+  String get label {
+    switch (this) {
+      case SkinRarity.common:
+        return 'COMMON';
+      case SkinRarity.rare:
+        return 'RARE';
+      case SkinRarity.epic:
+        return 'EPIC';
+      case SkinRarity.legendary:
+        return 'LEGENDARY';
+      case SkinRarity.mythic:
+        return 'MYTHIC';
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case SkinRarity.common:
+        return const Color(0xFF90A4AE);
+      case SkinRarity.rare:
+        return const Color(0xFF42A5F5);
+      case SkinRarity.epic:
+        return const Color(0xFFAB47BC);
+      case SkinRarity.legendary:
+        return const Color(0xFFFFB300);
+      case SkinRarity.mythic:
+        // Mythic uses a moving rainbow frame; this is its fallback badge tint.
+        return const Color(0xFFFF80AB);
+    }
+  }
+}
+
+/// Named limited-time rotations used by seasonal PaperSkin metadata.
+enum SeasonalRotation { halloween, winter, lunarNewYear }
+
+/// Calendar window for a limited-time paper skin. Windows use the device's
+/// local calendar, which keeps the Shop countdown intuitive in every region.
+class SeasonalAvailability {
+  const SeasonalAvailability({
+    required this.rotation,
+    required this.startMonth,
+    required this.startDay,
+    required this.endMonth,
+    required this.endDay,
+  });
+
+  final SeasonalRotation rotation;
+  final int startMonth;
+  final int startDay;
+  final int endMonth;
+  final int endDay;
+
+  String get displayName {
+    switch (rotation) {
+      case SeasonalRotation.halloween:
+        return 'Halloween Flight';
+      case SeasonalRotation.winter:
+        return 'Winter Flight';
+      case SeasonalRotation.lunarNewYear:
+        return 'Lunar New Year';
+    }
+  }
+
+  String get icon {
+    switch (rotation) {
+      case SeasonalRotation.halloween:
+        return '🎃';
+      case SeasonalRotation.winter:
+        return '❄️';
+      case SeasonalRotation.lunarNewYear:
+        return '🏮';
+    }
+  }
+
+  bool get _crossesYear =>
+      startMonth > endMonth ||
+      (startMonth == endMonth && startDay > endDay);
+
+  bool isAvailableOn(DateTime now) {
+    final startThisYear = DateTime(now.year, startMonth, startDay);
+    if (!_crossesYear) {
+      return !now.isBefore(startThisYear) &&
+          !now.isAfter(_endForYear(now.year));
+    }
+
+    if (!now.isBefore(startThisYear)) {
+      return !now.isAfter(_endForYear(now.year + 1));
+    }
+    return !now.isBefore(DateTime(now.year - 1, startMonth, startDay)) &&
+        !now.isAfter(_endForYear(now.year));
+  }
+
+  DateTime? activeEndsAt(DateTime now) {
+    if (!isAvailableOn(now)) return null;
+    final startThisYear = DateTime(now.year, startMonth, startDay);
+    return !_crossesYear || now.isBefore(startThisYear)
+        ? _endForYear(now.year)
+        : _endForYear(now.year + 1);
+  }
+
+  DateTime nextStartsAt(DateTime now) {
+    final startThisYear = DateTime(now.year, startMonth, startDay);
+    return now.isBefore(startThisYear)
+        ? startThisYear
+        : DateTime(now.year + 1, startMonth, startDay);
+  }
+
+  DateTime _endForYear(int year) =>
+      DateTime(year, endMonth, endDay, 23, 59, 59, 999);
+}
+
 enum PaperSkin {
   plain,            // default white / gold
   newspaper,        // newspaper print with lorem squiggles
@@ -897,6 +1537,7 @@ enum PaperSkin {
   lavaLamp,         // animated glowing neon liquid magma blobs
   animatedHologram, // premium animated 360° hue-rotating holographic prism
   customCraft,      // player custom dual-tone craft paper with pattern stamps
+  flipbook,         // premium 8-frame hand-flipped paper animation
 }
 
 extension PaperSkinLabel on PaperSkin {
@@ -942,6 +1583,8 @@ extension PaperSkinLabel on PaperSkin {
         return 'Prism Hologram';
       case PaperSkin.customCraft:
         return 'Custom Craft';
+      case PaperSkin.flipbook:
+        return 'Flipbook Flight';
     }
   }
 
@@ -974,11 +1617,11 @@ extension PaperSkinLabel on PaperSkin {
       case PaperSkin.prideGradient:
         return 'Animated rainbow pride spectrum wave';
       case PaperSkin.dragonScales:
-        return 'Origami dragon jade & ruby faceted scale mosaic';
+        return 'Lunar New Year dragon scales with lantern-gold embers';
       case PaperSkin.snowflake:
-        return 'Winter seasonal crystalline snowflake paper';
+        return 'Winter rotation crystalline snowflake paper';
       case PaperSkin.pumpkin:
-        return 'Autumn harvest pumpkin paper with leaf stamps';
+        return 'Halloween rotation pumpkin paper with drifting leaves';
       case PaperSkin.cherryBlossom:
         return 'Spring seasonal sakura petals & blossom twig';
       case PaperSkin.lavaLamp:
@@ -987,6 +1630,8 @@ extension PaperSkinLabel on PaperSkin {
         return 'Premium 360° hue-rotating rainbow prism foil';
       case PaperSkin.customCraft:
         return 'Player custom dual-tone craft paper + pattern stamps';
+      case PaperSkin.flipbook:
+        return 'Eight hand-flipped prism frames with a paper-thin motion trail';
     }
   }
 
@@ -1031,6 +1676,8 @@ extension PaperSkinLabel on PaperSkin {
         return 3000;
       case PaperSkin.animatedHologram:
         return 3200;
+      case PaperSkin.flipbook:
+        return 3600;
     }
   }
 
@@ -1063,6 +1710,8 @@ extension PaperSkinLabel on PaperSkin {
         return 8;
       case PaperSkin.animatedHologram:
         return 8;
+      case PaperSkin.flipbook:
+        return 10;
     }
   }
 
@@ -1109,8 +1758,89 @@ extension PaperSkinLabel on PaperSkin {
         return 0xFFE040FB;
       case PaperSkin.customCraft:
         return 0xFF4FC3F7;
+      case PaperSkin.flipbook:
+        return 0xFF7C4DFF;
     }
   }
+
+  /// Rarity tier drives Hangar/list presentation only; all unlocked skins
+  /// remain cosmetic and do not alter gameplay unless a configured synergy
+  /// explicitly applies.
+  SkinRarity get rarity {
+    switch (this) {
+      case PaperSkin.plain:
+      case PaperSkin.newspaper:
+      case PaperSkin.graphPaper:
+      case PaperSkin.notebookDoodle:
+      case PaperSkin.receipt:
+      case PaperSkin.kraftEnvelope:
+      case PaperSkin.customCraft:
+        return SkinRarity.common;
+      case PaperSkin.watercolorWash:
+      case PaperSkin.blueprint:
+      case PaperSkin.snowflake:
+      case PaperSkin.pumpkin:
+      case PaperSkin.cherryBlossom:
+        return SkinRarity.rare;
+      case PaperSkin.carbonFiber:
+      case PaperSkin.mangaHalftone:
+      case PaperSkin.prideGradient:
+      case PaperSkin.holographicFoil:
+        return SkinRarity.epic;
+      case PaperSkin.dragonScales:
+      case PaperSkin.lavaLamp:
+      case PaperSkin.goldLeaf:
+        return SkinRarity.legendary;
+      case PaperSkin.animatedHologram:
+      case PaperSkin.flipbook:
+        return SkinRarity.mythic;
+    }
+  }
+
+  /// True when this skin renders an eight-frame SpriteAnimationComponent
+  /// overlay instead of a single procedural Canvas pass.
+  bool get usesFrameAnimation =>
+      this == PaperSkin.animatedHologram ||
+      this == PaperSkin.lavaLamp ||
+      this == PaperSkin.flipbook;
+
+  int get animationFrameCount => usesFrameAnimation ? 8 : 0;
+
+  /// Null for evergreen skins. Seasonal skins remain usable after unlock, but
+  /// can only be newly purchased during this calendar window.
+  SeasonalAvailability? get seasonalAvailability {
+    switch (this) {
+      case PaperSkin.pumpkin:
+        return const SeasonalAvailability(
+          rotation: SeasonalRotation.halloween,
+          startMonth: 10,
+          startDay: 15,
+          endMonth: 11,
+          endDay: 5,
+        );
+      case PaperSkin.snowflake:
+        return const SeasonalAvailability(
+          rotation: SeasonalRotation.winter,
+          startMonth: 12,
+          startDay: 1,
+          endMonth: 1,
+          endDay: 10,
+        );
+      case PaperSkin.dragonScales:
+        return const SeasonalAvailability(
+          rotation: SeasonalRotation.lunarNewYear,
+          startMonth: 1,
+          startDay: 20,
+          endMonth: 2,
+          endDay: 20,
+        );
+      default:
+        return null;
+    }
+  }
+
+  bool isAvailableForPurchaseAt(DateTime now) =>
+      seasonalAvailability?.isAvailableOn(now) ?? true;
 }
 
 // ── Challenge System ────────────────────────────────────────────────────────

@@ -12,6 +12,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
+import '../core/utils/object_pool.dart';
+import '../core/utils/run_random.dart';
 import '../models/run_result.dart';
 import '../models/settings_model.dart';
 import '../models/trial_definition.dart';
@@ -21,21 +23,29 @@ import '../providers/settings_provider.dart';
 import '../services/analytics_service.dart';
 import '../services/daily_leaderboard_service.dart';
 import '../services/daily_seed_service.dart';
+import 'diagnostics/runtime_diagnostics.dart';
+import 'events/gameplay_event_bus.dart';
+import 'replay/run_replay_trace.dart';
 import 'components/background/parallax_background.dart';
 import 'components/effects/coin_feedback.dart';
 import 'components/effects/atmosphere_component.dart';
+import 'components/effects/powerup_screen_effect_component.dart';
 import 'components/joystick_component.dart';
 import 'components/obstacles/obstacle_component.dart';
 import 'components/plane_component.dart';
 import 'components/touch_zones_overlay.dart';
 import 'systems/input_manager.dart';
 import 'systems/obstacle_spawner.dart';
+import 'systems/obstacle_synergy_system.dart';
 import 'systems/collectible_spawner.dart';
 import 'systems/powerup_spawner.dart';
 import 'systems/scoring_system.dart';
+import 'systems/dynamic_difficulty_system.dart';
 import 'systems/streak_system.dart';
 import 'systems/trial_director.dart';
 import 'systems/wind_system.dart';
+import 'systems/thermal_column_system.dart';
+import 'systems/wingman_system.dart';
 import 'systems/biome_manager.dart';
 import 'systems/game_feel_system.dart';
 
@@ -60,6 +70,11 @@ class PaperFlightGame extends FlameGame
   /// needing a BuildContext.
   final WidgetRef ref;
 
+  /// Typed, per-game coordination channel. It is deliberately owned by the
+  /// game instead of being global so a torn-down GameWidget cannot leave stale
+  /// listeners attached to the next run.
+  final GameplayEventBus gameplayEvents = GameplayEventBus();
+
   // ── Game Mode (Task 8) ────────────────────────────────────────────────────
 
   /// Which mode this game instance runs: classic, zen, daily or trial.
@@ -78,8 +93,17 @@ class PaperFlightGame extends FlameGame
   /// Seed-aware RNG shared by the spawners. The Daily Seeded Flight derives
   /// per-system generators from [dailySeed] so every player gets the exact
   /// same obstacle, coin and power-up layout regardless of frame timing.
-  late math.Random _spawnRng;
-  math.Random get spawnRng => _spawnRng;
+  late RunRandomStream _spawnRng;
+  RunRandomStream get spawnRng => _spawnRng;
+
+  late RunRandom _runRandom;
+  RunRandom get runRandom => _runRandom;
+  late RunReplayDescriptor _replayDescriptor;
+  RunReplayDescriptor get replayDescriptor => _replayDescriptor;
+  late RunReplayTrace _replayTrace;
+  RunReplayTrace get replayTrace => _replayTrace;
+  int _runSeed = 0;
+  int get runSeed => _runSeed;
 
   /// Trial director — active only in [GameMode.trial].
   TrialDirector? trialDirector;
@@ -108,19 +132,48 @@ class PaperFlightGame extends FlameGame
   /// Accumulator for periodic Coin Rush coin showers.
   double _coinRushShowerTimer = 0;
 
+  /// Timed HUD rings publish at a compact cadence instead of changing provider
+  /// state on every simulation frame.
+  double _powerUpTimerAccumulator = 0;
+
   // ── Systems ───────────────────────────────────────────────────────────────
 
   late final InputManager inputManager;
   late final WindSystem windSystem;
+  late final ThermalColumnSystem thermalColumnSystem;
+  late final WingmanSystem wingmanSystem;
   late final ScoringSystem scoringSystem;
+  late final DynamicDifficultySystem dynamicDifficultySystem;
   late final StreakSystem streakSystem;
   late final BiomeManager biomeManager;
   late final ObstacleSpawner obstacleSpawner;
+  late final ObstacleSynergySystem obstacleSynergySystem;
   late final CollectibleSpawner collectibleSpawner;
   late final PowerUpSpawner powerUpSpawner;
 
+  /// Snapshot-only pool diagnostics for a debug overlay, automated soak test,
+  /// or post-run memory capture. Do not query this from the frame hot path.
+  List<ObjectPoolDiagnostics> get poolDiagnostics => [
+        ...obstacleSpawner.poolDiagnostics,
+        ...collectibleSpawner.poolDiagnostics,
+        ...powerUpSpawner.poolDiagnostics,
+      ];
+
+  RuntimeDiagnosticsSnapshot get runtimeDiagnostics =>
+      RuntimeDiagnosticsSnapshot(
+        runSeed: _runSeed,
+        replay: replayTrace.snapshot(),
+        pools: List<ObjectPoolDiagnostics>.unmodifiable(poolDiagnostics),
+        activeObstacles: obstacleSpawner.activeCount,
+        activeCoins: collectibleSpawner.activeCoinCount,
+        activeRings: collectibleSpawner.activeRingCount,
+        activePowerUps: powerUpSpawner.activeCount,
+        dynamicDifficulty: dynamicDifficultySystem.intensity,
+      );
+
   /// Juice layer — adaptive audio, dynamic camera, streaks, chimes & haptics.
   late final GameFeelSystem gameFeelSystem;
+  late final PowerUpScreenEffectComponent powerUpScreenEffects;
 
   // ── Core Components ───────────────────────────────────────────────────────
 
@@ -162,6 +215,10 @@ class PaperFlightGame extends FlameGame
   int _powerUpsUsedThisRun = 0;
   String _lastCrashCause = 'unknown';
 
+  /// Guards the one persistent weathering write for any completed/abandoned
+  /// flight. The game can finalize through several mode-specific paths.
+  bool _skinWearRecordedThisRun = false;
+
   // Flutter/provider synchronization is intentionally outside the 60/120 Hz
   // hot path. The Flame world still updates every frame.
   double _hudUpdateAccumulator = 0;
@@ -178,6 +235,12 @@ class PaperFlightGame extends FlameGame
   // Decoy clone charges remaining.
   int _decoyCloneCharges = 0;
   int get decoyCloneCharges => _decoyCloneCharges;
+
+  double _unstableGhostTeleportTimer = 0;
+
+  /// Reads persistent Hangar evolution for live component effects.
+  int powerUpLevel(PowerUpType type) =>
+      ref.read(saveDataProvider).getPowerUpLevel(type.index);
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -210,35 +273,59 @@ class PaperFlightGame extends FlameGame
       GameMode.zen || GameMode.classic => null,
     };
     windSystem = WindSystem(seed: windSeed);
+    thermalColumnSystem = ThermalColumnSystem(game: this, seed: windSeed);
+    wingmanSystem = WingmanSystem(game: this, seed: windSeed);
     scoringSystem = ScoringSystem(game: this);
+    dynamicDifficultySystem = DynamicDifficultySystem(game: this);
     streakSystem = StreakSystem();
     biomeManager = BiomeManager(game: this);
 
     world.add(inputManager);
     world.add(windSystem);
+    // Visible local updrafts update after lanes but before the plane samples
+    // them, so their particle column and lift field always agree.
+    world.add(thermalColumnSystem);
     world.add(scoringSystem);
-    world.add(streakSystem);
     world.add(biomeManager);
+    // Reads confirmed score/near-miss state before the spawner decides its
+    // next pacing interval, so adaptation remains frame-order deterministic.
+    world.add(dynamicDifficultySystem);
+    world.add(streakSystem);
+    // Friendly formation planes render behind hazards/player and only activate
+    // in Zen or Daily Flight.
+    world.add(wingmanSystem);
 
     // Spawners.
     obstacleSpawner = ObstacleSpawner(game: this);
+    obstacleSynergySystem = ObstacleSynergySystem(game: this);
     collectibleSpawner = CollectibleSpawner(game: this);
     powerUpSpawner = PowerUpSpawner(game: this);
 
     world.add(obstacleSpawner);
+    world.add(obstacleSynergySystem);
     world.add(collectibleSpawner);
     world.add(powerUpSpawner);
 
     // Plane — added last so it renders on top of obstacles (z-order by add).
     final save = ref.read(saveDataProvider);
-    final planeType = PlaneType.values[save.equippedPlaneIndex.clamp(0, PlaneType.values.length - 1)];
-    final skin = PaperSkin.values[save.equippedSkinIndex.clamp(0, PaperSkin.values.length - 1)];
+    final planeType = PlaneType.values[save.equippedPlaneIndex
+        .clamp(0, PlaneType.values.length - 1)
+        .toInt()];
+    final skinIndex = save.equippedSkinIndex
+        .clamp(0, PaperSkin.values.length - 1)
+        .toInt();
+    final skin = PaperSkin.values[skinIndex];
     final planeLvl = save.getPlaneLevel(save.equippedPlaneIndex);
     plane = PlaneComponent(
       game: this,
       planeType: planeType,
       paperSkin: skin,
       planeLevel: planeLvl,
+      skinWearLevel: save.skinWearLevelFor(skinIndex),
+      customSkinPrimaryHex: save.customSkinPrimaryHex,
+      customSkinAccentHex: save.customSkinAccentHex,
+      customSkinStamp: save.customSkinStamp,
+      customSkinPatternBase64: save.customSkinPatternBase64,
     );
     world.add(plane);
 
@@ -252,6 +339,10 @@ class PaperFlightGame extends FlameGame
     // on top of the whole world.
     gameFeelSystem = GameFeelSystem();
     world.add(gameFeelSystem);
+
+    // Screen-space compositing renders after the world but beneath Flutter HUD.
+    powerUpScreenEffects = PowerUpScreenEffectComponent();
+    world.add(powerUpScreenEffects);
 
     // Sync initial control scheme + sensitivity from persisted settings.
     try {
@@ -307,6 +398,7 @@ class PaperFlightGame extends FlameGame
 
     // Deterministically release the resources that hold native handles —
     // the accelerometer stream and the continuous audio players.
+    gameplayEvents.dispose();
     try {
       gameFeelSystem.dispose();
     } catch (_) {}
@@ -343,17 +435,33 @@ class PaperFlightGame extends FlameGame
     final scaledDt = dt * _timeScale;
 
     if (_phase != GamePhase.playing) {
-      // Timers drive HUD countdown rings from the same authoritative durations.
-      final active = session.activePowerUps;
-      for (final type in active) {
-        final remaining = session.powerUpRemaining[type];
-        if (remaining != null) {
-          ref.read(gameSessionProvider.notifier).setPowerUpTimer(type, (remaining - scaledDt).clamp(0.0, 999.0).toDouble());
-        }
-      }
-
       super.update(dt);
       return;
+    }
+
+    _powerUpTimerAccumulator += scaledDt;
+    if (_powerUpTimerAccumulator >= GameConfig.hudUpdateIntervalSeconds) {
+      final elapsed = _powerUpTimerAccumulator;
+      _powerUpTimerAccumulator = 0;
+      final notifier = ref.read(gameSessionProvider.notifier);
+      for (final type in session.activePowerUps) {
+        final remaining = session.powerUpRemaining[type];
+        if (remaining != null) {
+          notifier.setPowerUpTimer(
+            type,
+            (remaining - elapsed).clamp(0.0, 999.0).toDouble(),
+          );
+        }
+      }
+      for (final type in session.activeCorruptedPowerUps) {
+        final remaining = session.corruptedPowerUpRemaining[type];
+        if (remaining != null) {
+          notifier.setCorruptedPowerUpTimer(
+            type,
+            (remaining - elapsed).clamp(0.0, 999.0).toDouble(),
+          );
+        }
+      }
     }
 
     // Generic gesture trigger: flick-up / double-tap fires the equipped
@@ -362,11 +470,34 @@ class PaperFlightGame extends FlameGame
       _handleGesturePowerUp();
     }
 
+    if (session.activeCorruptedPowerUps
+        .contains(CorruptedPowerUpType.unstableGhost)) {
+      _unstableGhostTeleportTimer += scaledDt;
+      if (_unstableGhostTeleportTimer >=
+          GameConfig.unstableGhostTeleportInterval) {
+        _unstableGhostTeleportTimer = 0;
+        final dx = (spawnRng.nextDouble() * 2 - 1) *
+            GameConfig.unstableGhostTeleportDistance;
+        final dy = (spawnRng.nextDouble() * 2 - 1) *
+            GameConfig.unstableGhostTeleportDistance * .45;
+        plane.applyUnstableGhostTeleport(dx: dx, dy: dy);
+      }
+    }
+
     // Apply slow-mo speed override (drives this frame's motion and the
     // distance it travels).
     double effectiveSpeed = _scrollSpeed;
-    if (session.activePowerUps.contains(PowerUpType.slowMo)) {
-      effectiveSpeed *= GameConfig.slowMoPowerUpMultiplier;
+    final activeCombos = session.activePowerUpCombos;
+    if (activeCombos.contains(PowerUpCombo.timeDash)) {
+      effectiveSpeed *= session.activeEmpoweredPowerUps
+              .contains(PowerUpType.slowMo)
+          ? GameConfig.empoweredSlowMoMultiplier
+          : GameConfig.timeDashWorldSpeedMultiplier;
+    } else if (session.activePowerUps.contains(PowerUpType.slowMo)) {
+      effectiveSpeed *= session.activeEmpoweredPowerUps
+              .contains(PowerUpType.slowMo)
+          ? GameConfig.empoweredSlowMoMultiplier
+          : GameConfig.slowMoPowerUpMultiplier;
     }
 
     // Accumulate distance from this frame's effective speed.
@@ -379,6 +510,16 @@ class PaperFlightGame extends FlameGame
     _scrollSpeed = _scrollSpeedForDistance(_distanceMeters);
 
     super.update(dt);
+
+    // A paper-snap can do more than climb: while its short interaction pulse
+    // is alive, the obstacle spawner selects one nearby tether and resolves
+    // it. This happens after the world update so target geometry is current
+    // regardless of whether Flame updated the plane or obstacles first.
+    if (_phase == GamePhase.playing &&
+        plane.snapInteractionActive &&
+        obstacleSpawner.resolveSnapInteraction(plane.position)) {
+      plane.markSnapInteractionResolved();
+    }
 
     // Coin Rush: keep raining coin showers down for the power-up's duration.
     if (session.activePowerUps.contains(PowerUpType.coinRush)) {
@@ -432,12 +573,20 @@ class PaperFlightGame extends FlameGame
       final pType = PlaneType.values[save.equippedPlaneIndex
           .clamp(0, PlaneType.values.length - 1)
           .toInt()];
-      final pSkin = PaperSkin.values[save.equippedSkinIndex
+      final skinIndex = save.equippedSkinIndex
           .clamp(0, PaperSkin.values.length - 1)
-          .toInt()];
+          .toInt();
+      final pSkin = PaperSkin.values[skinIndex];
       final pLvl = save.getPlaneLevel(save.equippedPlaneIndex);
       if (pType != plane.planeType) plane.syncHitboxForPlaneType(pType);
       if (pSkin != plane.paperSkin) plane.syncSkin(pSkin);
+      plane.syncSkinWear(save.skinWearLevelFor(skinIndex));
+      plane.syncCustomSkinCraft(
+        primaryHex: save.customSkinPrimaryHex,
+        accentHex: save.customSkinAccentHex,
+        stamp: save.customSkinStamp,
+        patternBase64: save.customSkinPatternBase64,
+      );
       if (pLvl != plane.planeLevel) plane.syncLevel(pLvl);
     } catch (_) {}
   }
@@ -498,21 +647,41 @@ class PaperFlightGame extends FlameGame
   ///
   /// Because it is a pure function of meters traveled, the ramp-up is identical
   /// regardless of power-ups or frame rate — distance is the only driver.
-  /// Zen ramps far more gently; trials run at a fixed course speed.
+  /// Classic/Zen airframes scale the ramp and eventual cap; Daily and Trials
+  /// deliberately stay neutral/fixed so shared leaderboard timing remains fair.
   double _scrollSpeedForDistance(double meters) {
     switch (mode) {
       case GameMode.trial:
         return trial?.scrollSpeedPxPerSec ?? GameConfig.baseScrollSpeed;
       case GameMode.zen:
-        return (GameConfig.zenBaseScrollSpeed +
-                GameConfig.zenScrollSpeedPerMeter * meters)
-            .clamp(
-                GameConfig.zenBaseScrollSpeed, GameConfig.zenMaxScrollSpeed);
-      case GameMode.classic:
+        return GameConfig.curvedScrollSpeedForDistance(
+          meters: meters,
+          baseSpeed: GameConfig.zenBaseScrollSpeed,
+          speedPerMeter: GameConfig.zenScrollSpeedPerMeter,
+          maxSpeed: GameConfig.zenMaxScrollSpeed,
+          curveMultiplier: plane.planeType.speedCurveMultiplier,
+          capMultiplier: plane.planeType.speedCapMultiplier,
+        );
       case GameMode.daily:
-        return (GameConfig.baseScrollSpeed +
-                GameConfig.scrollSpeedPerMeter * meters)
-            .clamp(GameConfig.baseScrollSpeed, GameConfig.maxScrollSpeed);
+        // The Daily board promises every player the same world-speed schedule,
+        // so plane curves stay neutral here even when equipped airframes differ.
+        return GameConfig.curvedScrollSpeedForDistance(
+          meters: meters,
+          baseSpeed: GameConfig.baseScrollSpeed,
+          speedPerMeter: GameConfig.scrollSpeedPerMeter,
+          maxSpeed: GameConfig.maxScrollSpeed,
+          curveMultiplier: 1.0,
+          capMultiplier: 1.0,
+        );
+      case GameMode.classic:
+        return GameConfig.curvedScrollSpeedForDistance(
+          meters: meters,
+          baseSpeed: GameConfig.baseScrollSpeed,
+          speedPerMeter: GameConfig.scrollSpeedPerMeter,
+          maxSpeed: GameConfig.maxScrollSpeed,
+          curveMultiplier: plane.planeType.speedCurveMultiplier,
+          capMultiplier: plane.planeType.speedCapMultiplier,
+        );
     }
   }
 
@@ -530,10 +699,13 @@ class PaperFlightGame extends FlameGame
     _distanceMeters = 0;
     _timeScale = 1.0;
     _coinRushShowerTimer = 0;
+    _powerUpTimerAccumulator = 0;
+    _unstableGhostTeleportTimer = 0;
     _runTimeSeconds = 0;
     _hudUpdateAccumulator = 0;
     _runtimeStateSyncAccumulator = 0;
     _lastCrashCause = 'unknown';
+    _skinWearRecordedThisRun = false;
     _zenBounceCooldown = 0;
     _phase = GamePhase.playing;
     _isReviving = false;
@@ -553,11 +725,26 @@ class PaperFlightGame extends FlameGame
     // Seed-aware RNG per system (daily → deterministic identical run; each
     // system gets its own derived generator so frame timing can't reorder
     // the shared draw sequence across devices).
-    final seed = mode == GameMode.daily ? dailySeed : DateTime.now().millisecondsSinceEpoch;
-    _spawnRng = math.Random(seed);
-    obstacleSpawner.random = math.Random(seed + 101);
-    collectibleSpawner.random = math.Random(seed + 202);
-    powerUpSpawner.random = math.Random(seed + 303);
+    final seed = mode == GameMode.daily
+        ? dailySeed
+        : DateTime.now().millisecondsSinceEpoch;
+    _runSeed = seed;
+    _runRandom = RunRandom(seed);
+    _replayDescriptor = RunReplayDescriptor(
+      seed: seed,
+      algorithmVersion: GameConfig.runRandomAlgorithmVersion,
+    );
+    _replayTrace = RunReplayTrace(
+      descriptor: _replayDescriptor,
+      maxEntries: GameConfig.replayTraceMaxEntries,
+    );
+    _spawnRng = _runRandom.stream('root');
+    obstacleSpawner.random =
+        math.Random(_runRandom.nextEntitySeed('spawner.obstacles'));
+    collectibleSpawner.random =
+        math.Random(_runRandom.nextEntitySeed('spawner.collectibles'));
+    powerUpSpawner.random =
+        math.Random(_runRandom.nextEntitySeed('spawner.powerups'));
 
     // Spawner activity per mode: trials are fully scripted; zen keeps
     // obstacles + coins but no power-ups; classic/daily run everything.
@@ -585,11 +772,23 @@ class PaperFlightGame extends FlameGame
       inputManager.calibrateTilt();
       // Re-sync plane type/skin at run start in case hangar changed it
       final save = ref.read(saveDataProvider);
-      final pType = PlaneType.values[save.equippedPlaneIndex.clamp(0, PlaneType.values.length - 1)];
-      final pSkin = PaperSkin.values[save.equippedSkinIndex.clamp(0, PaperSkin.values.length - 1)];
+      final pType = PlaneType.values[save.equippedPlaneIndex
+          .clamp(0, PlaneType.values.length - 1)
+          .toInt()];
+      final skinIndex = save.equippedSkinIndex
+          .clamp(0, PaperSkin.values.length - 1)
+          .toInt();
+      final pSkin = PaperSkin.values[skinIndex];
       final pLvl = save.getPlaneLevel(save.equippedPlaneIndex);
       plane.syncHitboxForPlaneType(pType);
       plane.syncSkin(pSkin);
+      plane.syncSkinWear(save.skinWearLevelFor(skinIndex));
+      plane.syncCustomSkinCraft(
+        primaryHex: save.customSkinPrimaryHex,
+        accentHex: save.customSkinAccentHex,
+        stamp: save.customSkinStamp,
+        patternBase64: save.customSkinPatternBase64,
+      );
       plane.syncLevel(pLvl);
 
       // Crane branch brush-off charges (1 at L1/L2, 2 at L3)
@@ -613,12 +812,16 @@ class PaperFlightGame extends FlameGame
 
     plane.reset();
     obstacleSpawner.reset();
+    obstacleSynergySystem.reset();
     collectibleSpawner.reset();
     powerUpSpawner.reset();
     scoringSystem.reset();
+    dynamicDifficultySystem.reset();
     streakSystem.reset();
     biomeManager.reset(mode);
     windSystem.reset();
+    thermalColumnSystem.reset();
+    wingmanSystem.reset();
     gameFeelSystem.reset();
 
     // Zen Flight: gentle ambient pad from the first flap.
@@ -642,6 +845,8 @@ class PaperFlightGame extends FlameGame
         mode: mode,
         controlScheme: inputManager.currentScheme,
         lifetimeRunNumber: saveAtStart.totalRuns + 1,
+        runSeed: replayDescriptor.seed,
+        rngAlgorithmVersion: replayDescriptor.algorithmVersion,
         trialId: trialId,
       ),
     );
@@ -683,6 +888,31 @@ class PaperFlightGame extends FlameGame
       return;
     }
 
+    final activeCombos = session.activePowerUpCombos;
+
+    // Phase Shield makes the dual protection explicit: obstacle contact phases
+    // through while the shield remains charged for a later non-ghost impact.
+    if (activeCombos.contains(PowerUpCombo.phaseShield)) {
+      plane.playPhaseShieldHitAnimation();
+      return;
+    }
+
+    // Time Dash inherits Turbo's invulnerability while Slow-Mo owns the world
+    // speed; keep the dedicated branch before base ghost/turbo handling so the
+    // combined effect can surface its special impact feedback.
+    if (activeCombos.contains(PowerUpCombo.timeDash)) {
+      plane.playTimeDashPhaseAnimation();
+      return;
+    }
+
+    // Unstable Ghost carries the normal phase benefit, offset by its forced
+    // random teleports in the flight loop.
+    if (session.activeCorruptedPowerUps
+        .contains(CorruptedPowerUpType.unstableGhost)) {
+      plane.playGhostPhaseAnimation();
+      return;
+    }
+
     // Ghost or Turbo Dash: the plane phases straight through every obstacle.
     if (session.activePowerUps.contains(PowerUpType.ghost) ||
         session.activePowerUps.contains(PowerUpType.turboDash)) {
@@ -696,6 +926,10 @@ class PaperFlightGame extends FlameGame
       plane.playGhostPhaseAnimation();
       gameFeelSystem.onShieldBreak();
       scoringSystem.onObstacleHit();
+      gameplayEvents.emit(const DefensiveSaveGameplayEvent(
+        source: DefensiveSaveSource.decoyClone,
+        severity: .65,
+      ));
       if (_decoyCloneCharges <= 0) {
         ref.read(gameSessionProvider.notifier).deactivatePowerUp(PowerUpType.decoyClone);
       }
@@ -715,16 +949,40 @@ class PaperFlightGame extends FlameGame
       // Simplest: let it continue but add brief ghost immunity via shield hit?
       // We give a tiny scale pulse and keep flying.
       scoringSystem.onObstacleHit(); // slight combo penalty but not crash
+      gameplayEvents.emit(const DefensiveSaveGameplayEvent(
+        source: DefensiveSaveSource.craneBrushOff,
+        severity: .50,
+      ));
       return;
     }
 
     // Shield absorbs the hit — handles multi-hit shields (Bomber 2..3 hits).
     if (session.shieldActive || _shieldChargesRemaining > 0) {
+      if (powerUpLevel(PowerUpType.shield) >= 2 &&
+          obstacle != null &&
+          obstacle.type.isReflectableProjectile) {
+        obstacle.deflectByShield();
+        plane.playShieldHitAnimation();
+        gameFeelSystem.onShieldBreak();
+        gameplayEvents.emit(const DefensiveSaveGameplayEvent(
+          source: DefensiveSaveSource.shieldReflection,
+          severity: .30,
+        ));
+        world.add(ColoredBurst(
+          position: plane.position.clone(),
+          color: const Color(0xFFFFD740),
+        ));
+        return;
+      }
       if (_shieldChargesRemaining > 1) {
         _shieldChargesRemaining--;
         plane.playShieldHitAnimation();
         gameFeelSystem.onShieldBreak();
         scoringSystem.onObstacleHit();
+        gameplayEvents.emit(const DefensiveSaveGameplayEvent(
+          source: DefensiveSaveSource.shieldCharge,
+          severity: .65,
+        ));
         return;
       } else {
         _shieldChargesRemaining = 0;
@@ -732,6 +990,10 @@ class PaperFlightGame extends FlameGame
         scoringSystem.onObstacleHit();
         plane.playShieldHitAnimation();
         gameFeelSystem.onShieldBreak();
+        gameplayEvents.emit(const DefensiveSaveGameplayEvent(
+          source: DefensiveSaveSource.shieldCharge,
+          severity: .85,
+        ));
         return;
       }
     }
@@ -802,6 +1064,10 @@ class PaperFlightGame extends FlameGame
     );
     gameFeelSystem.onShieldBreak(); // soft haptic + chime, no penalty
     scoringSystem.onObstacleHit(); // tiny combo penalty, nothing else
+    gameplayEvents.emit(const DefensiveSaveGameplayEvent(
+      source: DefensiveSaveSource.zenBounce,
+      severity: .45,
+    ));
   }
 
   /// Ends a Zen flight from the pause menu: records the personal best
@@ -819,9 +1085,7 @@ class PaperFlightGame extends FlameGame
         durationSeconds: _runTimeSeconds,
       ),
     );
-    try {
-      ref.read(saveDataProvider.notifier).recordZenRun(_distanceMeters);
-    } catch (_) {}
+    unawaited(_persistZenCompletion());
     ref.read(gameSessionProvider.notifier).endZen();
   }
 
@@ -892,15 +1156,11 @@ class PaperFlightGame extends FlameGame
       );
     }
 
-    if (stars > 0) {
-      unawaited(() async {
-        try {
-          await ref
-              .read(saveDataProvider.notifier)
-              .recordTrialStars(trialId: def.id, stars: stars);
-        } catch (_) {}
-      }());
-    }
+    unawaited(_persistTrialCompletion(
+      trialId: def.id,
+      stars: stars,
+      crashed: !completed && !timedOut,
+    ));
   }
 
   /// Ends an in-progress run without awarding economy/progression and records
@@ -918,6 +1178,7 @@ class PaperFlightGame extends FlameGame
         reason: reason,
       ),
     );
+    unawaited(_recordSkinWear(crashed: false));
     _phase = GamePhase.idle;
     inputManager.pauseSensors();
     gameFeelSystem.silence();
@@ -988,78 +1249,146 @@ class PaperFlightGame extends FlameGame
     collectibleSpawner.spawnCoinShower();
   }
 
-  /// Applies a timed/charge power-up effect. Shared by on-world pickups
-  /// ([PowerUpComponent]) and gesture-triggered plane power-ups so both paths
-  /// behave identically.
-  void applyPowerUp(PowerUpType type) {
+  bool hasCorruptedPowerUp(CorruptedPowerUpType type) =>
+      ref.read(gameSessionProvider).activeCorruptedPowerUps.contains(type);
+
+  /// Applies an immediate risk/reward pickup. Corrupted effects intentionally
+  /// bypass charge storage: accepting the curse starts its timer at once.
+  void applyCorruptedPowerUp(CorruptedPowerUpType type) {
+    final notifier = ref.read(gameSessionProvider.notifier);
+    notifier.activateCorruptedPowerUp(
+      type,
+      GameConfig.corruptedPowerUpDuration,
+    );
+    if (type == CorruptedPowerUpType.unstableGhost) {
+      _unstableGhostTeleportTimer = 0;
+    }
+    Future.delayed(
+      Duration(
+        milliseconds: (GameConfig.corruptedPowerUpDuration * 1000).toInt(),
+      ),
+      () {
+        if (!_disposed) notifier.deactivateCorruptedPowerUp(type);
+      },
+    );
+  }
+
+  /// Receives a world pickup. Timed effects are banked as charges so their
+  /// burst never starts while the player has no tactical use for it.
+  void collectPowerUp(PowerUpType type) {
+    if (type.isChargeBased) {
+      final crafted = ref.read(gameSessionProvider.notifier).addPowerUpCharge(
+            type,
+            maxCharges: GameConfig.chargePowerUpMaxCharges,
+          );
+      if (crafted) {
+        world.add(ColoredBurst(
+          position: plane.position.clone(),
+          color: const Color(0xFFFFD740),
+        ));
+        world.add(FloatingScoreText(
+          position: plane.position.clone(),
+          text: 'EMPOWERED ${type.displayName.toUpperCase()}!',
+          color: const Color(0xFFFFD740),
+          fontSize: 16,
+        ));
+      }
+      return;
+    }
+    applyPowerUp(type);
+  }
+
+  /// Called by the HUD charge button or a plane signature gesture. Returns
+  /// false without consuming anything when the burst is already active or no
+  /// selected charge is banked.
+  bool triggerPowerUpCharge(PowerUpType type, {bool empowered = false}) {
+    if (!type.isChargeBased) return false;
+    final session = ref.read(gameSessionProvider);
+    if (session.activePowerUps.contains(type)) return false;
+    final consumed = empowered
+        ? ref.read(gameSessionProvider.notifier).consumeEmpoweredPowerUpCharge(type)
+        : ref.read(gameSessionProvider.notifier).consumePowerUpCharge(type);
+    if (!consumed) return false;
+    spawnPowerUpFeedback(this, plane.position, type);
+    applyPowerUp(type, empowered: empowered);
+    return true;
+  }
+
+  /// Applies an already-activated timed/charge power-up effect. Shared by HUD
+  /// charges and gesture-triggered plane signature power-ups.
+  void applyPowerUp(PowerUpType type, {bool empowered = false}) {
     // Track for challenge "without power-up" and "use power-ups"
     _powerUpUsedThisRun = true;
     _powerUpsUsedThisRun++;
 
     final notifier = ref.read(gameSessionProvider.notifier);
+    final burstDuration = empowered
+        ? GameConfig.empoweredPowerUpBurstDuration
+        : GameConfig.chargePowerUpBurstDuration;
+    gameFeelSystem.onPowerUpActivated(type, empowered: empowered);
     switch (type) {
       case PowerUpType.shield:
         // Absorbs hits — no timer; consumed on impact.
         notifier.activatePowerUp(PowerUpType.shield);
         _shieldChargesRemaining = math.max(_shieldChargesRemaining, 1);
       case PowerUpType.magnet:
-        notifier.activatePowerUp(PowerUpType.magnet);
-        notifier.setPowerUpTimer(PowerUpType.magnet, GameConfig.magnetDuration);
+        notifier.activatePowerUp(PowerUpType.magnet, empowered: empowered);
+        notifier.setPowerUpTimer(PowerUpType.magnet, burstDuration);
         Future.delayed(
-          Duration(milliseconds: (GameConfig.magnetDuration * 1000).toInt()),
+          Duration(milliseconds: (burstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.magnet);
           },
         );
       case PowerUpType.ghost:
         // Phase through every obstacle + chromatic aberration entry!
-        notifier.activatePowerUp(PowerUpType.ghost);
-        notifier.setPowerUpTimer(PowerUpType.ghost, GameConfig.ghostDuration);
+        notifier.activatePowerUp(PowerUpType.ghost, empowered: empowered);
+        notifier.setPowerUpTimer(PowerUpType.ghost, burstDuration);
         gameFeelSystem.onGhostActivated();
         Future.delayed(
-          Duration(milliseconds: (GameConfig.ghostDuration * 1000).toInt()),
+          Duration(milliseconds: (burstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.ghost);
           },
         );
       case PowerUpType.slowMo:
-        notifier.activatePowerUp(PowerUpType.slowMo);
-        notifier.setPowerUpTimer(PowerUpType.slowMo, GameConfig.slowMoDuration);
-        applySlowMo(GameConfig.slowMoDuration);
+        notifier.activatePowerUp(PowerUpType.slowMo, empowered: empowered);
+        notifier.setPowerUpTimer(PowerUpType.slowMo, burstDuration);
+        applySlowMo(burstDuration);
       case PowerUpType.coinRush:
         // 2× coin value for the duration, plus an immediate coin shower.
-        notifier.activatePowerUp(PowerUpType.coinRush);
-        notifier.setPowerUpTimer(PowerUpType.coinRush, GameConfig.coinRushDuration);
+        notifier.activatePowerUp(PowerUpType.coinRush, empowered: empowered);
+        notifier.setPowerUpTimer(PowerUpType.coinRush, burstDuration);
         beginCoinRush();
         Future.delayed(
-          Duration(milliseconds: (GameConfig.coinRushDuration * 1000).toInt()),
+          Duration(milliseconds: (burstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.coinRush);
           },
         );
       case PowerUpType.doubleScore:
-        notifier.activatePowerUp(PowerUpType.doubleScore);
-        notifier.setPowerUpTimer(PowerUpType.doubleScore, GameConfig.doubleScoreDuration);
+        notifier.activatePowerUp(PowerUpType.doubleScore, empowered: empowered);
+        notifier.setPowerUpTimer(PowerUpType.doubleScore, burstDuration);
         Future.delayed(
-          Duration(milliseconds: (GameConfig.doubleScoreDuration * 1000).toInt()),
+          Duration(milliseconds: (burstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.doubleScore);
           },
         );
       case PowerUpType.shrink:
-        notifier.activatePowerUp(PowerUpType.shrink);
-        notifier.setPowerUpTimer(PowerUpType.shrink, GameConfig.shrinkDuration);
+        notifier.activatePowerUp(PowerUpType.shrink, empowered: empowered);
+        notifier.setPowerUpTimer(PowerUpType.shrink, burstDuration);
         Future.delayed(
-          Duration(milliseconds: (GameConfig.shrinkDuration * 1000).toInt()),
+          Duration(milliseconds: (burstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.shrink);
           },
         );
       case PowerUpType.windCaller:
-        notifier.activatePowerUp(PowerUpType.windCaller);
-        notifier.setPowerUpTimer(PowerUpType.windCaller, GameConfig.windCallerDuration);
+        notifier.activatePowerUp(PowerUpType.windCaller, empowered: empowered);
+        notifier.setPowerUpTimer(PowerUpType.windCaller, burstDuration);
         Future.delayed(
-          Duration(milliseconds: (GameConfig.windCallerDuration * 1000).toInt()),
+          Duration(milliseconds: (burstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.windCaller);
           },
@@ -1068,19 +1397,19 @@ class PaperFlightGame extends FlameGame
         _decoyCloneCharges = 2;
         notifier.activatePowerUp(PowerUpType.decoyClone);
       case PowerUpType.blackHole:
-        notifier.activatePowerUp(PowerUpType.blackHole);
-        notifier.setPowerUpTimer(PowerUpType.blackHole, GameConfig.blackHoleDuration);
+        notifier.activatePowerUp(PowerUpType.blackHole, empowered: empowered);
+        notifier.setPowerUpTimer(PowerUpType.blackHole, burstDuration);
         Future.delayed(
-          Duration(milliseconds: (GameConfig.blackHoleDuration * 1000).toInt()),
+          Duration(milliseconds: (burstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.blackHole);
           },
         );
       case PowerUpType.turboDash:
-        notifier.activatePowerUp(PowerUpType.turboDash);
-        notifier.setPowerUpTimer(PowerUpType.turboDash, GameConfig.turboDashDuration);
+        notifier.activatePowerUp(PowerUpType.turboDash, empowered: empowered);
+        notifier.setPowerUpTimer(PowerUpType.turboDash, burstDuration);
         Future.delayed(
-          Duration(milliseconds: (GameConfig.turboDashDuration * 1000).toInt()),
+          Duration(milliseconds: (burstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.turboDash);
           },
@@ -1122,11 +1451,52 @@ class PaperFlightGame extends FlameGame
       return;
     }
 
-    spawnPowerUpFeedback(this, plane.position, type);
-    applyPowerUp(type);
+    triggerPowerUpCharge(type);
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────
+
+  /// Persists distance wear and a final-crash mark for the equipped skin once
+  /// per run. Wear is cosmetic-only and therefore never delays results UI.
+  Future<void> _recordSkinWear({required bool crashed}) async {
+    if (_skinWearRecordedThisRun) return;
+    _skinWearRecordedThisRun = true;
+    try {
+      final save = ref.read(saveDataProvider);
+      final skinIndex = save.equippedSkinIndex
+          .clamp(0, PaperSkin.values.length - 1)
+          .toInt();
+      await ref.read(saveDataProvider.notifier).accrueSkinWear(
+            skinIndex: skinIndex,
+            distanceMeters: _distanceMeters,
+            crashed: crashed,
+          );
+    } catch (_) {
+      // Cosmetic persistence never compromises the end-of-run flow.
+    }
+  }
+
+  Future<void> _persistZenCompletion() async {
+    try {
+      await ref.read(saveDataProvider.notifier).recordZenRun(_distanceMeters);
+    } catch (_) {}
+    await _recordSkinWear(crashed: false);
+  }
+
+  Future<void> _persistTrialCompletion({
+    required int trialId,
+    required int stars,
+    required bool crashed,
+  }) async {
+    try {
+      if (stars > 0) {
+        await ref
+            .read(saveDataProvider.notifier)
+            .recordTrialStars(trialId: trialId, stars: stars);
+      }
+    } catch (_) {}
+    await _recordSkinWear(crashed: crashed);
+  }
 
   Future<void> _finalizeRun({required bool wasRevived}) async {
     final session = ref.read(gameSessionProvider);
@@ -1154,6 +1524,7 @@ class PaperFlightGame extends FlameGame
       lifetimeRunNumber: preRunSave.totalRuns + 1,
       runsSinceLastInterstitial:
           preRunSave.runsSinceLastInterstitial + 1,
+      replayFingerprint: replayTrace.snapshot().fingerprint,
     );
 
     // Trigger the game-over transition immediately so the results screen starts
@@ -1164,7 +1535,7 @@ class PaperFlightGame extends FlameGame
       ref.read(gameSessionProvider.notifier).triggerGameOver(result);
     }
 
-    // Persist in the background (unawaited).
+    // Persist economy and cosmetic weathering in the background (unawaited).
     unawaited(_persistRun());
   }
 
@@ -1175,6 +1546,8 @@ class PaperFlightGame extends FlameGame
     final notifier = ref.read(saveDataProvider.notifier);
 
     try {
+      // Keep wear and run/economy writes serialized through PersistenceService.
+      await _recordSkinWear(crashed: true);
       if (mode == GameMode.daily) {
         // ── Daily Seeded Flight: the award is the leaderboard — the run never
         // touches coins, high scores or challenge objectives.

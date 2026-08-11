@@ -5,11 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_typography.dart';
+import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
 import '../core/widgets/currency_chip.dart';
+import '../core/widgets/custom_skin_workshop_dialog.dart';
 import '../core/widgets/paper_button.dart';
 import '../core/widgets/paper_card.dart';
 import '../core/widgets/paper_icons.dart';
+import '../game/components/skins/weathered_paper_skin_painter.dart';
 import '../providers/save_data_provider.dart';
 import '../services/analytics_service.dart';
 
@@ -29,7 +32,7 @@ class HangarScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final save = ref.watch(saveDataProvider);
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
@@ -60,6 +63,7 @@ class HangarScreen extends ConsumerWidget {
             tabs: const [
               Tab(text: 'PLANES'),
               Tab(text: 'SKINS'),
+              Tab(text: 'POWER-UPS'),
             ],
           ),
         ),
@@ -67,6 +71,7 @@ class HangarScreen extends ConsumerWidget {
           children: [
             _PlanesTab(),
             _SkinsTab(),
+            _PowerUpsTab(),
           ],
         ),
       ),
@@ -572,6 +577,193 @@ class _PlaneShowcaseStageState extends ConsumerState<_PlaneShowcaseStage>
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// Power-Up Evolution Tab
+// ════════════════════════════════════════════════════════════════════════════
+
+class _PowerUpsTab extends ConsumerWidget {
+  const _PowerUpsTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final save = ref.watch(saveDataProvider);
+    final notifier = ref.read(saveDataProvider.notifier);
+    const evolvable = [PowerUpType.magnet, PowerUpType.shield];
+
+    return Container(
+      color: AppColors.backgroundDeep,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+        children: [
+          Text('POWER-UP EVOLUTION', style: AppTypography.headline),
+          const SizedBox(height: 6),
+          Text(
+            'Invest coins in permanent Hangar research. Timed bursts inherit these upgrades in every run.',
+            style: AppTypography.bodyMedium.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 18),
+          for (final type in evolvable) ...[
+            _PowerUpEvolutionCard(
+              type: type,
+              level: save.getPowerUpLevel(type.index),
+              canAfford: save.coins >= type.evolutionCost(2),
+              onUpgrade: () async {
+                final success = await notifier.upgradePowerUp(type);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(success
+                      ? '${type.displayName} evolved to Lv2!'
+                      : 'Not enough coins or already at max level.'),
+                  backgroundColor:
+                      success ? AppColors.success : AppColors.danger,
+                ));
+              },
+            ),
+            const SizedBox(height: 14),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            'More power-up evolutions are planned for future research pages.',
+            textAlign: TextAlign.center,
+            style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PowerUpEvolutionCard extends StatelessWidget {
+  const _PowerUpEvolutionCard({
+    required this.type,
+    required this.level,
+    required this.canAfford,
+    required this.onUpgrade,
+  });
+
+  final PowerUpType type;
+  final int level;
+  final bool canAfford;
+  final VoidCallback onUpgrade;
+
+  @override
+  Widget build(BuildContext context) {
+    final isMax = level >= GameConfig.powerUpEvolutionMaxLevel;
+    final color = type == PowerUpType.magnet
+        ? const Color(0xFFAB47BC)
+        : const Color(0xFF64B5F6);
+    final icon = type == PowerUpType.magnet
+        ? Icons.my_location_rounded
+        : Icons.shield_rounded;
+    final cost = type.evolutionCost(level + 1);
+
+    return PaperCard(
+      color: AppColors.paper,
+      padding: const EdgeInsets.all(16),
+      borderColor: color.withOpacity(.62),
+      borderWidth: 1.4,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(.16),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(icon, color: color, size: 26),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(type.displayName,
+                        style: AppTypography.bodyLarge.copyWith(
+                            color: AppColors.paperInk, fontSize: 16)),
+                    const SizedBox(height: 3),
+                    Text(
+                      type.evolutionDescription(level),
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.paperInkSoft,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _EvolutionLevelPips(level: level),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.arrow_forward_rounded, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    isMax
+                        ? 'Evolution complete'
+                        : type.evolutionDescription(level + 1),
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.paperInk,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (!isMax) ...[
+            const SizedBox(height: 12),
+            PaperButton(
+              label: 'EVOLVE • $cost ●',
+              compact: true,
+              expand: true,
+              color: canAfford ? color : AppColors.paperInkSoft,
+              textColor: Colors.white,
+              onPressed: canAfford ? onUpgrade : null,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EvolutionLevelPips extends StatelessWidget {
+  const _EvolutionLevelPips({required this.level});
+  final int level;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text('LV $level', style: AppTypography.overline.copyWith(fontSize: 9)),
+        const SizedBox(height: 3),
+        Row(
+          children: List.generate(
+            GameConfig.powerUpEvolutionMaxLevel,
+            (index) => Icon(
+              index < level ? Icons.star_rounded : Icons.star_outline_rounded,
+              size: 14,
+              color: index < level ? AppColors.coinGold : AppColors.paperInkSoft,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // Skins Tab — Stage + list
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -668,7 +860,10 @@ class _SkinsTabState extends ConsumerState<_SkinsTab> {
                       final isSel = selected == index;
                       final canAffordCoins = save.coins >= s.unlockCostCoins;
                       final canAffordGems = save.gems >= s.unlockCostGems;
-                      final canAfford = canAffordCoins && canAffordGems;
+                      final seasonOpen =
+                          s.isAvailableForPurchaseAt(DateTime.now());
+                      final canAfford =
+                          canAffordCoins && canAffordGems && seasonOpen;
                       return _SkinCard(
                         skin: s,
                         unlocked: unl,
@@ -749,6 +944,21 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
 
   @override
   Widget build(BuildContext context) {
+    final save = ref.watch(saveDataProvider);
+    final wearLevel = save.skinWearLevelFor(widget.selectedIndex);
+    final wearLabel = wearLevel < .18
+        ? 'PRISTINE'
+        : (wearLevel < .68 ? 'SEASONED' : 'VETERAN');
+    final equippedPlane = PlaneType.values[save.equippedPlaneIndex
+        .clamp(0, PlaneType.values.length - 1)
+        .toInt()];
+    final synergy = GameConfig.synergyBonus(equippedPlane, widget.skin);
+    final rarity = widget.skin.rarity;
+    final synergyDetail = synergy.trailEffect == SkinTrailEffect.petals
+        ? 'PETAL TRAIL'
+        : (synergy.hitboxScaleMultiplier < 1.0
+            ? 'HITBOX ${(synergy.hitboxScaleMultiplier * 100).round()}%'
+            : 'THERMAL ${(synergy.thermalLiftMultiplier * 100).round()}%');
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
@@ -845,13 +1055,21 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
                                         width: 136,
                                         height: 86,
                                         decoration: BoxDecoration(
-                                          color: Color(widget.skin.baseColorHex),
+                                          color: widget.skin == PaperSkin.customCraft
+                                              ? Color(save.customSkinPrimaryHex)
+                                              : Color(widget.skin.baseColorHex),
                                           borderRadius:
                                               BorderRadius.circular(14),
                                           border: Border.all(
-                                              color: Colors.white
-                                                  .withOpacity(0.28),
-                                              width: 1.4),
+                                            color: rarity.color.withOpacity(
+                                              rarity == SkinRarity.common
+                                                  ? .45
+                                                  : .86,
+                                            ),
+                                            width: rarity == SkinRarity.mythic
+                                                ? 2.2
+                                                : 1.4,
+                                          ),
                                           boxShadow: [
                                             BoxShadow(
                                                 color: Colors.black
@@ -870,6 +1088,19 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
                                                   painter:
                                                       _SkinPatternPainter(
                                                           skin: widget.skin)),
+                                              CustomPaint(
+                                                painter: _WearOverlayPainter(
+                                                  skin: widget.skin,
+                                                  wearLevel: wearLevel,
+                                                ),
+                                              ),
+                                              CustomPaint(
+                                                painter: _RarityBorderPainter(
+                                                  rarity: rarity,
+                                                  phase: t,
+                                                  radius: 13,
+                                                ),
+                                              ),
                                               // paper plane silhouette centered
                                               Center(
                                                 child: CustomPaint(
@@ -915,6 +1146,53 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
                               color: Colors.white.withOpacity(0.55),
                               fontSize: 10,
                               fontStyle: FontStyle.italic)),
+                      if (widget.unlocked) ...[
+                        const SizedBox(height: 5),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(
+                                  .12 + wearLevel * .28),
+                            ),
+                          ),
+                          child: Text(
+                            'PAPER $wearLabel • ${(wearLevel * 100).round()}% PATINA',
+                            style: AppTypography.overline.copyWith(
+                              color: wearLevel >= .68
+                                  ? const Color(0xFFFFCC80)
+                                  : Colors.white.withOpacity(0.72),
+                              fontSize: 7.5,
+                              letterSpacing: .7,
+                            ),
+                          ),
+                        ),
+                        if (synergy.isActive) ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF80DEEA).withOpacity(.16),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFF80DEEA).withOpacity(.42),
+                              ),
+                            ),
+                            child: Text(
+                              'SYNERGY • ${synergy.label.toUpperCase()} • $synergyDetail',
+                              style: AppTypography.overline.copyWith(
+                                color: const Color(0xFFB2EBF2),
+                                fontSize: 7.2,
+                                letterSpacing: .55,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ],
                   ),
                 ),
@@ -949,7 +1227,9 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
                         Container(
                           height: 64,
                           decoration: BoxDecoration(
-                            color: Color(widget.skin.baseColorHex),
+                            color: widget.skin == PaperSkin.customCraft
+                                ? Color(save.customSkinPrimaryHex)
+                                : Color(widget.skin.baseColorHex),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                                 color: Colors.black.withOpacity(0.08)),
@@ -993,6 +1273,26 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
                                 ),
                               ),
                             )).toList(),
+                          ),
+                          const SizedBox(height: 8),
+                          if (save.customSkinPatternName.isNotEmpty)
+                            Text(
+                              'IMPORTED: ${save.customSkinPatternName}',
+                              style: AppTypography.caption.copyWith(
+                                color: AppColors.paperInkSoft,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          const SizedBox(height: 8),
+                          PaperButton(
+                            label: 'OPEN WORKSHOP',
+                            compact: true,
+                            color: AppColors.accent,
+                            textColor: Colors.white,
+                            onPressed: () {
+                              showCustomSkinWorkshopDialog(context);
+                            },
                           ),
                           const SizedBox(height: 8),
                         ],
@@ -1482,7 +1782,10 @@ class _PlaneCard extends StatelessWidget {
                         Wrap(
                           spacing: 5,
                           runSpacing: 4,
-                          children: plane.traitBullets
+                          children: [
+                            ...plane.traitBullets,
+                            plane.speedProfileLabel,
+                          ]
                               .map((t) => Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 6, vertical: 2),
@@ -2274,10 +2577,15 @@ class _SkinCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLocked = !unlocked;
+    final rarity = skin.rarity;
     final borderColor = equipped
         ? AppColors.success
-        : (selected ? AppColors.accent.withOpacity(0.7) : null);
-    final borderWidth = equipped ? 2.6 : 1.4;
+        : (selected
+            ? AppColors.accent.withOpacity(0.7)
+            : rarity.color.withOpacity(rarity == SkinRarity.common ? .35 : .72));
+    final borderWidth = equipped
+        ? 2.6
+        : (rarity == SkinRarity.mythic ? 2.0 : 1.4);
     final bg = equipped ? const Color(0xFFE9F7EE) : AppColors.paper;
     return Stack(
       clipBehavior: Clip.none,
@@ -2306,6 +2614,8 @@ class _SkinCard extends StatelessWidget {
                                 color: AppColors.paperInk, fontSize: 14),
                           ),
                         ),
+                        const SizedBox(width: 6),
+                        _SkinRarityBadge(rarity: rarity, compact: true),
                         if (selected) ...[
                           const SizedBox(width: 6),
                           Container(
@@ -2399,6 +2709,7 @@ class _SkinSwatch extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = compact ? 52.0 : 52.0;
     final h = compact ? 38.0 : 38.0;
+    final rarity = skin.rarity;
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -2410,7 +2721,12 @@ class _SkinSwatch extends StatelessWidget {
             decoration: BoxDecoration(
               color: Color(skin.baseColorHex),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.white24),
+              border: Border.all(
+                color: rarity.color.withOpacity(
+                  rarity == SkinRarity.common ? .42 : .82,
+                ),
+                width: rarity == SkinRarity.mythic ? 1.8 : 1.1,
+              ),
               boxShadow: [
                 BoxShadow(
                     color: Colors.black.withOpacity(0.18),
@@ -2419,6 +2735,16 @@ class _SkinSwatch extends StatelessWidget {
               ],
             ),
             child: CustomPaint(painter: _SkinPatternPainter(skin: skin)),
+          ),
+        ),
+        IgnorePointer(
+          child: CustomPaint(
+            size: Size(w, h),
+            painter: _RarityBorderPainter(
+              rarity: rarity,
+              phase: 0,
+              radius: 8,
+            ),
           ),
         ),
         if (!unlocked)
@@ -2481,6 +2807,7 @@ class _SkinPatternPainter extends CustomPainter {
         break;
       case PaperSkin.holographicFoil:
       case PaperSkin.animatedHologram:
+      case PaperSkin.flipbook:
         final foil = Paint()
           ..shader = LinearGradient(
                   colors: [
@@ -2617,6 +2944,135 @@ class _SkinPatternPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SkinPatternPainter old) => old.skin != skin;
+}
+
+/// Hangar-preview bridge for the same pristine → veteran blend used in flight.
+class _WearOverlayPainter extends CustomPainter {
+  const _WearOverlayPainter({required this.skin, required this.wearLevel});
+
+  final PaperSkin skin;
+  final double wearLevel;
+  static const WeatheredPaperSkinPainter _painter =
+      WeatheredPaperSkinPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    _painter.paint(
+      canvas,
+      skin: skin,
+      wearLevel: wearLevel,
+      width: size.width,
+      height: size.height,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _WearOverlayPainter old) =>
+      old.skin != skin || (old.wearLevel - wearLevel).abs() > .001;
+}
+
+class _SkinRarityBadge extends StatelessWidget {
+  const _SkinRarityBadge({required this.rarity, this.compact = false});
+
+  final SkinRarity rarity;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final isMythic = rarity == SkinRarity.mythic;
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 5 : 8,
+        vertical: compact ? 2 : 3,
+      ),
+      decoration: BoxDecoration(
+        gradient: isMythic
+            ? const LinearGradient(
+                colors: [
+                  Color(0xFFFF80AB),
+                  Color(0xFF80D8FF),
+                  Color(0xFFB9F6CA),
+                  Color(0xFFFFD740),
+                ],
+              )
+            : null,
+        color: isMythic ? null : rarity.color.withOpacity(.16),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isMythic ? Colors.white.withOpacity(.8) : rarity.color,
+        ),
+      ),
+      child: Text(
+        rarity.label,
+        style: AppTypography.overline.copyWith(
+          color: isMythic ? AppColors.paperInk : rarity.color,
+          fontSize: compact ? 6.8 : 8,
+          letterSpacing: compact ? .45 : .8,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _RarityBorderPainter extends CustomPainter {
+  const _RarityBorderPainter({
+    required this.rarity,
+    required this.phase,
+    required this.radius,
+  });
+
+  final SkinRarity rarity;
+  final double phase;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    ).deflate(.8);
+    if (rarity == SkinRarity.mythic) {
+      final glow = Paint()
+        ..color = const Color(0x88E1BEE7)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+      canvas.drawRRect(rect, glow);
+      final frame = Paint()
+        ..shader = SweepGradient(
+          colors: const [
+            Color(0xFFFF80AB),
+            Color(0xFF80D8FF),
+            Color(0xFFB9F6CA),
+            Color(0xFFFFD740),
+            Color(0xFFFF80AB),
+          ],
+          transform: GradientRotation(phase * math.pi * 2),
+        ).createShader(Offset.zero & size)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.1;
+      canvas.drawRRect(rect, frame);
+      return;
+    }
+
+    final glow = Paint()
+      ..color = rarity.color.withOpacity(.26)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    final frame = Paint()
+      ..color = rarity.color.withOpacity(rarity == SkinRarity.common ? .48 : .88)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.25;
+    canvas.drawRRect(rect, glow);
+    canvas.drawRRect(rect, frame);
+  }
+
+  @override
+  bool shouldRepaint(covariant _RarityBorderPainter old) =>
+      old.rarity != rarity || (old.phase - phase).abs() > .001 ||
+          old.radius != radius;
 }
 
 // ── Action chips — hierarchy ────────────────────────────────────────────────

@@ -70,6 +70,7 @@ lib/
 │   └── utils/
 │       ├── math_utils.dart     # lerp, remap, weighted pick, low-pass filter
 │       ├── noise.dart          # ValueNoise + FBM (wind system)
+│       ├── run_random.dart     # Versioned named streams for replay-safe runs
 │       └── object_pool.dart    # Generic pool for obstacle/coin components
 │
 ├── models/
@@ -86,6 +87,7 @@ lib/
 │
 ├── services/
 │   ├── persistence_service.dart  # Hive read/write wrapper
+│   ├── custom_skin_manager.dart  # Base64 import + pluggable community sync
 │   ├── ad_service.dart           # AdMob rewarded + interstitial
 │   ├── iap_service.dart          # in_app_purchase wrapper
 │   ├── analytics_service.dart    # Firebase Analytics + Crashlytics
@@ -94,18 +96,33 @@ lib/
 │
 ├── game/
 │   ├── paper_flight_game.dart    # FlameGame root — scroll engine, crash, revive
+│   ├── events/
+│   │   └── gameplay_event_bus.dart # Per-game typed coordination signals
+│   ├── replay/
+│   │   └── run_replay_trace.dart # Bounded deterministic layout fingerprint
 │   ├── components/
-│   │   ├── plane_component.dart  # 2-axis physics, hitbox, shield/revive anims
+│   │   ├── plane_component.dart  # 2-axis physics, stall/spin recovery, hitbox, shield/revive anims
+│   │   ├── wingman_component.dart # Friendly formation follower
 │   │   ├── background/
 │   │   │   └── parallax_background.dart  # 3-layer parallax, biome sky gradients
 │   │   ├── obstacles/
 │   │   │   └── obstacle_component.dart   # Base + 5 concrete types (pooled)
 │   │   ├── collectibles/
 │   │   │   └── coin_component.dart       # Coin with magnet + combo integration
+│   │   ├── effects/
+│   │   │   ├── thermal_column_component.dart # Visible local updrafts + orbit surfing
+│   │   │   └── powerup_screen_effect_component.dart # Ghost/Slow-Mo/Black Hole composite VFX
+│   │   ├── skins/
+│   │   │   ├── animated_paper_skin.dart # 8-frame SpriteAnimation skin overlays
+│   │   │   ├── custom_pattern_skin_overlay.dart # Imported Custom Craft image overlay
+│   │   │   ├── reactive_paper_skin_painter.dart # Event-driven skin reactions
+│   │   │   └── weathered_paper_skin_painter.dart # Pristine → veteran texture blend
 │   │   └── powerups/
 │   │       └── powerup_component.dart    # 5 power-up types, Canvas icons
 │   ├── systems/
-│   │   ├── wind_system.dart        # Lane-based FBM noise, thermals, turbulence
+│   │   ├── wind_system.dart        # Lane-based FBM weather + turbulence
+│   │   ├── thermal_column_system.dart # Local visible updraft placement + sampling
+│   │   ├── wingman_system.dart      # Zen/Daily friendly formation + bonuses
 │   │   ├── input_manager.dart      # Hold/release + tilt/touchZone + double-tap
 │   │   ├── scoring_system.dart     # Distance + coins×combo + near-miss
 │   │   ├── biome_manager.dart      # Distance → biome + per-biome obstacle weights
@@ -156,10 +173,14 @@ swap it for a Firestore/REST implementation without touching game code.
 | Decision | Rationale |
 |---|---|
 | Static camera + downward scroll | Simplest Flame architecture for a vertical scroller — no camera-follow logic |
-| Object pools for obstacles/coins | Prevents GC spikes on low-end Android (per GDD §13) |
+| Identity-safe object pools | Prevents GC spikes, rejects duplicate recycle callbacks, caps idle retention, and exposes lifecycle diagnostics |
 | Riverpod outside game loop | Currency/unlocks/settings need to survive screen transitions; Flame's component system is enough inside the loop |
 | Hand-written Hive adapter | Avoids build_runner complexity for CI; safe to replace with generated adapter later |
 | ValueNoise FBM for wind | No external package dependency; deterministic with a seed; cheap enough to sample 4 lanes per frame |
+| Typed gameplay event bus | Decouples confirmed near-miss and defensive-save signals from pacing, feedback, and future telemetry consumers without a global singleton |
+| Versioned named run RNG | Isolates layout, entity-animation, and cosmetic draws so Daily/replay seeds remain stable as systems evolve |
+| Bounded replay trace | Fingerprints all layout decisions while retaining only a fixed recent window for soak-safe divergence reports |
+| Runtime diagnostics snapshot | Aggregates replay, pool, active-entity, and adaptive-difficulty health for debug pause cards and one post-run report |
 | Test AdMob IDs | Always safe to commit; real IDs belong in a build-flavour env file, not source |
 
 ---
@@ -170,10 +191,42 @@ All gameplay constants live in `lib/core/constants/game_config.dart`.
 No magic numbers anywhere else — change one value and it propagates everywhere.
 
 Key knobs to adjust during playtesting:
-- `baseScrollSpeed` / `scrollAcceleration` — overall difficulty ramp
+- `baseScrollSpeed` / `scrollSpeedPerMeter` / `PlaneType.speedCurveMultiplier` — overall and per-airframe speed ramps
 - `liftForce` / `gravity` — hold/release feel
-- `maxWindForce` — wind challenge level
+- `stallAngleOfAttackThreshold` / `spinRecoveryDuration` — extreme-climb risk and recovery commitment
+- `turnMomentumResponsePerSecond` / `wingLoadingResponseExponent` — how quickly light vs. heavy folds bank and recover
+- `maxWindForce` / `turbulencePocketMinDuration` / `turbulencePocketMaxDuration` — gust challenge level and local-cell lifetime
+- `wingFlexForceForFullStrength` / `wingFlexCrosswindNoiseBoost` — visual wing bend sensitivity in gusts
+- `thermalColumnMinRadius` / `thermalSurfLiftMultiplier` — updraft precision and circle-surf payoff
+- `wingmanFormationRadius` / `wingmanCoinScoreMultiplier` — formation tolerance and wingman reward strength
+- `goldLeafCoinSparkleDuration` / `holographicNearMissShiftDuration` — reactive skin response windows
+- `skinWearDistanceForVeteran` / `skinWearCrashImpact` — cosmetic patina pace and crash marks
+- `GameConfig.synergyBonus(...)` — exact plane + skin combo bonuses and visual trail effects
+- `PaperSkin.seasonalAvailability` — limited-shop rotation windows and countdowns
+- `CustomSkinManager.maxPatternBytes` — workshop image-import size guard
+- `PaperSkin.rarity` — common → mythic Hangar/list treatment
+- `goldVortexCoinValueMultiplier` / `timeDashWorldSpeedMultiplier` — stacked power-up combo strength
+- `chargePowerUpMaxCharges` / `chargePowerUpBurstDuration` — banked timed-power-up bursts
+- `magnetLevel2Radius` / `shieldEvolutionLevel2Cost` — Hangar power-up evolution tuning
+- `corruptedPowerUpSpawnChance` / `unstableGhostTeleportInterval` — risk/reward pickup tuning
+- `empoweredPowerUpBurstDuration` / `empoweredMagnetRadius` — three-charge crafting reward strength
+- `PowerUpScreenEffectComponent` — Ghost, Slow-Mo, and Black Hole screen-space visual treatment
+- `powerUpStatusRingRadius` / `powerUpStatusRingStrokeWidth` — in-flight radial effect readability
+- `AudioSynth.shieldHum` / `ghostWhisper` / `turboSpool` — synthesized power-up audio cues
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
+- `obstaclePoolMaxRetained` / `coinPoolMaxRetained` / `powerUpPoolMaxRetained` — idle cache caps after encounter spikes
+- `replayTraceMaxEntries` / `runRandomAlgorithmVersion` — bounded replay verification and seed-generator compatibility
+- Environmental hazards: Lightning Strike, Meteor Shower, and Tornado are biome-weighted in Storm/Atmosphere
+- Flock Migration adds 10–20 dynamically hitboxed birds in a cross-screen V formation
+- Moonlit Ocean introduces slow Whale Breach hazards, sea spray, and a progression step before Atmosphere
+- Paper Dragon is a telegraphed, single-pass serpentine boss with 11 moving segment hitboxes across Night, Ocean, and Atmosphere
+- Interactive Kite Tethers advertise a cyan SNAP window; a precise paper-snap severs one nearby kite, refunds the charge, extends combo, and releases coins
+- Curated Obstacle Combinations reserve a safe corridor for readable two-part City Traffic, Storm Crossfire, Rotor Run, and Kite Relay encounters
+- Dynamic Difficulty adapts density, pressure-hazard weighting, and combination frequency to current-run distance, combo discipline, near-miss skill, and recent defensive saves
+- Telegraphy 2.0 adds arrival countdown dials, intent projections for lanes/areas/trajectories/formations, and generated safe-gap guides for gate obstacles
+- Destructible drones, hot-air/weather balloons, and fireworks expose visible integrity; well-timed paper-snaps crack or break them for a charge refund, combo extension, and coin reward
+- Obstacle Synergies turn close complementary hazards into readable linked states: Storm Charge, Drone Traffic Link, Rotor Wake, and Wind Tether
+- Tunnel Ring Runs introduce precision and drifting gates plus linked ring chains; fully centered runs grant a completion boost, combo extension, and coins
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts
 - `comboDrainDuration` / `comboHitRetentionFraction` — combo decay gauge pace & shield-hit penalty
@@ -214,6 +267,9 @@ for the event dictionary, cohort workflow, guardrails, and physical-device matri
   sensor sample and remains user-paused after an interruption.
 - `FramePerformanceMonitor` records one bounded aggregate per run (average and
   p95 total/build/raster time plus slow/frozen-frame counts).
+- Debug pause cards expose a runtime health snapshot (replay fingerprint,
+  trace count, pool peaks/rejections, active entities, and adaptive intensity);
+  the same bounded summary is emitted as `game_runtime_diagnostics` post-run.
 - Rewarded/interstitial native objects are single-use and disposed on every
   terminal callback. Interstitial counters reset only after an ad was actually
   shown, not after capped or unavailable checks.

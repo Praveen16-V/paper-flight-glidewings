@@ -17,6 +17,7 @@ class RunResult {
     this.powerUpsUsed = 0,
     this.lifetimeRunNumber = 0,
     this.runsSinceLastInterstitial = 0,
+    this.replayFingerprint = '',
   });
 
   final int score;
@@ -37,6 +38,9 @@ class RunResult {
   final int lifetimeRunNumber;
   final int runsSinceLastInterstitial;
 
+  /// Bounded deterministic layout signature for replay/soak verification.
+  final String replayFingerprint;
+
   int get effectiveCoins =>
       doubleCoinsApplied ? coinsCollected * 2 : coinsCollected;
 
@@ -55,6 +59,7 @@ class RunResult {
     int? powerUpsUsed,
     int? lifetimeRunNumber,
     int? runsSinceLastInterstitial,
+    String? replayFingerprint,
   }) {
     return RunResult(
       score: score ?? this.score,
@@ -72,6 +77,7 @@ class RunResult {
       lifetimeRunNumber: lifetimeRunNumber ?? this.lifetimeRunNumber,
       runsSinceLastInterstitial:
           runsSinceLastInterstitial ?? this.runsSinceLastInterstitial,
+      replayFingerprint: replayFingerprint ?? this.replayFingerprint,
     );
   }
 }

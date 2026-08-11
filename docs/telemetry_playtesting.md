@@ -15,9 +15,11 @@ changed.
 | Where do runs end? | `run_completed.crash_cause`, `run_abandoned.reason`, grouped by `mode` |
 | Is difficulty fair? | `distance_meters`, `duration_seconds`, `final_biome`, `max_combo`, `near_misses` |
 | Are trials readable? | `trial_selected` → `trial_completed`, including `completed`, `failure_reason`, `stars`, and course coins |
+| Can a seeded layout be reconstructed? | `run_started.run_seed` plus `rng_algorithm_version`, `balance_version`, and `run_completed.replay_fingerprint` |
 | Are rewards paced well? | `economy_transaction`, grouped by `currency`, `direction`, and `reason` |
 | Are ads healthy? | `ad_requested` → `ad_impression` → `ad_outcome` / `ad_reward_earned` |
 | Do low-end devices hold frame budget? | `game_frame_performance`: average/p95 build, raster and total frame time, slow/frozen frames |
+| Did a long run keep system health bounded? | `game_runtime_diagnostics`: trace count, active entities, pool creation/discard/rejection/peak counters |
 | Does onboarding help? | `onboarding_action` by `surface`, `action`, `page`, and `mode` |
 
 ## Recommended tuning loop

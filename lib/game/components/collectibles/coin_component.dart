@@ -46,12 +46,14 @@ class CoinComponent extends CircleComponent
     CollectibleVariant variant = CollectibleVariant.standardCoin,
     String letter = 'P',
     void Function(CoinComponent)? recycleCallback,
+    int? animationSeed,
   }) {
     position = spawnPosition;
     this.variant = variant;
     this.letter = letter;
-    _bobPhase = MathUtils.randomRange(0, math.pi * 2);
-    _rotationAngle = MathUtils.randomRange(0, math.pi * 2);
+    final random = animationSeed == null ? math.Random() : math.Random(animationSeed);
+    _bobPhase = random.nextDouble() * math.pi * 2;
+    _rotationAngle = random.nextDouble() * math.pi * 2;
     _active = true;
     _collected = false;
     onRecycle = recycleCallback;
@@ -80,19 +82,50 @@ class CoinComponent extends CircleComponent
 
     position.y += math.sin(_bobPhase) * 0.4;
 
-    // Magnet pull
+    // Magnet pull. Cursed Magnet overrides normal plane drawbacks and pulls
+    // every collectible harder, while its obstacle pull creates the danger.
     final session = gameRef.ref.read(gameSessionProvider);
     final plane = gameRef.plane;
-    if (plane.planeType == PlaneType.interceptor) {
-      // Interceptor downside: no coin attraction
-    } else if (session.activePowerUps.contains(PowerUpType.magnet)) {
+    final cursedMagnet = gameRef.hasCorruptedPowerUp(
+      CorruptedPowerUpType.cursedMagnet,
+    );
+    if (cursedMagnet) {
       final dist = MathUtils.distance(
         position.x, position.y,
         plane.position.x, plane.position.y,
       );
-      if (dist < GameConfig.coinMagnetRadius) {
+      if (dist < GameConfig.cursedMagnetRadius) {
         final dir = (plane.position - position).normalized();
-        position += dir * (GameConfig.coinMagnetPullSpeed * dt);
+        position += dir * (GameConfig.cursedMagnetCoinPullSpeed * dt);
+      }
+    } else if (plane.planeType == PlaneType.interceptor) {
+      // Interceptor downside: no coin attraction
+    } else if (session.activePowerUps.contains(PowerUpType.magnet)) {
+      final magnetLevel = gameRef.powerUpLevel(PowerUpType.magnet);
+      final empowered = session.activeEmpoweredPowerUps
+          .contains(PowerUpType.magnet);
+      final radius = empowered
+          ? GameConfig.empoweredMagnetRadius
+          : (magnetLevel >= 2
+              ? GameConfig.magnetLevel2Radius
+              : GameConfig.coinMagnetRadius);
+      final pullSpeed = empowered
+          ? GameConfig.empoweredMagnetPullSpeed
+          : (magnetLevel >= 2
+              ? GameConfig.magnetLevel2PullSpeed
+              : GameConfig.coinMagnetPullSpeed);
+      final dist = MathUtils.distance(
+        position.x, position.y,
+        plane.position.x, plane.position.y,
+      );
+      if (variant == CollectibleVariant.gem3D &&
+          (magnetLevel >= 2 || empowered) &&
+          dist < GameConfig.magnetLevel2GemAutoCollectRadius) {        _collect();
+        return;
+      }
+      if (dist < radius) {
+        final dir = (plane.position - position).normalized();
+        position += dir * (pullSpeed * dt);
       }
     } else if (plane.planeType == PlaneType.glider) {
       final rAttract = plane.planeLevel >= 3 ? 160.0 : (plane.planeLevel == 2 ? 125.0 : GameConfig.gliderCoinAttractRadius);

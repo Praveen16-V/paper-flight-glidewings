@@ -58,10 +58,12 @@ class AtmosphereComponent extends PositionComponent with HasGameRef<PaperFlightG
   void render(Canvas canvas) {
     final biome = gameRef.biomeManager.currentBiome;
     _drawWindLanes(canvas);
-    _drawThermals(canvas);
+    // Thermal lift is rendered by local ThermalColumnComponents rather than
+    // as an ambiguous full-lane glow.
     _drawTurbulence(canvas);
     _drawBiomeMotes(canvas, biome);
     if (biome == Biome.storm) _drawStorm(canvas);
+    if (biome == Biome.ocean) _drawOceanSpray(canvas);
     if (biome == Biome.night) _drawNightVignette(canvas);
     if (biome == Biome.atmosphere) _drawMeteors(canvas);
   }
@@ -90,43 +92,111 @@ class AtmosphereComponent extends PositionComponent with HasGameRef<PaperFlightG
     }
   }
 
-  void _drawThermals(Canvas canvas) {
-    for (var lane = 0; lane < GameConfig.windLaneCount; lane++) {
-      final wind = gameRef.windSystem.windAt(lane);
-      if (wind.type != WindType.thermal) continue;
-      final x = (lane + .5) * size.x / GameConfig.windLaneCount;
-      final strength = wind.intensity;
-      final glow = Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-          colors: [
-            Color.fromRGBO(255, 183, 77, .03),
-            Color.fromRGBO(255, 213, 79, .20 + strength * .14),
-            Color.fromRGBO(255, 241, 180, .02),
-          ],
-        ).createShader(Rect.fromLTWH(x - 34, 40, 68, size.y - 80));
-      canvas.drawOval(Rect.fromCenter(center: Offset(x, size.y * .58), width: 62, height: size.y * .95), glow);
-      final shimmer = Paint()..color = Color.fromRGBO(255, 235, 130, .32)..strokeWidth = 1.2;
-      for (var i = 0; i < 6; i++) {
-        final y = size.y - ((_time * (42 + strength * 65) + i * 127) % (size.y + 30));
-        final wobble = sin(_time * 3 + i) * 12;
-        canvas.drawCircle(Offset(x + wobble, y), 1.2 + (i % 2), shimmer);
-      }
-    }
-  }
-
   void _drawTurbulence(Canvas canvas) {
-    final ring = Paint()..style = PaintingStyle.stroke..strokeWidth = 1.4;
     for (final pocket in gameRef.windSystem.turbulencePockets) {
       final x = pocket.normX * size.x;
-      final r = pocket.radius * size.x;
-      final pulse = .45 + sin(_time * 7 + x) * .15;
-      ring.color = Color.fromRGBO(196, 228, 244, pulse.clamp(.12, .7).toDouble());
-      for (var i = 0; i < 3; i++) {
-        final rr = r * (.38 + i * .23) + sin(_time * 4 + i) * 3;
-        canvas.drawArc(Rect.fromCircle(center: Offset(x, size.y * (.35 + i * .16)), radius: rr), _time * 2 + i, pi * 1.35, false, ring);
+      final radius = pocket.radius * size.x;
+      final forceFraction =
+          (pocket.lateralForce.abs() / GameConfig.maxWindForce)
+              .clamp(0.0, 1.0)
+              .toDouble();
+      final direction = pocket.lateralForce == 0
+          ? 1.0
+          : pocket.lateralForce.sign;
+      final life = pocket.lifeFraction;
+      final pulse = .66 + sin(_time * pocket.shiftFrequency * pi + x) * .22;
+      final alpha = (0.10 + pocket.intensity * 0.18) * pulse * life;
+      final centerY = size.y * .54;
+
+      // A translucent local weather cell makes the gameplay boundary legible
+      // before the gust is felt. The cross-hatched swirls distinguish it from
+      // an ordinary lane wind without relying only on colour.
+      final field = Paint()
+        ..shader = RadialGradient(
+          colors: [
+            Color.fromRGBO(128, 222, 234, alpha.clamp(0.0, .34).toDouble()),
+            Color.fromRGBO(156, 39, 176, (alpha * .45).clamp(0.0, .16).toDouble()),
+            const Color(0x00000000),
+          ],
+          stops: const [0.0, 0.62, 1.0],
+        ).createShader(
+          Rect.fromCenter(
+            center: Offset(x, centerY),
+            width: radius * 3.1,
+            height: size.y * .92,
+          ),
+        );
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(x, centerY),
+          width: radius * 3.1,
+          height: size.y * .92,
+        ),
+        field,
+      );
+
+      final swirl = Paint()
+        ..color = Color.fromRGBO(
+          213,
+          246,
+          255,
+          (0.30 + pocket.intensity * .40) * life,
+        )
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.25
+        ..strokeCap = StrokeCap.round;
+      final arrow = Paint()
+        ..color = Color.fromRGBO(
+          255,
+          241,
+          118,
+          (0.38 + forceFraction * .45) * life,
+        )
+        ..style = PaintingStyle.fill;
+
+      for (var i = 0; i < 4; i++) {
+        final y = centerY - 118 + i * 78;
+        final wave = sin(_time * 6.5 + i * 1.9) * 5;
+        final arcRadius = radius * (.42 + i * .12) + wave;
+        final start = direction > 0 ? 0.18 : pi + 0.18;
+        canvas.drawArc(
+          Rect.fromCenter(
+            center: Offset(x, y),
+            width: arcRadius * 2,
+            height: arcRadius * 1.18,
+          ),
+          start,
+          pi * 1.34,
+          false,
+          swirl,
+        );
+
+        // The chevron flips direction with the live physics force, so players
+        // can read each rapid wind reversal rather than treating it as random.
+        final progress = ((_time * (36 + pocket.shiftFrequency * 12) + i * 53) %
+                (radius * 1.7)) /
+            (radius * 1.7);
+        final arrowX = x + (progress - .5) * radius * 1.7 * direction;
+        final arrowPath = Path()
+          ..moveTo(arrowX + direction * 5, y)
+          ..lineTo(arrowX - direction * 3, y - 3.5)
+          ..lineTo(arrowX - direction * 3, y + 3.5)
+          ..close();
+        canvas.drawPath(arrowPath, arrow);
       }
+
+      final boundary = Paint()
+        ..color = Color.fromRGBO(196, 228, 244, (.24 + alpha).clamp(0.0, .54).toDouble())
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.1;
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(x, centerY),
+          width: radius * 2.15,
+          height: size.y * .79,
+        ),
+        boundary,
+      );
     }
   }
 
@@ -144,6 +214,27 @@ class AtmosphereComponent extends PositionComponent with HasGameRef<PaperFlightG
       } else {
         canvas.drawCircle(Offset(mote.x, mote.y), mote.radius, paint);
       }
+    }
+  }
+
+  void _drawOceanSpray(Canvas canvas) {
+    final wave = Paint()
+      ..color = const Color(0x66B3E5FC)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    for (var i = 0; i < 7; i++) {
+      final y = (i * 126.0 + _time * 34.0) % size.y;
+      final path = Path()
+        ..moveTo(0, y)
+        ..quadraticBezierTo(size.x * .25, y - 7, size.x * .5, y)
+        ..quadraticBezierTo(size.x * .75, y + 7, size.x, y);
+      canvas.drawPath(path, wave);
+    }
+    final foam = Paint()..color = const Color(0x99E1F5FE);
+    for (var i = 0; i < 14; i++) {
+      final x = (i * 53.0 + _time * 28.0) % size.x;
+      final y = (i * 89.0 + _time * 46.0) % size.y;
+      canvas.drawCircle(Offset(x, y), 1.2 + (i % 3) * .35, foam);
     }
   }
 

@@ -19,10 +19,11 @@ import '../paper_flight_game.dart';
 ///    In touch-based schemes the streak only accumulates while hands-off —
 ///    it rewards letting the plane soar through its glide arcs.
 ///
-///  * **Thermal Surf** — consecutive seconds riding a thermal updraft lane.
-///    Pays `thermalSurfBasePoints × streakSecond` each full second, capped at
-///    [GameConfig.thermalSurfMaxEscalation]. Resets the instant the plane
-///    leaves the thermal.
+///  * **Thermal Surf** — consecutive seconds riding a visible local updraft
+///    column. Pays `thermalSurfBasePoints × streakSecond` each full second,
+///    capped at [GameConfig.thermalSurfMaxEscalation]. Completing a true orbit
+///    also announces the column's temporary bonus-lift state. The streak resets
+///    the instant the plane leaves the thermal.
 class StreakSystem extends Component with HasGameRef<PaperFlightGame> {
   // ── Smooth Glide state ─────────────────────────────────────────────────────
   double _glideSeconds = 0;
@@ -102,6 +103,17 @@ class StreakSystem extends Component with HasGameRef<PaperFlightGame> {
   // ── Thermal Surf ───────────────────────────────────────────────────────────
 
   void _updateThermalSurf(double dt) {
+    if (gameRef.plane.consumeThermalSurfLoop()) {
+      final liftPercent =
+          ((GameConfig.thermalSurfLiftMultiplier - 1) * 100).round();
+      spawnStreakFeedback(
+        gameRef,
+        _streakTextPosition(),
+        'THERMAL LOOP! +$liftPercent% LIFT',
+        const Color(0xFFFFF176),
+      );
+    }
+
     if (!gameRef.plane.isInThermal) {
       _thermalSeconds = 0;
       _thermalTicksPaid = 0;

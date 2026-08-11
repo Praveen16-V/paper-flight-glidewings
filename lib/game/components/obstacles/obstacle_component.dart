@@ -11,7 +11,9 @@ import '../../../core/constants/game_config.dart';
 import '../../../core/enums/game_enums.dart';
 import '../../../core/utils/math_utils.dart';
 import '../../../providers/game_session_provider.dart';
+import '../../events/gameplay_event_bus.dart';
 import '../../paper_flight_game.dart';
+import '../effects/coin_feedback.dart';
 import '../plane_component.dart';
 import 'obstacle_script.dart';
 
@@ -26,11 +28,30 @@ abstract class ObstacleComponent extends PositionComponent
   bool get isActive => _active;
   bool _nearMissAwarded = false;
 
+  int _durability = 0;
+  bool get isDestructible => type.isDestructible;
+  bool get acceptsSnapInteraction => type.isSnapInteractive || isDestructible;
+  int get durability => _durability;
+  int get maxDurability => type.destructibleHitPoints;
+  double get durabilityFraction => maxDurability <= 0
+      ? 0.0
+      : (_durability / maxDurability).clamp(0.0, 1.0).toDouble();
+
   double _minNearMissClearance = double.infinity;
   void Function(ObstacleComponent)? onRecycle;
 
   double? safeCorridorX;
   ObstacleScript? script;
+
+  /// Non-null while this obstacle belongs to a curated two-part encounter.
+  /// The spawner uses it to reserve the screen until the full pattern clears.
+  String? combinationId;
+  bool get isCombinationMember => combinationId != null;
+
+  ObstacleSynergy? _activeSynergy;
+  ObstacleSynergy? get activeSynergy => _activeSynergy;
+  bool get hasActiveSynergy => _activeSynergy != null;
+
   late math.Random _rng;
 
   double rngRange(double min, double max) =>
@@ -46,6 +67,16 @@ abstract class ObstacleComponent extends PositionComponent
   bool get hasTelegraph => true;
   Color get telegraphColor => const Color(0xFFFF9800);
 
+  /// Distance above the viewport at which an early-warning obstacle begins its
+  /// telegraph. Bosses can override this to keep their full silhouette hidden
+  /// while they announce the encounter.
+  double get earlyWarningLeadDistance => 260.0;
+
+  /// Pooled obstacles normally rebuild hitboxes on activation. Long segmented
+  /// obstacles can retain their child hitboxes between pool uses and only move
+  /// them, avoiding a burst of component allocations at every boss spawn.
+  bool get retainsHitboxesWhenInactive => false;
+
   // ── Activation ─────────────────────────────────────────────────────────────
 
   void activate({
@@ -54,22 +85,35 @@ abstract class ObstacleComponent extends PositionComponent
     double? safeCorridorX,
     void Function(ObstacleComponent)? recycleCallback,
     ObstacleScript? script,
+    String? combinationId,
     math.Random? rng,
   }) {
     final earlyWarning = type == ObstacleType.drone ||
         type == ObstacleType.bird ||
         type == ObstacleType.stormCloud ||
         type == ObstacleType.trafficPlane ||
-        type == ObstacleType.fireworks;
-    position = Vector2(spawnX, earlyWarning ? -260 : GameConfig.obstacleSpawnY);
+        type == ObstacleType.fireworks ||
+        type == ObstacleType.lightningStrike ||
+        type == ObstacleType.meteorShower ||
+        type == ObstacleType.tornado ||
+        type == ObstacleType.flockMigration ||
+        type == ObstacleType.whaleBreach ||
+        type == ObstacleType.paperDragon;
+    position = Vector2(
+      spawnX,
+      earlyWarning ? -earlyWarningLeadDistance : GameConfig.obstacleSpawnY,
+    );
     _active = true;
     _nearMissAwarded = false;
+    _durability = type.destructibleHitPoints;
     _minNearMissClearance = double.infinity;
     animTime = 0.0;
     challengeGapCounted = false;
     onRecycle = recycleCallback;
     this.safeCorridorX = safeCorridorX;
     this.script = script;
+    this.combinationId = combinationId;
+    setObstacleSynergy(null);
     _rng = rng ?? math.Random();
     onActivate(scrollSpeed);
     _playThreatCue();
@@ -80,18 +124,180 @@ abstract class ObstacleComponent extends PositionComponent
     onRecycle = null;
     safeCorridorX = null;
     script = null;
+    combinationId = null;
+    setObstacleSynergy(null);
     _nearMissAwarded = false;
+    _durability = 0;
     _minNearMissClearance = double.infinity;
-    removeAll(children.whereType<ShapeHitbox>().toList());
+    if (!retainsHitboxesWhenInactive) {
+      removeAll(children.whereType<ShapeHitbox>().toList());
+    }
+  }
+
+  /// Shield Lv2 can reflect projectile-class hazards. Recycling through the
+  /// original callback preserves object-pool ownership and avoids a duplicate
+  /// collision on the next frame.
+  void deflectByShield() => recycleAfterInteraction();
+
+  /// Resolves a player-driven obstacle interaction (a shield reflection, a
+  /// severed tether, or a future gadget response) through the same pool-safe
+  /// recycle path. Subclasses should award their feedback before calling this.
+  void recycleAfterInteraction() {
+    if (!_active) return;
+    _active = false;
+    onRecycle?.call(this);
   }
 
   void onActivate(double scrollSpeed) {}
 
+  /// Called by the synergy coordinator only when the linked state actually
+  /// changes, keeping per-frame pair detection allocation-free for obstacles.
+  void setObstacleSynergy(ObstacleSynergy? synergy) {
+    if (_activeSynergy == synergy) return;
+    _activeSynergy = synergy;
+    onObstacleSynergyChanged(synergy);
+  }
+
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {}
+
+  /// Returns a squared distance when this obstacle is inside a live paper-snap
+  /// interaction envelope, otherwise `null`. Subclasses can replace the
+  /// envelope for bespoke interactions (such as kite tethers); destructibles
+  /// use this common, forward-facing target volume.
+  double? snapInteractionDistanceSquaredTo(Vector2 planePosition) {
+    if (!isActive || !isDestructible) return null;
+    final dx = position.x - planePosition.x;
+    final dy = position.y + size.y * .5 - planePosition.y;
+    if (dx.abs() > GameConfig.destructibleSnapHorizontalReach ||
+        dy < -GameConfig.destructibleSnapReachAhead ||
+        dy > GameConfig.destructibleSnapReachBehind) {
+      return null;
+    }
+    return dx * dx + dy * dy;
+  }
+
+  /// Handles the selected paper-snap interaction. A `true` result consumes the
+  /// current snap pulse, so only one nearby target can resolve per burst.
+  bool resolveSnapInteraction(Vector2 planePosition) {
+    if (snapInteractionDistanceSquaredTo(planePosition) == null) return false;
+    return _applySnapDamage();
+  }
+
+  bool _applySnapDamage() {
+    if (!isDestructible || !_active) return false;
+    if (_durability <= 0) _durability = maxDurability;
+    _durability--;
+
+    final impactPosition = Vector2(position.x, position.y + size.y * .5);
+    if (_durability > 0) {
+      game.world.add(
+        ColoredBurst(
+          position: impactPosition.clone(),
+          color: const Color(0xFFFFAB40),
+        ),
+      );
+      game.world.add(
+        FloatingScoreText(
+          position: impactPosition.clone(),
+          text: 'CRACK! $_durability LEFT',
+          color: const Color(0xFFFFAB40),
+          fontSize: 14,
+        ),
+      );
+      game.gameFeelSystem.onNearMiss();
+      return true;
+    }
+
+    final comboNotches = GameConfig.destructibleDestroyComboNotches.toInt();
+    game.scoringSystem
+        .awardComboNotches(GameConfig.destructibleDestroyComboNotches);
+    game.inputManager.restoreSnapCharge(GameConfig.destructibleSnapChargeRefund);
+    game.collectibleSpawner.spawnCoinLine(
+      x: impactPosition.x,
+      startY: impactPosition.y,
+      count: GameConfig.destructibleDestroyCoinCount,
+      spacing: GameConfig.destructibleDestroyCoinSpacing,
+    );
+    game.world.add(
+      ColoredBurst(
+        position: impactPosition.clone(),
+        color: const Color(0xFFFFD740),
+      ),
+    );
+    game.world.add(
+      FloatingScoreText(
+        position: impactPosition.clone(),
+        text: 'PAPER BREAK! +$comboNotches COMBO',
+        color: const Color(0xFFFFD740),
+        fontSize: 16,
+      ),
+    );
+    game.gameFeelSystem.onCoinCollected(game.scoringSystem.comboCount);
+    game.gameplayEvents.emit(ObstacleDestroyedGameplayEvent(type));
+    recycleAfterInteraction();
+    return true;
+  }
+
+  /// Draws an intentionally tiny integrity strip, preserving the obstacle's
+  /// silhouette while making a second drone snap or a fragile target readable.
+  void renderDestructibleIntegrity(
+    Canvas canvas, {
+    required double centerX,
+    required double topY,
+  }) {
+    if (!isDestructible || maxDurability <= 0) return;
+
+    const width = 26.0;
+    const height = 3.4;
+    final rect = Rect.fromLTWH(centerX - width * .5, topY, width, height);
+    final background = Paint()
+      ..color = const Color(0x99000000)
+      ..style = PaintingStyle.fill;
+    final fraction = durabilityFraction;
+    final fill = Paint()
+      ..color = Color.lerp(
+        const Color(0xFFFF5252),
+        const Color(0xFF80DEEA),
+        fraction,
+      )!
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(2)),
+      background,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(rect.left, rect.top, rect.width * fraction, rect.height),
+        const Radius.circular(2),
+      ),
+      fill,
+    );
+
+    if (fraction < 1.0) {
+      final crack = Paint()
+        ..color = const Color(0xFFFFF3E0).withOpacity(.78)
+        ..strokeWidth = .8;
+      canvas.drawLine(
+        Offset(centerX - 5, topY + height + 2),
+        Offset(centerX - 1, topY + height + 6),
+        crack,
+      );
+      canvas.drawLine(
+        Offset(centerX - 1, topY + height + 6),
+        Offset(centerX + 3, topY + height + 3),
+        crack,
+      );
+    }
+  }
+
   void _playThreatCue() {
     final cue = switch (type) {
       ObstacleType.drone => 'drone_warning.wav',
-      ObstacleType.bird => 'bird_warning.wav',
-      ObstacleType.stormCloud => 'thunder_warning.wav',
+      ObstacleType.bird || ObstacleType.flockMigration => 'bird_warning.wav',
+      ObstacleType.stormCloud ||
+      ObstacleType.lightningStrike ||
+      ObstacleType.paperDragon => 'thunder_warning.wav',
+      ObstacleType.tornado => 'wind_loop.wav',
       _ => null,
     };
     if (cue != null) {
@@ -119,6 +325,18 @@ abstract class ObstacleComponent extends PositionComponent
 
     animTime += dt;
     position.y += game.scrollSpeed * dt;
+
+    if (type.isCursedMagnetAttractable &&
+        game.hasCorruptedPowerUp(CorruptedPowerUpType.cursedMagnet)) {
+      final plane = game.plane;
+      final dx = plane.position.x - position.x;
+      final dy = plane.position.y - position.y;
+      final distance = math.sqrt(dx * dx + dy * dy);
+      if (distance > 1 && distance < GameConfig.cursedMagnetRadius) {
+        position += Vector2(dx / distance, dy / distance) *
+            (GameConfig.cursedMagnetObstaclePullSpeed * dt);
+      }
+    }
 
     updateObstacle(dt);
     _trackNearMiss();
@@ -234,13 +452,18 @@ abstract class ObstacleComponent extends PositionComponent
   // ── Off-screen Telegraph Rendering ─────────────────────────────────────────
 
   void renderTelegraph(Canvas canvas) {
-    if (!hasTelegraph || !_active || position.y >= 0 || position.y < -260) {
+    if (!hasTelegraph ||
+        !_active ||
+        position.y >= 0 ||
+        position.y < -earlyWarningLeadDistance) {
       return;
     }
 
-    final progress = (1.0 - (position.y.abs() / 260.0)).clamp(0.0, 1.0);
+    final progress =
+        (1.0 - (position.y.abs() / earlyWarningLeadDistance)).clamp(0.0, 1.0).toDouble();
     final pulse = (math.sin(animTime * 14.0) * 0.5 + 0.5);
-    final alpha = (progress * (0.65 + 0.35 * pulse)).clamp(0.0, 1.0);
+    final alpha =
+        (progress * (0.65 + 0.35 * pulse)).clamp(0.0, 1.0).toDouble();
 
     final warningPaint = Paint()
       ..color = telegraphColor.withOpacity(alpha)
@@ -258,7 +481,41 @@ abstract class ObstacleComponent extends PositionComponent
     canvas.save();
     canvas.translate(localX, localY);
 
+    _drawArrivalDial(canvas, progress, alpha);
     canvas.drawCircle(Offset.zero, 14, glowPaint);
+
+    // Linked beacons distinguish a planned pair from a lone hazard while it
+    // is still off-screen. The actual corridor remains intentionally clean.
+    if (isCombinationMember) {
+      final linkPaint = Paint()
+        ..color = const Color(0xFFB2EBF2).withOpacity(alpha)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4;
+      canvas.drawCircle(const Offset(-4.2, -16.5), 3.4, linkPaint);
+      canvas.drawCircle(const Offset(4.2, -16.5), 3.4, linkPaint);
+      canvas.drawLine(
+        const Offset(-0.8, -16.5),
+        const Offset(0.8, -16.5),
+        linkPaint,
+      );
+    }
+
+    final synergy = _activeSynergy;
+    if (synergy != null) {
+      final synergyPaint = Paint()
+        ..color = synergy.color.withOpacity(alpha)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(
+        Rect.fromCircle(center: const Offset(0, -1), radius: 16),
+        animTime * 3.0,
+        math.pi * 1.2,
+        false,
+        synergyPaint,
+      );
+      canvas.drawCircle(const Offset(0, -19), 2.3, synergyPaint);
+    }
 
     final badgePath = Path()
       ..moveTo(0, -12)
@@ -295,8 +552,225 @@ abstract class ObstacleComponent extends PositionComponent
     renderThreatPreview(canvas, localX, localY, progress, pulse);
   }
 
+  /// A three-tick countdown ring makes the time-to-arrival legible even when
+  /// the player is concentrating on the plane rather than reading a label.
+  void _drawArrivalDial(Canvas canvas, double progress, double alpha) {
+    final radius = GameConfig.telegraphCountdownRadius;
+    final track = Paint()
+      ..color = telegraphColor.withOpacity(alpha * .22)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round;
+    final fill = Paint()
+      ..color = telegraphColor.withOpacity(alpha * .95)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.6
+      ..strokeCap = StrokeCap.round;
+    final rect = Rect.fromCircle(center: Offset.zero, radius: radius);
+    canvas.drawArc(rect, -math.pi / 2, math.pi * 2, false, track);
+    canvas.drawArc(rect, -math.pi / 2, math.pi * 2 * progress, false, fill);
+
+    final tickPaint = Paint()
+      ..color = telegraphColor.withOpacity(alpha * .78)
+      ..strokeWidth = 1.0;
+    for (var i = 0; i < GameConfig.telegraphCountdownTickCount; i++) {
+      final angle = -math.pi / 2 +
+          i * math.pi * 2 / GameConfig.telegraphCountdownTickCount;
+      final inner = radius - 2.8;
+      final outer = radius + 1.6;
+      canvas.drawLine(
+        Offset(math.cos(angle) * inner, math.sin(angle) * inner),
+        Offset(math.cos(angle) * outer, math.sin(angle) * outer),
+        tickPaint,
+      );
+    }
+  }
+
+  /// Draws the profile-specific intent projection beneath the shared warning
+  /// badge. Gate and boss profiles supply their own richer previews.
   void renderThreatPreview(
-      Canvas canvas, double x, double y, double progress, double pulse) {}
+    Canvas canvas,
+    double x,
+    double y,
+    double progress,
+    double pulse,
+  ) {
+    final startY = y + GameConfig.telegraphProjectionStartOffset;
+    final depth = GameConfig.telegraphProjectionDepth * (.48 + progress * .52);
+    final alpha = (progress * .68).clamp(0.0, 1.0).toDouble();
+
+    switch (type.telegraphStyle) {
+      case ObstacleTelegraphStyle.pinpoint:
+        _drawPinpointPreview(canvas, x, startY + depth * .58, alpha, pulse);
+        break;
+      case ObstacleTelegraphStyle.trajectory:
+        _drawTrajectoryPreview(canvas, x, startY, depth, alpha);
+        break;
+      case ObstacleTelegraphStyle.lane:
+        _drawLanePreview(canvas, x, startY, depth, alpha);
+        break;
+      case ObstacleTelegraphStyle.area:
+        _drawAreaPreview(canvas, x, startY, depth, alpha, pulse);
+        break;
+      case ObstacleTelegraphStyle.formation:
+        _drawFormationPreview(canvas, x, startY, depth, alpha);
+        break;
+      case ObstacleTelegraphStyle.gate:
+      case ObstacleTelegraphStyle.boss:
+        break;
+    }
+  }
+
+  void _drawPinpointPreview(
+    Canvas canvas,
+    double x,
+    double y,
+    double alpha,
+    double pulse,
+  ) {
+    final paint = Paint()
+      ..color = telegraphColor.withOpacity(alpha)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round;
+    final radius = 8.0 + pulse * 3.0;
+    canvas.drawCircle(Offset(x, y), radius, paint);
+    canvas.drawLine(Offset(x - radius - 4, y), Offset(x + radius + 4, y), paint);
+    canvas.drawLine(Offset(x, y - radius - 4), Offset(x, y + radius + 4), paint);
+  }
+
+  void _drawTrajectoryPreview(
+    Canvas canvas,
+    double x,
+    double startY,
+    double depth,
+    double alpha,
+  ) {
+    final pathPaint = Paint()
+      ..color = telegraphColor.withOpacity(alpha * .44)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(Offset(x, startY), Offset(x, startY + depth), pathPaint);
+
+    final arrowPaint = Paint()
+      ..color = telegraphColor.withOpacity(alpha)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < GameConfig.telegraphTrajectoryChevronCount; i++) {
+      final t = (i + 1) / (GameConfig.telegraphTrajectoryChevronCount + 1);
+      final cy = startY + depth * t;
+      final sway = math.sin(animTime * 5.0 + i * 1.7) * 3.5;
+      canvas.drawLine(Offset(x - 5 + sway, cy - 3), Offset(x + sway, cy + 3), arrowPaint);
+      canvas.drawLine(Offset(x + sway, cy + 3), Offset(x + 5 + sway, cy - 3), arrowPaint);
+    }
+  }
+
+  void _drawLanePreview(
+    Canvas canvas,
+    double x,
+    double startY,
+    double depth,
+    double alpha,
+  ) {
+    final width = math.max(14.0, size.x * .28).toDouble();
+    final band = Rect.fromCenter(
+      center: Offset(x, startY + depth * .5),
+      width: width,
+      height: depth,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(band, const Radius.circular(5)),
+      Paint()..color = telegraphColor.withOpacity(alpha * .16),
+    );
+    final edge = Paint()
+      ..color = telegraphColor.withOpacity(alpha * .86)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.35;
+    canvas.drawLine(Offset(band.left, band.top), Offset(band.left, band.bottom), edge);
+    canvas.drawLine(Offset(band.right, band.top), Offset(band.right, band.bottom), edge);
+  }
+
+  void _drawAreaPreview(
+    Canvas canvas,
+    double x,
+    double startY,
+    double depth,
+    double alpha,
+    double pulse,
+  ) {
+    final paint = Paint()
+      ..color = telegraphColor.withOpacity(alpha * .82)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    final center = Offset(x, startY + depth * .48);
+    for (var i = 0; i < 3; i++) {
+      final radius = 10.0 + i * 13.0 + pulse * 3.0;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        -math.pi * .82,
+        math.pi * 1.64,
+        false,
+        paint,
+      );
+    }
+  }
+
+  void _drawFormationPreview(
+    Canvas canvas,
+    double x,
+    double startY,
+    double depth,
+    double alpha,
+  ) {
+    final paint = Paint()
+      ..color = telegraphColor.withOpacity(alpha)
+      ..style = PaintingStyle.fill;
+    final baseY = startY + depth * .56;
+    for (var i = 0; i < 5; i++) {
+      final rank = (i + 1) ~/ 2;
+      final side = i.isEven ? -1.0 : 1.0;
+      final px = x + side * rank * 12.0;
+      final py = baseY + rank * 8.0;
+      canvas.drawCircle(Offset(px, py), i == 0 ? 3.8 : 2.6, paint);
+    }
+  }
+
+  /// Shared preview for a gap obstacle. Each gate supplies its real generated
+  /// opening, so the player sees the route they can actually take—not a generic
+  /// centre-screen suggestion.
+  void renderSafeCorridorPreview(
+    Canvas canvas, {
+    required double localY,
+    required double gapLeft,
+    required double gapWidth,
+    required double progress,
+    required double pulse,
+  }) {
+    final alpha = (progress * .82).clamp(0.0, 1.0).toDouble();
+    final height = GameConfig.telegraphGatePreviewHeight;
+    final rect = Rect.fromLTWH(gapLeft, localY - height * .5, gapWidth, height);
+    final fill = Paint()
+      ..color = const Color(0xFF80DEEA).withOpacity(alpha * .20)
+      ..style = PaintingStyle.fill;
+    final edge = Paint()
+      ..color = const Color(0xFFB2EBF2).withOpacity(alpha)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(4)),
+      fill,
+    );
+    canvas.drawLine(Offset(rect.left, rect.top - 5), Offset(rect.left, rect.bottom + 5), edge);
+    canvas.drawLine(Offset(rect.right, rect.top - 5), Offset(rect.right, rect.bottom + 5), edge);
+
+    final centerX = rect.center.dx;
+    final arrowY = rect.center.dy + pulse * 2.0;
+    canvas.drawLine(Offset(centerX - 6, arrowY - 3), Offset(centerX, arrowY + 3), edge);
+    canvas.drawLine(Offset(centerX, arrowY + 3), Offset(centerX + 6, arrowY - 3), edge);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -356,15 +830,14 @@ class PowerLineObstacle extends ObstacleComponent {
   void updateObstacle(double dt) {
     _sparkTimer -= dt;
     if (_sparkTimer <= 0) {
-      _sparkTimer = MathUtils.randomRange(1.8, 3.5);
+      _sparkTimer = rngRange(1.8, 3.5);
       _sparkAlpha = 1.0;
-      _sparkOnLeft = math.Random().nextBool();
+      _sparkOnLeft = rngBool();
       if (_sparkOnLeft) {
-        _sparkX = MathUtils.randomRange(25, math.max(30, _gapX - 15));
+        _sparkX = rngRange(25, math.max(30, _gapX - 15));
       } else {
         final rightStart = _gapX + _gapWidth;
-        _sparkX = MathUtils.randomRange(
-            rightStart + 15, GameConfig.designWidth - 25);
+        _sparkX = rngRange(rightStart + 15, GameConfig.designWidth - 25);
       }
     }
     if (_sparkAlpha > 0) {
@@ -442,6 +915,24 @@ class PowerLineObstacle extends ObstacleComponent {
     }
 
     renderTelegraph(canvas);
+  }
+
+  @override
+  void renderThreatPreview(
+    Canvas canvas,
+    double x,
+    double y,
+    double progress,
+    double pulse,
+  ) {
+    renderSafeCorridorPreview(
+      canvas,
+      localY: y + GameConfig.telegraphProjectionStartOffset + 22,
+      gapLeft: _gapX,
+      gapWidth: _gapWidth,
+      progress: progress,
+      pulse: pulse,
+    );
   }
 
   void _drawPylonTower(Canvas canvas, double x, double h) {
@@ -595,6 +1086,24 @@ class BuildingObstacle extends ObstacleComponent {
     _drawBuildingTower(canvas, rightStart, rightWidth, h, isLeft: false);
 
     renderTelegraph(canvas);
+  }
+
+  @override
+  void renderThreatPreview(
+    Canvas canvas,
+    double x,
+    double y,
+    double progress,
+    double pulse,
+  ) {
+    renderSafeCorridorPreview(
+      canvas,
+      localY: y + GameConfig.telegraphProjectionStartOffset + 22,
+      gapLeft: _leftWidth,
+      gapWidth: _gapWidth,
+      progress: progress,
+      pulse: pulse,
+    );
   }
 
   void _drawBuildingTower(
@@ -839,17 +1348,17 @@ class TreeBranchObstacle extends ObstacleComponent {
   void updateObstacle(double dt) {
     _swayPhase += dt * 3.0;
 
-    if (math.Random().nextDouble() < dt * 1.8) {
+    if (rngRange(0, 1) < dt * 1.8) {
       final startX = _fromLeft
-          ? MathUtils.randomRange(size.x * 0.4, size.x)
-          : MathUtils.randomRange(0, size.x * 0.6);
+          ? rngRange(size.x * 0.4, size.x)
+          : rngRange(0, size.x * 0.6);
       _fallingLeaves.add(_LeafParticle(
         x: startX,
         y: size.y * 0.5,
-        vx: MathUtils.randomRange(-15, 15),
-        vy: MathUtils.randomRange(30, 60),
+        vx: rngRange(-15, 15),
+        vy: rngRange(30, 60),
         color: const Color(0xFF81C784),
-        angle: MathUtils.randomRange(0, math.pi * 2),
+        angle: rngRange(0, math.pi * 2),
       ));
     }
 
@@ -984,6 +1493,7 @@ class BirdObstacle extends ObstacleComponent {
   bool isGolden = false;
   bool isFlock = false;
   bool _isScared = false;
+  bool _rotorWakeActive = false;
 
   @override
   Color get telegraphColor => isGolden ? const Color(0xFFFFD700) : const Color(0xFF42A5F5);
@@ -1000,9 +1510,15 @@ class BirdObstacle extends ObstacleComponent {
     isGolden = rngRange(0, 1) < 0.18; // 18% Golden Bird elite
     isFlock = rngRange(0, 1) < 0.22;  // 22% V-formation flocking
     _isScared = false;
+    _rotorWakeActive = false;
     _velocityX = 0;
 
     _setupHitboxes();
+  }
+
+  @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _rotorWakeActive = synergy == ObstacleSynergy.rotorWake;
   }
 
   void _setupHitboxes() {
@@ -1018,8 +1534,11 @@ class BirdObstacle extends ObstacleComponent {
 
   @override
   void updateObstacle(double dt) {
-    _patrolPhase += _patrolFreq * dt;
-    _wingFlapPhase += dt * (isGolden ? 12.0 : 9.0);
+    final wakeMultiplier = _rotorWakeActive
+        ? GameConfig.obstacleSynergyRotorSpeedMultiplier
+        : 1.0;
+    _patrolPhase += _patrolFreq * wakeMultiplier * dt;
+    _wingFlapPhase += dt * (isGolden ? 12.0 : 9.0) * wakeMultiplier;
 
     // Ghost Interaction: Scared away when Ghost plane is near!
     try {
@@ -1037,7 +1556,11 @@ class BirdObstacle extends ObstacleComponent {
     }
 
     final prevX = position.x;
-    final targetX = _spawnX + _patrolAmplitude * dynamicMovementFactor * math.sin(_patrolPhase);
+    final targetX = _spawnX +
+        _patrolAmplitude *
+            (_rotorWakeActive ? 1.25 : 1.0) *
+            dynamicMovementFactor *
+            math.sin(_patrolPhase);
     position.x = targetX.clamp(
       GameConfig.horizontalEdgeMargin + 10,
       GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 10,
@@ -1050,6 +1573,20 @@ class BirdObstacle extends ObstacleComponent {
     final w = size.x;
     final h = size.y;
     final bankAngle = (_velocityX * 0.0018).clamp(-0.45, 0.45);
+
+    if (_rotorWakeActive) {
+      final wake = Paint()
+        ..color = ObstacleSynergy.rotorWake.color.withOpacity(.58)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.3;
+      canvas.drawArc(
+        Rect.fromCenter(center: Offset(w * .5, h * .5), width: w * 1.7, height: h * 1.5),
+        animTime * 5.0,
+        math.pi * 1.35,
+        false,
+        wake,
+      );
+    }
 
     if (isFlock) {
       // 3 Birds in aerodynamic V-Formation
@@ -1123,6 +1660,7 @@ class DroneObstacle extends ObstacleComponent {
   bool isArmed = false;
   bool isOrbiting = false;
   bool _shieldClashActive = false;
+  bool _trafficLinked = false;
 
   @override
   Color get telegraphColor => isArmed ? const Color(0xFFFF1744) : const Color(0xFFFF5252);
@@ -1138,8 +1676,14 @@ class DroneObstacle extends ObstacleComponent {
     isArmed = rngRange(0, 1) < 0.25;      // 25% Armed Drone elite
     isOrbiting = rngRange(0, 1) < 0.20;   // 20% Orbiting drone behavior
     _shieldClashActive = false;
+    _trafficLinked = false;
 
     _setupHitboxes();
+  }
+
+  @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _trafficLinked = synergy == ObstacleSynergy.droneTrafficLink;
   }
 
   void _setupHitboxes() {
@@ -1223,8 +1767,17 @@ class DroneObstacle extends ObstacleComponent {
       canvas.drawLine(const Offset(-10, 0), const Offset(10, 0), empPaint);
       canvas.drawCircle(Offset.zero, 16, empPaint);
     }
+    if (_trafficLinked) {
+      final linkPaint = Paint()
+        ..color = ObstacleSynergy.droneTrafficLink.color.withOpacity(.82)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5;
+      canvas.drawCircle(Offset.zero, 20, linkPaint);
+      canvas.drawLine(const Offset(0, -24), const Offset(0, -38), linkPaint);
+    }
 
     canvas.restore();
+    renderDestructibleIntegrity(canvas, centerX: w * .5, topY: -6);
     renderTelegraph(canvas);
   }
 
@@ -1256,6 +1809,7 @@ class WindTurbineObstacle extends ObstacleComponent {
   double _bladeAngle = 0;
   double _rotSpeed = 1.4;
   double _bladeRadius = 65;
+  bool _rotorWakeActive = false;
 
   @override
   Color get telegraphColor => const Color(0xFF00E676);
@@ -1266,6 +1820,7 @@ class WindTurbineObstacle extends ObstacleComponent {
     size = Vector2(_bladeRadius * 2.2, _bladeRadius * 2.2 + 60);
     _bladeAngle = rngRange(0, math.pi * 2);
     _rotSpeed = rngRange(1.2, 1.9) * (rngBool() ? 1 : -1);
+    _rotorWakeActive = false;
 
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(CircleHitbox(radius: 14, position: Vector2(size.x * 0.5 - 14, _bladeRadius - 14)));
@@ -1273,8 +1828,16 @@ class WindTurbineObstacle extends ObstacleComponent {
   }
 
   @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _rotorWakeActive = synergy == ObstacleSynergy.rotorWake;
+  }
+
+  @override
   void updateObstacle(double dt) {
-    _bladeAngle += _rotSpeed * dt;
+    final multiplier = _rotorWakeActive
+        ? GameConfig.obstacleSynergyRotorSpeedMultiplier
+        : 1.0;
+    _bladeAngle += _rotSpeed * multiplier * dt;
   }
 
   @override
@@ -1296,6 +1859,19 @@ class WindTurbineObstacle extends ObstacleComponent {
     }
 
     canvas.drawCircle(Offset(cx, cy), 8.0, Paint()..color = const Color(0xFFFAFAFA));
+    if (_rotorWakeActive) {
+      final wakePaint = Paint()
+        ..color = ObstacleSynergy.rotorWake.color.withOpacity(.54)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4;
+      canvas.drawArc(
+        Rect.fromCenter(center: Offset(cx, cy), width: _bladeRadius * 2.8, height: _bladeRadius * 1.7),
+        animTime * 4.0,
+        math.pi * 1.45,
+        false,
+        wakePaint,
+      );
+    }
     renderTelegraph(canvas);
   }
 }
@@ -1358,6 +1934,7 @@ class HotAirBalloonObstacle extends ObstacleComponent {
 
     // Wicker basket
     canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(cx, 82), width: 20, height: 14), const Radius.circular(2)), Paint()..color = const Color(0xFF8D6E63));
+    renderDestructibleIntegrity(canvas, centerX: cx, topY: 0);
     renderTelegraph(canvas);
   }
 }
@@ -1371,6 +1948,7 @@ class StormCloudObstacle extends ObstacleComponent {
 
   double _chargeTimer = 0;
   double _lightningAlpha = 0;
+  bool _stormCharged = false;
 
   @override
   Color get telegraphColor => const Color(0xFF7C4DFF);
@@ -1380,6 +1958,7 @@ class StormCloudObstacle extends ObstacleComponent {
     size = Vector2(100, 55);
     _chargeTimer = rngRange(1.2, 2.5);
     _lightningAlpha = 0;
+    _stormCharged = false;
 
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(CircleHitbox(radius: 24, position: Vector2(8, 4)));
@@ -1388,10 +1967,15 @@ class StormCloudObstacle extends ObstacleComponent {
   }
 
   @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _stormCharged = synergy == ObstacleSynergy.stormCharge;
+  }
+
+  @override
   void updateObstacle(double dt) {
     _chargeTimer -= dt;
     if (_chargeTimer <= 0) {
-      _chargeTimer = MathUtils.randomRange(2.0, 3.8);
+      _chargeTimer = rngRange(2.0, 3.8);
       _lightningAlpha = 1.0;
     }
     if (_lightningAlpha > 0) _lightningAlpha = (_lightningAlpha - dt * 4.0).clamp(0.0, 1.0);
@@ -1404,6 +1988,16 @@ class StormCloudObstacle extends ObstacleComponent {
     canvas.drawCircle(Offset(cx - 26, cy + 4), 22, Paint()..color = const Color(0xFF263238));
     canvas.drawCircle(Offset(cx + 26, cy + 4), 20, Paint()..color = const Color(0xFF263238));
     canvas.drawCircle(Offset(cx, cy), 28, Paint()..color = const Color(0xFF37474F));
+    if (_stormCharged) {
+      canvas.drawCircle(
+        Offset(cx, cy),
+        34 + math.sin(animTime * 9) * 3,
+        Paint()
+          ..color = ObstacleSynergy.stormCharge.color.withOpacity(.48)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.8,
+      );
+    }
 
     if (_lightningAlpha > 0) {
       final bolt = Path()..moveTo(cx, cy + 10)..lineTo(cx - 5, cy + 28)..lineTo(cx + 6, cy + 34)..lineTo(cx, cy + 50);
@@ -1414,7 +2008,7 @@ class StormCloudObstacle extends ObstacleComponent {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 9. KiteObstacle — Exact Polygon Diamond Hitbox, Flowing Tail
+// 9. KiteObstacle — Snap-Interactive Tether, Diamond Hitbox & Flowing Tail
 // ─────────────────────────────────────────────────────────────────────────────
 
 class KiteObstacle extends ObstacleComponent {
@@ -1423,6 +2017,21 @@ class KiteObstacle extends ObstacleComponent {
   double _flutterPhase = 0;
   double _spawnX = 0;
   double _driftAmp = 50;
+  double _snapHintStrength = 0;
+  bool _windsockLinked = false;
+
+  final TextPainter _snapPrompt = TextPainter(
+    text: const TextSpan(
+      text: 'SNAP',
+      style: TextStyle(
+        color: Color(0xFFB2EBF2),
+        fontSize: 8,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 1.1,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
 
   @override
   Color get telegraphColor => const Color(0xFFFF4081);
@@ -1433,9 +2042,11 @@ class KiteObstacle extends ObstacleComponent {
     _spawnX = position.x;
     _driftAmp = script?.driftAmp ?? rngRange(35, 65);
     _flutterPhase = rngRange(0, math.pi * 2);
+    _snapHintStrength = 0;
+    _windsockLinked = false;
 
     removeAll(children.whereType<ShapeHitbox>().toList());
-    // Refined exact 4-point diamond PolygonHitbox
+    // Refined exact 4-point diamond PolygonHitbox.
     add(PolygonHitbox([
       Vector2(size.x * 0.5, 2),
       Vector2(size.x * 0.5 + 14, 20),
@@ -1445,12 +2056,93 @@ class KiteObstacle extends ObstacleComponent {
   }
 
   @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _windsockLinked = synergy == ObstacleSynergy.windTether;
+  }
+
+  @override
   void updateObstacle(double dt) {
-    _flutterPhase += dt * 3.5;
-    position.x = (_spawnX + math.sin(_flutterPhase) * _driftAmp * dynamicMovementFactor).clamp(
-      GameConfig.horizontalEdgeMargin + 20,
-      GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 20,
+    final multiplier = _windsockLinked
+        ? GameConfig.obstacleSynergyKiteDriftMultiplier
+        : 1.0;
+    _flutterPhase += dt * 3.5 * multiplier;
+    position.x = (_spawnX +
+            math.sin(_flutterPhase) *
+                _driftAmp *
+                multiplier *
+                dynamicMovementFactor)
+        .clamp(
+          GameConfig.horizontalEdgeMargin + 20,
+          GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 20,
+        )
+        .toDouble();
+    _updateSnapHint(dt);
+  }
+
+  void _updateSnapHint(double dt) {
+    // Precision Trials stay authored and do not surface optional shortcuts.
+    final target = game.mode != GameMode.trial &&
+            _isWithinSnapHintEnvelope(game.plane.position)
+        ? 1.0
+        : 0.0;
+    final blend = (GameConfig.kiteTetherHintFadeRate * dt)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    _snapHintStrength = MathUtils.lerp(_snapHintStrength, target, blend);
+  }
+
+  bool _isWithinSnapHintEnvelope(Vector2 planePosition) {
+    final dx = position.x - planePosition.x;
+    final dy = position.y + 20.0 - planePosition.y;
+    return dx.abs() <= GameConfig.kiteTetherHintHorizontalReach &&
+        dy >= -GameConfig.kiteTetherHintReachAhead &&
+        dy <= GameConfig.kiteTetherHintReachBehind;
+  }
+
+  @override
+  double? snapInteractionDistanceSquaredTo(Vector2 planePosition) {
+    if (!isActive || !type.isSnapInteractive) return null;
+    final dx = position.x - planePosition.x;
+    final dy = position.y + 20.0 - planePosition.y;
+    if (dx.abs() > GameConfig.kiteTetherSnapHorizontalReach ||
+        dy < -GameConfig.kiteTetherSnapReachAhead ||
+        dy > GameConfig.kiteTetherSnapReachBehind) {
+      return null;
+    }
+    return dx * dx + dy * dy;
+  }
+
+  @override
+  bool resolveSnapInteraction(Vector2 planePosition) {
+    if (snapInteractionDistanceSquaredTo(planePosition) == null) return false;
+
+    final releasePosition = Vector2(position.x, position.y + 20.0);
+    game.scoringSystem
+        .awardComboNotches(GameConfig.kiteTetherSnapComboNotches);
+    game.inputManager.restoreSnapCharge(GameConfig.kiteTetherSnapChargeRefund);
+    game.collectibleSpawner.spawnCoinLine(
+      x: releasePosition.x,
+      startY: releasePosition.y,
+      count: GameConfig.kiteTetherSnapRewardCoinCount,
+      spacing: GameConfig.kiteTetherSnapRewardCoinSpacing,
     );
+    game.world.add(
+      ColoredBurst(
+        position: releasePosition.clone(),
+        color: const Color(0xFF80DEEA),
+      ),
+    );
+    game.world.add(
+      FloatingScoreText(
+        position: releasePosition.clone(),
+        text: 'TETHER CUT! +2 COMBO',
+        color: const Color(0xFF80DEEA),
+        fontSize: 15,
+      ),
+    );
+    game.gameFeelSystem.onCoinCollected(game.scoringSystem.comboCount);
+    recycleAfterInteraction();
+    return true;
   }
 
   @override
@@ -1459,21 +2151,102 @@ class KiteObstacle extends ObstacleComponent {
     const kiteY = 20.0;
     final tilt = math.sin(_flutterPhase) * 0.25;
 
+    _drawTetherTail(canvas, cx, kiteY);
+    if (_windsockLinked) {
+      final windPaint = Paint()
+        ..color = ObstacleSynergy.windTether.color.withOpacity(.62)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.25;
+      canvas.drawArc(
+        Rect.fromCenter(center: Offset(cx, kiteY + 22), width: 48, height: 32),
+        animTime * 4.5,
+        math.pi * 1.25,
+        false,
+        windPaint,
+      );
+    }
+
     canvas.save();
     canvas.translate(cx, kiteY);
     canvas.rotate(tilt);
 
-    final topF = Path()..moveTo(0, -18)..lineTo(-14, 0)..lineTo(0, 0)..close();
+    final topF = Path()
+      ..moveTo(0, -18)
+      ..lineTo(-14, 0)
+      ..lineTo(0, 0)
+      ..close();
     canvas.drawPath(topF, Paint()..color = const Color(0xFFFF5252));
-    final rightF = Path()..moveTo(0, -18)..lineTo(14, 0)..lineTo(0, 0)..close();
+    final rightF = Path()
+      ..moveTo(0, -18)
+      ..lineTo(14, 0)
+      ..lineTo(0, 0)
+      ..close();
     canvas.drawPath(rightF, Paint()..color = const Color(0xFF00E5FF));
-    final botLeftF = Path()..moveTo(-14, 0)..lineTo(0, 18)..lineTo(0, 0)..close();
+    final botLeftF = Path()
+      ..moveTo(-14, 0)
+      ..lineTo(0, 18)
+      ..lineTo(0, 0)
+      ..close();
     canvas.drawPath(botLeftF, Paint()..color = const Color(0xFFFFEB3B));
-    final botRightF = Path()..moveTo(14, 0)..lineTo(0, 18)..lineTo(0, 0)..close();
+    final botRightF = Path()
+      ..moveTo(14, 0)
+      ..lineTo(0, 18)
+      ..lineTo(0, 0)
+      ..close();
     canvas.drawPath(botRightF, Paint()..color = const Color(0xFF7C4DFF));
 
     canvas.restore();
+    _drawSnapHint(canvas, cx, kiteY);
     renderTelegraph(canvas);
+  }
+
+  void _drawTetherTail(Canvas canvas, double cx, double kiteY) {
+    final tailPaint = Paint()
+      ..color = (_windsockLinked
+              ? ObstacleSynergy.windTether.color
+              : const Color(0xFF5D4037))
+          .withOpacity(.74)
+      ..strokeWidth = _windsockLinked ? 1.6 : 1.2
+      ..strokeCap = StrokeCap.round;
+    var previous = Offset(cx, kiteY + 18);
+    for (var i = 0; i < 4; i++) {
+      final y = kiteY + 34 + i * 16.0;
+      final x = cx + math.sin(_flutterPhase + i * .9) * (5 + i * 2.0);
+      final current = Offset(x, y);
+      canvas.drawLine(previous, current, tailPaint);
+      canvas.drawCircle(
+        current,
+        2.2,
+        Paint()..color = i.isEven ? const Color(0xFFFFD740) : const Color(0xFF80DEEA),
+      );
+      previous = current;
+    }
+  }
+
+  void _drawSnapHint(Canvas canvas, double cx, double kiteY) {
+    final strength = _snapHintStrength;
+    if (strength <= .02) return;
+    final pulse = .75 + math.sin(_flutterPhase * 2.0) * .25;
+    final ring = Paint()
+      ..color = const Color(0xFF80DEEA).withOpacity(strength * .72)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4
+      ..strokeCap = StrokeCap.round;
+    final cut = Paint()
+      ..color = const Color(0xFFE0F7FA).withOpacity(strength)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawCircle(Offset(cx, kiteY), 24 + pulse * 3, ring);
+    canvas.drawLine(Offset(cx - 8, kiteY - 7), Offset(cx + 8, kiteY + 7), cut);
+    canvas.drawLine(Offset(cx - 8, kiteY + 7), Offset(cx + 8, kiteY - 7), cut);
+    if (strength > .42) {
+      _snapPrompt.paint(
+        canvas,
+        Offset(cx - _snapPrompt.width * .5, kiteY - 37),
+      );
+    }
   }
 }
 
@@ -1485,6 +2258,7 @@ class TrafficPlaneObstacle extends ObstacleComponent {
   TrafficPlaneObstacle() : super(type: ObstacleType.trafficPlane);
 
   double _lateralSpeed = 0;
+  bool _droneDirected = false;
 
   @override
   Color get telegraphColor => const Color(0xFFFF9100);
@@ -1493,6 +2267,7 @@ class TrafficPlaneObstacle extends ObstacleComponent {
   void onActivate(double scrollSpeed) {
     size = Vector2(34, 34);
     _lateralSpeed = rngRange(-45, 45);
+    _droneDirected = false;
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(PolygonHitbox([
       Vector2(size.x * 0.5, size.y),
@@ -1503,10 +2278,18 @@ class TrafficPlaneObstacle extends ObstacleComponent {
   }
 
   @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _droneDirected = synergy == ObstacleSynergy.droneTrafficLink;
+  }
+
+  @override
   void updateObstacle(double dt) {
-    // High-speed oncoming traffic (descends faster toward the player)
-    position.y += 65.0 * dt;
-    position.x += _lateralSpeed * dt;
+    // A linked drone feeds a faster intercept vector to this traffic plane.
+    final multiplier = _droneDirected
+        ? GameConfig.obstacleSynergyTrafficSpeedMultiplier
+        : 1.0;
+    position.y += 65.0 * multiplier * dt;
+    position.x += _lateralSpeed * multiplier * dt;
   }
 
   @override
@@ -1524,9 +2307,24 @@ class TrafficPlaneObstacle extends ObstacleComponent {
     canvas.drawPath(dart, Paint()..color = const Color(0xFFFF7043));
 
     // Wingtip smoke contrails
-    final contrail = Paint()..color = const Color(0x66FFFFFF)..strokeWidth = 1.2;
+    final contrail = Paint()
+      ..color = (_droneDirected
+              ? ObstacleSynergy.droneTrafficLink.color
+              : Colors.white)
+          .withOpacity(_droneDirected ? .72 : .40)
+      ..strokeWidth = _droneDirected ? 1.8 : 1.2;
     canvas.drawLine(Offset(cx - 14, cy - 12), Offset(cx - 14, cy - 26), contrail);
     canvas.drawLine(Offset(cx + 14, cy - 12), Offset(cx + 14, cy - 26), contrail);
+    if (_droneDirected) {
+      canvas.drawCircle(
+        Offset(cx, cy - 12),
+        4.5,
+        Paint()
+          ..color = ObstacleSynergy.droneTrafficLink.color.withOpacity(.62)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2,
+      );
+    }
 
     renderTelegraph(canvas);
   }
@@ -1582,6 +2380,7 @@ class FireworksObstacle extends ObstacleComponent {
       canvas.drawCircle(Offset(cx, cy), 5, Paint()..color = const Color(0xFFFFF9C4));
     }
 
+    renderDestructibleIntegrity(canvas, centerX: cx, topY: 1);
     renderTelegraph(canvas);
   }
 }
@@ -1617,6 +2416,7 @@ class WeatherBalloonObstacle extends ObstacleComponent {
     canvas.drawRect(Rect.fromLTWH(cx - 14, 54, 28, 16), Paint()..color = const Color(0xFF455A64));
     canvas.drawCircle(Offset(cx, 62), 3, Paint()..color = const Color(0xFF00E5FF));
 
+    renderDestructibleIntegrity(canvas, centerX: cx, topY: 0);
     renderTelegraph(canvas);
   }
 }
@@ -1662,6 +2462,24 @@ class ClotheslineObstacle extends ObstacleComponent {
     renderTelegraph(canvas);
   }
 
+  @override
+  void renderThreatPreview(
+    Canvas canvas,
+    double x,
+    double y,
+    double progress,
+    double pulse,
+  ) {
+    renderSafeCorridorPreview(
+      canvas,
+      localY: y + GameConfig.telegraphProjectionStartOffset + 22,
+      gapLeft: _gapX,
+      gapWidth: _gapWidth,
+      progress: progress,
+      pulse: pulse,
+    );
+  }
+
   void _drawPaperDolls(Canvas canvas, double startX, double endX) {
     final dollPaint = Paint()..color = const Color(0xFFFFD54F)..style = PaintingStyle.fill;
     final pinPaint = Paint()..color = const Color(0xFF5D4037)..style = PaintingStyle.fill;
@@ -1681,14 +2499,22 @@ class ClotheslineObstacle extends ObstacleComponent {
 class WindSockObstacle extends ObstacleComponent {
   WindSockObstacle() : super(type: ObstacleType.windsock);
 
+  bool _kiteLinked = false;
+
   @override
   Color get telegraphColor => const Color(0xFFFF6D00);
 
   @override
   void onActivate(double scrollSpeed) {
     size = Vector2(48, 54);
+    _kiteLinked = false;
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(RectangleHitbox(size: Vector2(36, 40), position: Vector2(6, 6)));
+  }
+
+  @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _kiteLinked = synergy == ObstacleSynergy.windTether;
   }
 
   @override
@@ -1709,7 +2535,821 @@ class WindSockObstacle extends ObstacleComponent {
     // White stripes
     canvas.drawRect(Rect.fromLTWH(cx + 6, 9.5, 6, 15), Paint()..color = Colors.white);
     canvas.drawRect(Rect.fromLTWH(cx + 15, 12, 5, 13), Paint()..color = Colors.white);
+    if (_kiteLinked) {
+      final windPaint = Paint()
+        ..color = ObstacleSynergy.windTether.color.withOpacity(.70)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.25;
+      for (var i = 0; i < 3; i++) {
+        final y = 12.0 + i * 8.0;
+        canvas.drawLine(Offset(cx + 24, y), Offset(cx + 38, y - 2), windPaint);
+      }
+    }
 
     renderTelegraph(canvas);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 15. LightningStrikeObstacle — Telegraph, Flash, Vertical Strike
+// ─────────────────────────────────────────────────────────────────────────────
+
+class LightningStrikeObstacle extends ObstacleComponent {
+  LightningStrikeObstacle() : super(type: ObstacleType.lightningStrike);
+
+  bool _struck = false;
+  double _strikeTimer = 0;
+  bool _stormCharged = false;
+
+  @override
+  Color get telegraphColor => const Color(0xFFFFF176);
+
+  @override
+  void onActivate(double scrollSpeed) {
+    size = Vector2(44, GameConfig.designHeight);
+    _struck = false;
+    _strikeTimer = 0;
+    _stormCharged = false;
+    removeAll(children.whereType<ShapeHitbox>().toList());
+  }
+
+  @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _stormCharged = synergy == ObstacleSynergy.stormCharge;
+  }
+
+  @override
+  void updateObstacle(double dt) {
+    if (!_struck && position.y >= -18) {
+      _struck = true;
+      final strikeWidth = _stormCharged ? 30.0 : 20.0;
+      _strikeTimer = _stormCharged
+          ? GameConfig.obstacleSynergyStormStrikeDuration
+          : .34;
+      add(RectangleHitbox(
+        size: Vector2(strikeWidth, GameConfig.designHeight),
+        position: Vector2((size.x - strikeWidth) * .5, 0),
+      ));
+    }
+    if (_struck) {
+      _strikeTimer -= dt;
+      if (_strikeTimer <= 0) {
+        _active = false;
+        onRecycle?.call(this);
+      }
+    }
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final x = size.x * .5;
+    if (!_struck) {
+      final warn = Paint()
+        ..color = const Color(0x44FFF176)
+        ..strokeWidth = 2.0;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.y), warn);
+      renderTelegraph(canvas);
+      return;
+    }
+
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.x, size.y),
+      Paint()..color = _stormCharged
+          ? const Color(0x55FFF59D)
+          : const Color(0x33FFFDE7),
+    );
+    final bolt = Path()..moveTo(x, 0);
+    for (var i = 0; i < 12; i++) {
+      final y = (i + 1) * size.y / 12;
+      final dx = i.isEven ? -10.0 : 10.0;
+      bolt.lineTo(x + dx, y - 18);
+      bolt.lineTo(x, y);
+    }
+    final glow = Paint()
+      ..color = const Color(0x99FFF176)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _stormCharged ? 12 : 8
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
+    final core = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+    canvas.drawPath(bolt, glow);
+    canvas.drawPath(bolt, core);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 16. MeteorShowerObstacle — Atmosphere Impacts with Warning Shadows
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MeteorShowerObstacle extends ObstacleComponent {
+  MeteorShowerObstacle() : super(type: ObstacleType.meteorShower);
+
+  final List<_Meteor> _meteors = [];
+
+  @override
+  Color get telegraphColor => const Color(0xFFFFAB91);
+
+  @override
+  void onActivate(double scrollSpeed) {
+    size = Vector2(GameConfig.designWidth, 300);
+    _meteors.clear();
+    removeAll(children.whereType<ShapeHitbox>().toList());
+    for (var i = 0; i < 4; i++) {
+      final meteor = _Meteor(
+        x: rngRange(42, GameConfig.designWidth - 42),
+        y: 35 + i * 63 + rngRange(-12, 12),
+        radius: rngRange(9, 16),
+        phase: rngRange(0, math.pi * 2),
+      );
+      _meteors.add(meteor);
+      add(CircleHitbox(
+        radius: meteor.radius,
+        position: Vector2(meteor.x - meteor.radius, meteor.y - meteor.radius),
+      ));
+    }
+  }
+
+  @override
+  void render(Canvas canvas) {
+    for (final meteor in _meteors) {
+      final shadow = Paint()
+        ..color = const Color(0x33000000)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(meteor.x + 10, meteor.y + 24),
+          width: meteor.radius * 2.8,
+          height: meteor.radius * .8,
+        ),
+        shadow,
+      );
+      final trail = Paint()
+        ..color = const Color(0x99FF7043)
+        ..strokeWidth = meteor.radius * .72
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(
+        Offset(meteor.x - meteor.radius * 2.2, meteor.y - meteor.radius * 2.5),
+        Offset(meteor.x, meteor.y),
+        trail,
+      );
+      canvas.drawCircle(
+        Offset(meteor.x, meteor.y),
+        meteor.radius,
+        Paint()..color = const Color(0xFF5D4037),
+      );
+      canvas.drawCircle(
+        Offset(meteor.x - meteor.radius * .22, meteor.y - meteor.radius * .25),
+        meteor.radius * .35,
+        Paint()..color = const Color(0xFFFFAB91),
+      );
+    }
+    renderTelegraph(canvas);
+  }
+}
+
+class _Meteor {
+  const _Meteor({
+    required this.x,
+    required this.y,
+    required this.radius,
+    required this.phase,
+  });
+
+  final double x;
+  final double y;
+  final double radius;
+  final double phase;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 17. TornadoObstacle — Rotating Wind Column with Pull Force
+// ─────────────────────────────────────────────────────────────────────────────
+
+class TornadoObstacle extends ObstacleComponent {
+  TornadoObstacle() : super(type: ObstacleType.tornado);
+
+  static const double _pullRadius = 128;
+
+  @override
+  Color get telegraphColor => const Color(0xFFB3E5FC);
+
+  @override
+  void onActivate(double scrollSpeed) {
+    size = Vector2(92, 190);
+    removeAll(children.whereType<ShapeHitbox>().toList());
+    add(CircleHitbox(radius: 35, position: Vector2(11, 74)));
+  }
+
+  @override
+  void updateObstacle(double dt) {
+    final center = position + Vector2(0, size.y * .58);
+    final plane = game.plane;
+    final delta = center - plane.position;
+    final distance = delta.length;
+    if (distance > 1 && distance < _pullRadius) {
+      final force = delta.normalized() *
+          (GameConfig.maxWindForce * 2.0 * (1.0 - distance / _pullRadius) * dt);
+      plane.applyTornadoPull(force);
+    }
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final centerX = size.x * .5;
+    final swirl = Paint()
+      ..color = const Color(0x88B3E5FC)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+    for (var i = 0; i < 6; i++) {
+      final y = 22 + i * 25.0;
+      final width = 28 + i * 8.0;
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(centerX + math.sin(animTime * 8 + i) * 7, y),
+          width: width,
+          height: 14,
+        ),
+        animTime * 5 + i * .65,
+        math.pi * 1.5,
+        false,
+        swirl,
+      );
+    }
+    final core = Paint()
+      ..color = const Color(0x2264B5F6)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+    canvas.drawOval(Rect.fromCenter(center: Offset(centerX, 104), width: 58, height: 142), core);
+    renderTelegraph(canvas);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 18. FlockMigrationObstacle — Large V Formation Crossing the Sky
+// ─────────────────────────────────────────────────────────────────────────────
+
+class FlockMigrationObstacle extends ObstacleComponent {
+  FlockMigrationObstacle() : super(type: ObstacleType.flockMigration);
+
+  final List<_FlockBird> _birds = [];
+  final List<CircleHitbox> _hitboxes = [];
+  double _leaderX = 0;
+  double _direction = 1;
+
+  @override
+  Color get telegraphColor => const Color(0xFFFFF9C4);
+
+  @override
+  void onActivate(double scrollSpeed) {
+    size = Vector2(GameConfig.designWidth, 190);
+    position.x = GameConfig.designWidth * .5;
+    _direction = rngBool() ? 1.0 : -1.0;
+    _leaderX = _direction > 0 ? -42.0 : GameConfig.designWidth + 42.0;
+    _birds.clear();
+    _hitboxes.clear();
+    removeAll(children.whereType<ShapeHitbox>().toList());
+
+    final count = rngInt(10, 20);
+    for (var i = 0; i < count; i++) {
+      final rank = (i + 1) ~/ 2;
+      final side = i.isEven ? -1.0 : 1.0;
+      final bird = _FlockBird(
+        behind: rank * 20.0,
+        side: side,
+        rise: rank * 11.0 + rngRange(-3, 3),
+        size: rngRange(5.5, 8.5),
+        phase: rngRange(0, math.pi * 2),
+      );
+      _birds.add(bird);
+      final hitbox = CircleHitbox(radius: bird.size * .72);
+      _hitboxes.add(hitbox);
+      add(hitbox);
+    }
+    _syncBirdHitboxes();
+  }
+
+  @override
+  void updateObstacle(double dt) {
+    _leaderX += _direction * (130 + game.scrollSpeed * .22) * dt;
+    _syncBirdHitboxes();
+    if ((_direction > 0 && _leaderX > GameConfig.designWidth + 180) ||
+        (_direction < 0 && _leaderX < -180)) {
+      _active = false;
+      onRecycle?.call(this);
+    }
+  }
+
+  void _syncBirdHitboxes() {
+    for (var i = 0; i < _birds.length; i++) {
+      final bird = _birds[i];
+      final pos = _birdPosition(bird);
+      final hitbox = _hitboxes[i];
+      hitbox.position = pos - Vector2.all(bird.size * .72);
+    }
+  }
+
+  Vector2 _birdPosition(_FlockBird bird) {
+    // The V opens behind the leader, opposite the direction of travel.
+    final x = _leaderX - _direction * bird.behind + bird.side * bird.behind * .35;
+    final y = 58 + bird.rise;
+    return Vector2(x, y);
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final birdPaint = Paint()..style = PaintingStyle.fill;
+    for (final bird in _birds) {
+      final pos = _birdPosition(bird);
+      final flap = math.sin(animTime * 12 + bird.phase) * bird.size * .55;
+      birdPaint.color = const Color(0xFF37474F);
+      final shape = Path()
+        ..moveTo(pos.x, pos.y)
+        ..quadraticBezierTo(pos.x - bird.size, pos.y - flap, pos.x - bird.size * 1.8, pos.y)
+        ..quadraticBezierTo(pos.x - bird.size, pos.y + flap * .4, pos.x, pos.y)
+        ..quadraticBezierTo(pos.x + bird.size, pos.y - flap, pos.x + bird.size * 1.8, pos.y)
+        ..quadraticBezierTo(pos.x + bird.size, pos.y + flap * .4, pos.x, pos.y)
+        ..close();
+      canvas.drawPath(shape, birdPaint);
+    }
+    renderTelegraph(canvas);
+  }
+}
+
+class _FlockBird {
+  const _FlockBird({
+    required this.behind,
+    required this.side,
+    required this.rise,
+    required this.size,
+    required this.phase,
+  });
+
+  final double behind;
+  final double side;
+  final double rise;
+  final double size;
+  final double phase;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 19. WhaleBreachObstacle — Massive Slow Ocean Breach with Splash
+// ─────────────────────────────────────────────────────────────────────────────
+
+class WhaleBreachObstacle extends ObstacleComponent {
+  WhaleBreachObstacle() : super(type: ObstacleType.whaleBreach);
+
+  @override
+  Color get telegraphColor => const Color(0xFF80D8FF);
+
+  @override
+  void onActivate(double scrollSpeed) {
+    size = Vector2(270, 190);
+    position.x = GameConfig.designWidth * .5;
+    removeAll(children.whereType<ShapeHitbox>().toList());
+    add(RectangleHitbox(size: Vector2(206, 88), position: Vector2(30, 54)));
+    add(CircleHitbox(radius: 36, position: Vector2(194, 38)));
+  }
+
+  @override
+  void updateObstacle(double dt) {
+    // Base update scrolls with the world. Subtracting here gives the enormous
+    // animal a slower, dramatic breach across the player row.
+    position.y -= game.scrollSpeed * dt * .55;
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final body = Path()
+      ..moveTo(20, 120)
+      ..quadraticBezierTo(72, 42, 194, 60)
+      ..quadraticBezierTo(246, 70, 250, 106)
+      ..quadraticBezierTo(222, 150, 120, 150)
+      ..quadraticBezierTo(48, 150, 20, 120)
+      ..close();
+    final belly = Path()
+      ..moveTo(54, 124)
+      ..quadraticBezierTo(130, 112, 230, 108)
+      ..quadraticBezierTo(208, 142, 118, 144)
+      ..quadraticBezierTo(72, 141, 54, 124)
+      ..close();
+    canvas.drawPath(body, Paint()..color = const Color(0xFF1565C0));
+    canvas.drawPath(belly, Paint()..color = const Color(0xFFB3E5FC));
+
+    // Dorsal fin and tail read clearly as a giant living silhouette.
+    final fin = Path()
+      ..moveTo(104, 72)
+      ..lineTo(124, 24)
+      ..lineTo(144, 78)
+      ..close();
+    canvas.drawPath(fin, Paint()..color = const Color(0xFF0D47A1));
+    final tail = Path()
+      ..moveTo(28, 112)
+      ..quadraticBezierTo(2, 85, 0, 112)
+      ..quadraticBezierTo(10, 137, 30, 122)
+      ..quadraticBezierTo(6, 151, 2, 170)
+      ..quadraticBezierTo(34, 154, 42, 125)
+      ..close();
+    canvas.drawPath(tail, Paint()..color = const Color(0xFF0D47A1));
+
+    canvas.drawCircle(const Offset(220, 78), 3.2, Paint()..color = Colors.white);
+    canvas.drawCircle(const Offset(221, 78), 1.3, Paint()..color = const Color(0xFF102027));
+
+    final spray = Paint()..color = const Color(0x99E1F5FE);
+    for (var i = 0; i < 14; i++) {
+      final a = i * math.pi / 13 + animTime * .8;
+      final radius = 50 + (i % 4) * 10 + math.sin(animTime * 4 + i) * 5;
+      final x = 92 + math.cos(a) * radius;
+      final y = 142 + math.sin(a) * radius * .55;
+      canvas.drawCircle(Offset(x, y), 1.5 + (i % 3) * .45, spray);
+    }
+    renderTelegraph(canvas);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 20. PaperDragonObstacle — Segmented Serpentine Boss Pass
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A single high-readability boss encounter. The dragon is assembled from
+/// collision circles which follow one animated S-curve; the circles and their
+/// segment state are retained with the pooled obstacle, so an encounter does
+/// not allocate a fresh component tree every frame or every reuse.
+class PaperDragonObstacle extends ObstacleComponent {
+  PaperDragonObstacle() : super(type: ObstacleType.paperDragon);
+
+  static const int segmentCount = GameConfig.paperDragonSegmentCount;
+
+  final List<_PaperDragonSegment> _segments =
+      List<_PaperDragonSegment>.generate(
+    segmentCount,
+    _PaperDragonSegment.new,
+    growable: false,
+  );
+  final List<CircleHitbox> _segmentHitboxes = <CircleHitbox>[];
+
+  final Paint _spineGlowPaint = Paint()
+    ..color = const Color(0x66FF5252)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 8.0
+    ..strokeCap = StrokeCap.round
+    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9);
+  final Paint _spinePaint = Paint()
+    ..color = const Color(0xFF6D1838)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 4.2
+    ..strokeCap = StrokeCap.round;
+  final Paint _bodyPaint = Paint()..style = PaintingStyle.fill;
+  final Paint _bodyCorePaint = Paint()
+    ..color = const Color(0xFF8E244B)
+    ..style = PaintingStyle.fill;
+  final Paint _bodyFoldPaint = Paint()
+    ..color = const Color(0xFFFFCDD2)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.15;
+  final Paint _wingPaint = Paint()
+    ..color = const Color(0xFF7B1B41)
+    ..style = PaintingStyle.fill;
+  final Paint _wingFoldPaint = Paint()
+    ..color = const Color(0xFFFF8A80)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.2;
+  final Paint _headPaint = Paint()
+    ..color = const Color(0xFFC62858)
+    ..style = PaintingStyle.fill;
+  final Paint _headFoldPaint = Paint()
+    ..color = const Color(0xFFFFCDD2)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.35;
+  final Paint _hornPaint = Paint()
+    ..color = const Color(0xFFFFF3E0)
+    ..style = PaintingStyle.fill;
+  final Paint _eyeGlowPaint = Paint()
+    ..color = const Color(0x99FFAB00)
+    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+  final Paint _eyePaint = Paint()
+    ..color = const Color(0xFFFFF176)
+    ..style = PaintingStyle.fill;
+  final Paint _pupilPaint = Paint()
+    ..color = const Color(0xFF1A0610)
+    ..style = PaintingStyle.fill;
+  final Paint _mouthPaint = Paint()
+    ..color = const Color(0xFFFFAB40)
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round
+    ..strokeWidth = 2.2;
+  final Paint _previewGlowPaint = Paint()
+    ..style = PaintingStyle.fill
+    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9);
+  final Paint _previewBodyPaint = Paint()..style = PaintingStyle.fill;
+  final Paint _previewCrownPaint = Paint()..style = PaintingStyle.fill;
+
+  final TextPainter _bossLabel = TextPainter(
+    text: const TextSpan(
+      text: 'PAPER DRAGON',
+      style: TextStyle(
+        color: Color(0xFFFFCDD2),
+        fontSize: 8.5,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 1.0,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+
+  double _waveSeed = 0.0;
+  double _headSeed = 0.0;
+
+  @override
+  Color get telegraphColor => const Color(0xFFFF5252);
+
+  @override
+  double get earlyWarningLeadDistance =>
+      GameConfig.paperDragonTelegraphLeadDistance;
+
+  @override
+  bool get retainsHitboxesWhenInactive => true;
+
+  /// Useful to instrumentation and lightweight component tests without
+  /// exposing the mutable hitbox list itself.
+  int get segmentHitboxCount => _segmentHitboxes.length;
+  int get activeSegmentCount => _segments.length;
+
+  @override
+  void onActivate(double scrollSpeed) {
+    size = Vector2(
+      GameConfig.designWidth,
+      GameConfig.paperDragonBodyHeight,
+    );
+    // A boss owns the full width. Keep the component anchored at the world
+    // centre regardless of the random lane supplied by the regular spawner.
+    position.x = GameConfig.designWidth * .5;
+    _waveSeed = rngRange(0.0, math.pi * 2.0);
+    _headSeed = rngRange(0.0, math.pi * 2.0);
+    _ensureSegmentHitboxes();
+    _syncSegmentGeometry();
+  }
+
+  void _ensureSegmentHitboxes() {
+    if (_segmentHitboxes.isEmpty) {
+      for (var i = 0; i < segmentCount; i++) {
+        final hitbox = CircleHitbox(
+          radius: GameConfig.paperDragonHitboxRadius,
+          position: Vector2.zero(),
+        );
+        _segmentHitboxes.add(hitbox);
+        add(hitbox);
+      }
+      return;
+    }
+
+    // A Flame parent can be removed and mounted again by the object pool. Keep
+    // the same collision components, but reattach them if that lifecycle pass
+    // detached children from the parent.
+    for (final hitbox in _segmentHitboxes) {
+      if (hitbox.parent == null) add(hitbox);
+    }
+  }
+
+  @override
+  void updateObstacle(double dt) {
+    // The base component already applies full world scroll. Pulling back the
+    // remainder creates the configured slow, deliberate boss pass.
+    position.y -= game.scrollSpeed *
+        dt *
+        (1.0 - GameConfig.paperDragonScrollSpeedMultiplier);
+    _syncSegmentGeometry();
+  }
+
+  void _syncSegmentGeometry() {
+    final lastIndex = _segments.length - 1;
+    final waveTime =
+        _waveSeed + animTime * GameConfig.paperDragonWaveAngularSpeed;
+    final headWander = math.sin(
+          _headSeed + animTime * GameConfig.paperDragonHeadWanderAngularSpeed,
+        ) *
+        GameConfig.paperDragonHeadWanderAmplitude;
+
+    for (var i = 0; i <= lastIndex; i++) {
+      final progress = i / lastIndex;
+      final waveEnvelope = 1.0 -
+          (1.0 - GameConfig.paperDragonWaveTailAmplitudeMultiplier) *
+              progress;
+      final x = GameConfig.designWidth * .5 +
+          headWander +
+          math.sin(
+                waveTime + i * GameConfig.paperDragonWavePhaseStep,
+              ) *
+              GameConfig.paperDragonWaveAmplitude *
+              waveEnvelope;
+      final y = GameConfig.paperDragonHeadOffsetY +
+          i * GameConfig.paperDragonSegmentSpacing;
+      final segment = _segments[i];
+      segment.center.setValues(x, y);
+      segment.scale =
+          1.0 - (1.0 - GameConfig.paperDragonTailScale) * progress;
+
+      final hitbox = _segmentHitboxes[i];
+      final radius = GameConfig.paperDragonHitboxRadius;
+      hitbox.position.setValues(x - radius, y - radius);
+    }
+
+    // The head faces against the flow of the body; all other segments align to
+    // their local tangent so the folded scales travel around the S cleanly.
+    final head = _segments.first;
+    final neck = _segments[1];
+    head.heading = math.atan2(
+      head.center.y - neck.center.y,
+      head.center.x - neck.center.x,
+    );
+    for (var i = 1; i <= lastIndex; i++) {
+      final previous = _segments[i - 1];
+      final current = _segments[i];
+      final next = i == lastIndex ? current : _segments[i + 1];
+      current.heading = math.atan2(
+        next.center.y - previous.center.y,
+        next.center.x - previous.center.x,
+      );
+    }
+  }
+
+  @override
+  void render(Canvas canvas) {
+    _drawSpine(canvas);
+    for (var i = _segments.length - 1; i >= 1; i--) {
+      _drawBodySegment(canvas, _segments[i]);
+    }
+    _drawHead(canvas, _segments.first);
+    renderTelegraph(canvas);
+  }
+
+  void _drawSpine(Canvas canvas) {
+    for (var i = 0; i < _segments.length - 1; i++) {
+      final from = _segments[i].center;
+      final to = _segments[i + 1].center;
+      final start = Offset(from.x, from.y);
+      final end = Offset(to.x, to.y);
+      canvas.drawLine(start, end, _spineGlowPaint);
+      canvas.drawLine(start, end, _spinePaint);
+    }
+  }
+
+  void _drawBodySegment(Canvas canvas, _PaperDragonSegment segment) {
+    final radius = GameConfig.paperDragonSegmentRadius * segment.scale;
+    _bodyPaint.color = segment.index.isEven
+        ? const Color(0xFFA5274F)
+        : const Color(0xFFB92B56);
+
+    canvas.save();
+    canvas.translate(segment.center.x, segment.center.y);
+    canvas.rotate(segment.heading);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset.zero,
+        width: radius * 2.35,
+        height: radius * 1.58,
+      ),
+      _bodyPaint,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset.zero,
+        width: radius * 1.18,
+        height: radius * .82,
+      ),
+      _bodyCorePaint,
+    );
+    // Two crease lines keep every oval visibly folded like layered paper.
+    canvas.drawLine(
+      Offset(-radius * .78, 0),
+      Offset(radius * .76, 0),
+      _bodyFoldPaint,
+    );
+    canvas.drawLine(
+      Offset(-radius * .22, -radius * .56),
+      Offset(radius * .28, radius * .48),
+      _bodyFoldPaint,
+    );
+    canvas.restore();
+  }
+
+  void _drawHead(Canvas canvas, _PaperDragonSegment head) {
+    final pulse = .86 + math.sin(animTime * 7.0) * .14;
+
+    canvas.save();
+    canvas.translate(head.center.x, head.center.y);
+    canvas.rotate(head.heading);
+    canvas.scale(pulse);
+
+    // Broad angular wings are drawn first, so the faceted head remains the
+    // readable collision focal point at the front of the serpent.
+    canvas.drawPath(_leftWingPath, _wingPaint);
+    canvas.drawPath(_rightWingPath, _wingPaint);
+    canvas.drawPath(_leftWingPath, _wingFoldPaint);
+    canvas.drawPath(_rightWingPath, _wingFoldPaint);
+    canvas.drawPath(_headPath, _headPaint);
+    canvas.drawPath(_headFoldPath, _headFoldPaint);
+    canvas.drawPath(_hornPath, _hornPaint);
+
+    canvas.drawCircle(const Offset(11, -6), 5.6, _eyeGlowPaint);
+    canvas.drawCircle(const Offset(11, -6), 2.45, _eyePaint);
+    canvas.drawCircle(const Offset(11.6, -6), 1.0, _pupilPaint);
+    canvas.drawCircle(const Offset(11, 6), 5.6, _eyeGlowPaint);
+    canvas.drawCircle(const Offset(11, 6), 2.45, _eyePaint);
+    canvas.drawCircle(const Offset(11.6, 6), 1.0, _pupilPaint);
+
+    canvas.drawLine(const Offset(12, 9), const Offset(25, 9), _mouthPaint);
+    final flameLength = 9.0 + math.sin(animTime * 11.0) * 5.0;
+    canvas.drawLine(Offset(24, 9), Offset(24 + flameLength, 9), _mouthPaint);
+    canvas.restore();
+  }
+
+  @override
+  void renderThreatPreview(
+    Canvas canvas,
+    double x,
+    double y,
+    double progress,
+    double pulse,
+  ) {
+    // The generic beacon identifies the lane. This wider mini-serpent and
+    // label make it unambiguously different from a normal off-screen hazard.
+    if (progress < .12) return;
+
+    final alpha = ((progress - .12) / .88).clamp(.0, 1.0).toDouble();
+    _previewGlowPaint.color = const Color(0x88FF1744).withOpacity(.44 * alpha);
+    _previewBodyPaint.color = const Color(0xFFFF5252).withOpacity(.72 * alpha);
+    _previewCrownPaint.color = const Color(0xFFFFD740).withOpacity(.82 * alpha);
+
+    canvas.save();
+    canvas.translate(x, y + 34);
+    canvas.drawCircle(Offset.zero, 42 + pulse * 4, _previewGlowPaint);
+    for (var i = 0; i < 5; i++) {
+      final px = -40.0 + i * 20.0;
+      final py = math.sin(animTime * 4.0 + i * .92) * 6.0;
+      canvas.drawCircle(Offset(px, py), i == 4 ? 8.0 : 6.0, _previewBodyPaint);
+    }
+    canvas.drawPath(_previewCrownPath, _previewCrownPaint);
+    if (progress > .46) {
+      _bossLabel.paint(
+        canvas,
+        Offset(-_bossLabel.width * .5, 17),
+      );
+    }
+    canvas.restore();
+  }
+
+  static final Path _leftWingPath = Path()
+    ..moveTo(-4, -4)
+    ..lineTo(-29, -35)
+    ..lineTo(-19, -2)
+    ..lineTo(-8, 6)
+    ..close();
+  static final Path _rightWingPath = Path()
+    ..moveTo(-4, 4)
+    ..lineTo(-29, 35)
+    ..lineTo(-19, 2)
+    ..lineTo(-8, -6)
+    ..close();
+  static final Path _headPath = Path()
+    ..moveTo(29, 0)
+    ..lineTo(6, -19)
+    ..lineTo(-20, -13)
+    ..lineTo(-25, 0)
+    ..lineTo(-20, 13)
+    ..lineTo(6, 19)
+    ..close();
+  static final Path _headFoldPath = Path()
+    ..moveTo(-20, -13)
+    ..lineTo(6, 0)
+    ..lineTo(-20, 13)
+    ..moveTo(6, -19)
+    ..lineTo(6, 19)
+    ..moveTo(6, 0)
+    ..lineTo(29, 0);
+  static final Path _hornPath = Path()
+    ..moveTo(-6, -14)
+    ..lineTo(-1, -27)
+    ..lineTo(4, -13)
+    ..close()
+    ..moveTo(-6, 14)
+    ..lineTo(-1, 27)
+    ..lineTo(4, 13)
+    ..close();
+  static final Path _previewCrownPath = Path()
+    ..moveTo(24, -8)
+    ..lineTo(29, -21)
+    ..lineTo(34, -9)
+    ..lineTo(39, -24)
+    ..lineTo(44, -8)
+    ..close();
+}
+
+class _PaperDragonSegment {
+  _PaperDragonSegment(this.index);
+
+  final int index;
+  final Vector2 center = Vector2.zero();
+  double heading = 0.0;
+  double scale = 1.0;
 }

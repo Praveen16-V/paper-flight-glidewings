@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/game_config.dart';
 import '../../../core/enums/game_enums.dart';
-import '../../../core/utils/math_utils.dart';
 import '../../paper_flight_game.dart';
 import '../effects/coin_feedback.dart';
 import '../plane_component.dart';
@@ -22,6 +21,8 @@ class PowerUpComponent extends PositionComponent
         );
 
   final PowerUpType type;
+  CorruptedPowerUpType? corruptedType;
+  bool get isCorrupted => corruptedType != null;
 
   bool _active = false;
   bool _collected = false;
@@ -36,12 +37,16 @@ class PowerUpComponent extends PositionComponent
 
   void activate({
     required Vector2 spawnPosition,
+    CorruptedPowerUpType? corruptedType,
     void Function(PowerUpComponent)? recycleCallback,
+    int? animationSeed,
   }) {
     position = spawnPosition;
-    _bobPhase = MathUtils.randomRange(0, math.pi * 2);
+    this.corruptedType = corruptedType;
+    final random = animationSeed == null ? math.Random() : math.Random(animationSeed);
+    _bobPhase = random.nextDouble() * math.pi * 2;
     _glowPulse = 0;
-    _rotationAngle = MathUtils.randomRange(0, math.pi * 2);
+    _rotationAngle = random.nextDouble() * math.pi * 2;
     _pickupAnimationElapsed = 0;
     _active = true;
     _collected = false;
@@ -56,6 +61,7 @@ class PowerUpComponent extends PositionComponent
   void deactivate() {
     _active = false;
     _collected = false;
+    corruptedType = null;
     _recycleRequested = false;
     _pickupAnimationElapsed = 0;
     scale = Vector2.all(1);
@@ -116,8 +122,23 @@ class PowerUpComponent extends PositionComponent
   }
 
   void _applyEffect() {
+    final corrupt = corruptedType;
+    if (corrupt != null) {
+      gameRef.world.add(ColoredBurst(
+        position: position.clone(),
+        color: corrupt.color,
+      ));
+      gameRef.world.add(FloatingScoreText(
+        position: position.clone(),
+        text: corrupt.displayName.toUpperCase(),
+        color: corrupt.color,
+        fontSize: 18,
+      ));
+      gameRef.applyCorruptedPowerUp(corrupt);
+      return;
+    }
     spawnPowerUpFeedback(gameRef, position, type);
-    gameRef.applyPowerUp(type);
+    gameRef.collectPowerUp(type);
   }
 
   // ── Render Floating 3D Origami Prism Gift Box ─────────────────────────────
@@ -125,7 +146,7 @@ class PowerUpComponent extends PositionComponent
   @override
   void render(Canvas canvas) {
     final glow = (math.sin(_glowPulse) * 0.5 + 0.5);
-    final bgColor = _bgColorForType(type);
+    final bgColor = corruptedType?.color ?? _bgColorForType(type);
     final iconColor = _iconColorForType(type);
     final cx = size.x / 2;
     final cy = size.y / 2;
@@ -228,6 +249,14 @@ class PowerUpComponent extends PositionComponent
 
     // 4. Power-Up Icon Symbol
     _drawIcon(canvas, 0, 0, iconColor);
+    if (isCorrupted) {
+      final curse = Paint()
+        ..color = const Color(0xFFFFEBEE)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4;
+      canvas.drawLine(Offset(-r * .55, -r * .2), Offset(r * .55, r * .2), curse);
+      canvas.drawLine(Offset(-r * .25, r * .55), Offset(r * .25, -r * .55), curse);
+    }
 
     canvas.restore();
   }

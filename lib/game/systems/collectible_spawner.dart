@@ -8,7 +8,9 @@ import '../../core/utils/math_utils.dart';
 import '../../core/utils/object_pool.dart';
 import '../components/collectibles/coin_component.dart';
 import '../components/collectibles/tunnel_ring_component.dart';
+import '../components/effects/coin_feedback.dart';
 import '../paper_flight_game.dart';
+import '../replay/run_replay_trace.dart';
 
 /// Spawns coins in lanes, clusters, and optional Tunnel Rings. Pools and recycles collectibles.
 class CollectibleSpawner extends Component {
@@ -23,14 +25,33 @@ class CollectibleSpawner extends Component {
   late final ObjectPool<TunnelRingComponent> _ringPool;
   final List<CoinComponent> _activeCoins = [];
   final List<TunnelRingComponent> _activeRings = [];
+  int get activeCoinCount => _activeCoins.length;
+  int get activeRingCount => _activeRings.length;
+
+  List<ObjectPoolDiagnostics> get poolDiagnostics => [
+        _coinPool.diagnostics,
+        _ringPool.diagnostics,
+      ];
 
   double _spawnTimer = 0;
   double _tunnelRingTimer = 0;
+  int _nextRingChainId = 0;
+  final Map<int, _TunnelRingChainState> _ringChains = {};
 
   @override
   Future<void> onLoad() async {
-    _coinPool = ObjectPool(create: CoinComponent.new, initialSize: 20);
-    _ringPool = ObjectPool(create: TunnelRingComponent.new, initialSize: 4);
+    _coinPool = ObjectPool(
+      create: CoinComponent.new,
+      initialSize: 20,
+      maxRetained: GameConfig.coinPoolMaxRetained,
+      label: 'collectible.coin',
+    );
+    _ringPool = ObjectPool(
+      create: TunnelRingComponent.new,
+      initialSize: 6,
+      maxRetained: GameConfig.tunnelRingPoolMaxRetained,
+      label: 'collectible.tunnel_ring',
+    );
     await super.onLoad();
   }
 
@@ -46,7 +67,7 @@ class CollectibleSpawner extends Component {
     }
 
     _tunnelRingTimer += dt;
-    if (_tunnelRingTimer >= 9.5) {
+    if (_tunnelRingTimer >= GameConfig.tunnelRingSpawnInterval) {
       _tunnelRingTimer = 0;
       _spawnTunnelRing();
     }
@@ -55,6 +76,8 @@ class CollectibleSpawner extends Component {
   void reset() {
     _spawnTimer = 0;
     _tunnelRingTimer = 0;
+    _nextRingChainId = 0;
+    _ringChains.clear();
     for (final c in List.of(_activeCoins)) {
       _recycleCoin(c);
     }
@@ -83,21 +106,146 @@ class CollectibleSpawner extends Component {
   }
 
   void _spawnTunnelRing() {
-    final x = GameConfig.horizontalEdgeMargin +
-        40 +
-        random.nextDouble() *
-            (GameConfig.designWidth -
-                GameConfig.horizontalEdgeMargin * 2 -
-                80);
-    spawnTunnelRingAt(Vector2(x, GameConfig.coinSpawnY - 20));
+    if (random.nextDouble() < GameConfig.tunnelRingChainSpawnChance) {
+      _spawnTunnelRingRun();
+      return;
+    }
+
+    final x = _ringLaneX(
+      GameConfig.horizontalEdgeMargin +
+          40 +
+          random.nextDouble() *
+              (GameConfig.designWidth -
+                  GameConfig.horizontalEdgeMargin * 2 -
+                  80),
+    );
+    final roll = random.nextDouble();
+    final variant = roll < .22
+        ? TunnelRingVariant.precision
+        : roll < .48
+            ? TunnelRingVariant.drifting
+            : TunnelRingVariant.standard;
+    spawnTunnelRingAt(
+      Vector2(x, GameConfig.coinSpawnY - 20),
+      variant: variant,
+    );
   }
 
-  /// Spawns an origami paper tunnel ring at [pos].
-  void spawnTunnelRingAt(Vector2 pos) {
+  void _spawnTunnelRingRun() {
+    final chainId = _nextRingChainId++;
+    final count = GameConfig.tunnelRingChainMinLength +
+        random.nextInt(
+          GameConfig.tunnelRingChainMaxLength -
+              GameConfig.tunnelRingChainMinLength +
+              1,
+        );
+    _ringChains[chainId] = _TunnelRingChainState(length: count);
+
+    final baseX = _ringLaneX(game.plane.position.x);
+    for (var index = 0; index < count; index++) {
+      final offset = index.isOdd
+          ? GameConfig.tunnelRingChainHorizontalStep
+          : 0.0;
+      final variant = index == count - 1
+          ? TunnelRingVariant.precision
+          : index.isOdd
+              ? TunnelRingVariant.drifting
+              : TunnelRingVariant.standard;
+      spawnTunnelRingAt(
+        Vector2(
+          _ringLaneX(baseX + offset),
+          GameConfig.coinSpawnY - 20 -
+              index * GameConfig.tunnelRingChainVerticalSpacing,
+        ),
+        variant: variant,
+        chainId: chainId,
+        chainIndex: index,
+        chainLength: count,
+      );
+    }
+  }
+
+  double _ringLaneX(double desiredX) => desiredX
+      .clamp(
+        GameConfig.horizontalEdgeMargin + 62,
+        GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 62,
+      )
+      .toDouble();
+
+  /// Spawns an origami paper tunnel ring at [pos]. Linked run members report
+  /// their clear/miss state through the same pooled lifecycle as a single ring.
+  void spawnTunnelRingAt(
+    Vector2 pos, {
+    TunnelRingVariant variant = TunnelRingVariant.standard,
+    int? chainId,
+    int chainIndex = 0,
+    int chainLength = 1,
+  }) {
     final ring = _ringPool.acquire();
-    ring.activate(spawnPosition: pos, recycleCallback: _recycleRing);
+    ring.activate(
+      spawnPosition: pos,
+      variant: variant,
+      chainId: chainId,
+      chainIndex: chainIndex,
+      chainLength: chainLength,
+      randomSeed: game.runRandom.nextEntitySeed('tunnel_ring.${variant.name}'),
+      resolutionCallback: chainId == null ? null : _onTunnelRingResolved,
+      recycleCallback: _recycleRing,
+    );
     game.world.add(ring);
     _activeRings.add(ring);
+    game.replayTrace.record(
+      ReplayTraceKind.tunnelRingSpawn,
+      primary: variant.index,
+      secondary: chainId == null ? 0 : chainIndex + 1,
+      x: ring.position.x,
+      y: ring.position.y,
+    );
+  }
+
+  void _onTunnelRingResolved(
+    TunnelRingComponent ring,
+    TunnelRingResult result,
+  ) {
+    final id = ring.chainId;
+    if (id == null) return;
+    final chain = _ringChains[id];
+    if (chain == null) return;
+
+    chain.resolvedCount++;
+    if (result != TunnelRingResult.perfect) chain.broken = true;
+    if (chain.resolvedCount < chain.length) return;
+
+    _ringChains.remove(id);
+    if (chain.broken) return;
+
+    // Every member was centered perfectly: turn the run into a memorable
+    // precision payout without making any single ordinary ring overpowered.
+    game.scoringSystem
+        .awardComboNotches(GameConfig.tunnelRingChainCompletionComboNotches);
+    game.inputManager
+        .restoreSnapCharge(GameConfig.tunnelRingChainCompletionSnapRefund);
+    spawnCoinLine(
+      x: ring.position.x,
+      startY: ring.position.y,
+      count: GameConfig.tunnelRingChainCompletionCoinCount,
+      spacing: GameConfig.tunnelRingChainVerticalSpacing * .18,
+    );
+    game.world.add(
+      ColoredBurst(
+        position: ring.position.clone(),
+        color: const Color(0xFFB2EBF2),
+      ),
+    );
+    game.world.add(
+      FloatingScoreText(
+        position: ring.position.clone(),
+        text: 'RING RUN! +BOOST',
+        color: const Color(0xFFB2EBF2),
+        fontSize: 20,
+      ),
+    );
+    game.gameFeelSystem.onCoinCollected(game.scoringSystem.comboCount);
   }
 
   void _spawnSingle() {
@@ -173,10 +321,18 @@ class CollectibleSpawner extends Component {
       spawnPosition: pos,
       variant: variant,
       letter: letter,
+      animationSeed: game.runRandom.nextEntitySeed('coin.${variant.name}'),
       recycleCallback: _recycleCoin,
     );
     game.world.add(coin);
     _activeCoins.add(coin);
+    game.replayTrace.record(
+      ReplayTraceKind.collectibleSpawn,
+      primary: variant.index,
+      secondary: letter.codeUnitAt(0),
+      x: coin.position.x,
+      y: coin.position.y,
+    );
   }
 
   /// Spawns a vertical column of [count] coins spaced [spacing] px apart.
@@ -244,6 +400,14 @@ class CollectibleSpawner extends Component {
     }
     return items.last;
   }
+}
+
+class _TunnelRingChainState {
+  _TunnelRingChainState({required this.length});
+
+  final int length;
+  int resolvedCount = 0;
+  bool broken = false;
 }
 
 enum _SpawnPattern { single, line, arc }

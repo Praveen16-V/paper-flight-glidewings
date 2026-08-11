@@ -4,6 +4,7 @@ import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../providers/game_session_provider.dart';
 import '../components/effects/coin_feedback.dart';
+import '../events/gameplay_event_bus.dart';
 import '../paper_flight_game.dart';
 
 /// Owns all score calculation and pushes updates to [gameSessionProvider].
@@ -136,9 +137,28 @@ class ScoringSystem extends Component {
     // Coin Rush: every coin is worth 2× for the duration of the power-up.
     final session = game.ref.read(gameSessionProvider);
     if (session.activePowerUps.contains(PowerUpType.coinRush)) {
-      points = (points * GameConfig.coinRushValueMultiplier).toInt();
+      final empowered = session.activeEmpoweredPowerUps
+          .contains(PowerUpType.coinRush);
+      final coinMultiplier =
+          session.activePowerUpCombos.contains(PowerUpCombo.goldVortex)
+              ? (empowered
+                  ? GameConfig.empoweredGoldVortexCoinValueMultiplier
+                  : GameConfig.goldVortexCoinValueMultiplier)
+              : (empowered
+                  ? GameConfig.empoweredCoinRushValueMultiplier
+                  : GameConfig.coinRushValueMultiplier);
+      points = (points * coinMultiplier).toInt();
+    }
+    // Zen/Daily wingmen reward disciplined proximity with richer coin value.
+    // Classic has no active wingmen, so this remains exactly 1.0 there.
+    final formationMultiplier = game.wingmanSystem.coinScoreMultiplier;
+    if (formationMultiplier > 1.0) {
+      points = (points * formationMultiplier).round();
     }
     _coinScoreAccumulated += points;
+    // Skin reactions receive score-confirmed coin events, including 5x stacks
+    // and elite bonus coins that do not originate from a CoinComponent.
+    game.plane.onGameEvent(SkinGameEvent.coinCollected);
     // Juice: coin tap haptic + ascending combo-chime melody (Task 6).
     game.gameFeelSystem.onCoinCollected(comboCount);
     return points;
@@ -166,6 +186,7 @@ class ScoringSystem extends Component {
   }) {
     _nearMissesThisRun++;
     game.ref.read(gameSessionProvider.notifier).addNearMiss();
+    game.gameplayEvents.emit(NearMissGameplayEvent(tier));
     var points = tier.points;
     // Stunt Fold: +50%..+100% near-miss score
     try {

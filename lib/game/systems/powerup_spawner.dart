@@ -7,6 +7,7 @@ import '../../core/enums/game_enums.dart';
 import '../../core/utils/object_pool.dart';
 import '../components/powerups/powerup_component.dart';
 import '../paper_flight_game.dart';
+import '../replay/run_replay_trace.dart';
 
 /// Spawns power-ups procedurally on a slow timer.
 /// Ghost and Coin Rush are slightly rarer to keep them exciting.
@@ -26,6 +27,10 @@ class PowerUpSpawner extends Component {
 
   final Map<PowerUpType, ObjectPool<PowerUpComponent>> _pools = {};
   final List<PowerUpComponent> _active = [];
+  int get activeCount => _active.length;
+
+  List<ObjectPoolDiagnostics> get poolDiagnostics =>
+      _pools.values.map((pool) => pool.diagnostics).toList(growable: false);
 
   double _spawnTimer = 0;
 
@@ -35,6 +40,8 @@ class PowerUpSpawner extends Component {
       _pools[type] = ObjectPool(
         create: () => PowerUpComponent(type: type),
         initialSize: 2,
+        maxRetained: GameConfig.powerUpPoolMaxRetained,
+        label: 'powerup.${type.name}',
       );
     }
     await super.onLoad();
@@ -60,22 +67,28 @@ class PowerUpSpawner extends Component {
   }
 
   void _spawnPowerUp() {
-    final type = _weightedPick(
-      PowerUpType.values,
-      [
-        1.4, // shield
-        1.3, // magnet
-        1.0, // ghost
-        1.2, // slowmo
-        1.0, // coin rush
-        1.1, // double score
-        1.0, // shrink
-        1.0, // wind caller
-        0.9, // decoy clone
-        0.8, // black hole
-        0.9, // turbo dash
-      ],
-    );
+    final corrupted = random.nextDouble() < GameConfig.corruptedPowerUpSpawnChance
+        ? (random.nextBool()
+            ? CorruptedPowerUpType.cursedMagnet
+            : CorruptedPowerUpType.unstableGhost)
+        : null;
+    final type = corrupted?.baseType ??
+        _weightedPick(
+          PowerUpType.values,
+          [
+            1.4, // shield
+            1.3, // magnet
+            1.0, // ghost
+            1.2, // slowmo
+            1.0, // coin rush
+            1.1, // double score
+            1.0, // shrink
+            1.0, // wind caller
+            0.9, // decoy clone
+            0.8, // black hole
+            0.9, // turbo dash
+          ],
+        );
 
     final spawnPos = Vector2(
       GameConfig.horizontalEdgeMargin +
@@ -88,9 +101,21 @@ class PowerUpSpawner extends Component {
     );
 
     final pu = _pools[type]!.acquire();
-    pu.activate(spawnPosition: spawnPos, recycleCallback: _recycle);
+    pu.activate(
+      spawnPosition: spawnPos,
+      corruptedType: corrupted,
+      animationSeed: game.runRandom.nextEntitySeed('powerup.${type.name}'),
+      recycleCallback: _recycle,
+    );
     game.world.add(pu);
     _active.add(pu);
+    game.replayTrace.record(
+      ReplayTraceKind.powerUpSpawn,
+      primary: type.index,
+      secondary: corrupted == null ? 0 : corrupted.index + 1,
+      x: pu.position.x,
+      y: pu.position.y,
+    );
   }
 
   void _recycle(PowerUpComponent pu) {

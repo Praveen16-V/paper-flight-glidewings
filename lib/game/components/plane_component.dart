@@ -14,6 +14,12 @@ import '../../core/utils/math_utils.dart';
 import '../../core/utils/noise.dart';
 import '../../providers/game_session_provider.dart';
 import '../paper_flight_game.dart';
+import '../systems/input_manager.dart';
+import 'effects/thermal_column_component.dart';
+import 'skins/animated_paper_skin.dart';
+import 'skins/custom_pattern_skin_overlay.dart';
+import 'skins/reactive_paper_skin_painter.dart';
+import 'skins/weathered_paper_skin_painter.dart';
 import 'plane_trail_component.dart';
 
 /// The player's paper plane.
@@ -24,6 +30,7 @@ import 'plane_trail_component.dart';
 ///            before tipping into full fall (1.0).
 ///   OSCILLATION: sinusoidal air undulation (10 px/s @ 0.8 Hz) fades in after release.
 ///   SNAP BURST: upward paper-snap kick (-252 px/s).
+///   STALL/SPIN: sustained extreme low-speed climb -> recover with release + counter-steer.
 ///   CEILING: soft resistance zone (64px) -> hard clamp (40px) with stall dip.
 ///
 /// Visual & Rendering features:
@@ -32,7 +39,9 @@ import 'plane_trail_component.dart';
 ///     Origami Butterfly, Paper Bomber, Interceptor, Soaring Albatross,
 ///     Classic Biplane, Origami Shuriken, Paper Rocket).
 ///   - 3-level upgrade tree perks & stats scaling.
-///   - Secondary Perlin wing flex wobble on top of hold/release fold.
+///   - Crosswind-amplified Perlin wing flex on top of hold/release fold.
+///   - Eight-frame SpriteAnimationComponent overlays for premium paper skins.
+///   - Event-reactive Gold Leaf, Holographic Foil, and Dragon Scale finishes.
 ///   - Thermal breathing scale pulse while riding updrafts.
 ///   - Edge curl & crumple damage state after near-miss passes (heals over time).
 ///   - Procedural paper grain texture & diffuse shading (not flat solid colors).
@@ -48,9 +57,17 @@ class PlaneComponent extends PositionComponent
   PlaneComponent({
     required this.game,
     required this.planeType,
-    this.paperSkin = PaperSkin.plain,
+    PaperSkin paperSkin = PaperSkin.plain,
     this.planeLevel = 1,
-  }) : super(
+    this.skinWearLevel = 0.0,
+    this.customSkinPrimaryHex = 0xFF4FC3F7,
+    this.customSkinAccentHex = 0xFFFFD54F,
+    this.customSkinStamp = 0,
+    this.customSkinPatternBase64 = '',
+  })  : paperSkin = paperSkin,
+        _skinPainter = ReactivePaperSkinPainter(paperSkin),
+        _skinSynergy = GameConfig.synergyBonus(planeType, paperSkin),
+        super(
           size: Vector2(48, 32),
           anchor: Anchor.center,
         );
@@ -58,7 +75,21 @@ class PlaneComponent extends PositionComponent
   final PaperFlightGame game;
   PlaneType planeType;
   PaperSkin paperSkin;
+  final ReactivePaperSkinPainter _skinPainter;
+  SkinSynergyBonus _skinSynergy;
+  SkinSynergyBonus get skinSynergy => _skinSynergy;
   int planeLevel;
+
+  /// Persistent blend from pristine (0) to veteran (1) paper texture.
+  double skinWearLevel;
+  static const WeatheredPaperSkinPainter _weatheredSkinPainter =
+      WeatheredPaperSkinPainter();
+
+  /// Player-authored Custom Craft palette and optional imported image pattern.
+  int customSkinPrimaryHex;
+  int customSkinAccentHex;
+  int customSkinStamp;
+  String customSkinPatternBase64;
 
   // ── Physics State ──────────────────────────────────────────────────────────
 
@@ -79,6 +110,26 @@ class PlaneComponent extends PositionComponent
   double _ceilingStallTimer = 0.0; // seconds remaining in stall dip
   bool _ceilingWasInSoftZone = false;
 
+  // ── Aerodynamic Stall / Spin State ────────────────────────────────────────
+
+  /// Effective pitch between upward motion and forward world speed, radians.
+  /// It is a gameplay-facing angle of attack rather than the render bank angle.
+  double _angleOfAttack = 0.0;
+  double get angleOfAttack => _angleOfAttack;
+
+  FlightControlState _flightControlState = FlightControlState.stable;
+  FlightControlState get flightControlState => _flightControlState;
+  bool get isSpinning => _flightControlState == FlightControlState.spinning;
+
+  /// 0..1 warning build-up before the wing actually stalls.
+  double _stallRisk = 0.0;
+  double get stallRisk => _stallRisk;
+  double _stallSnapGraceTimer = 0.0;
+
+  double _spinDirection = 1.0;
+  double _spinRecovery = 0.0;
+  double get spinRecovery => _spinRecovery;
+
   // ── Visual & Animation State ───────────────────────────────────────────────
 
   bool _isAlive = true;
@@ -92,6 +143,12 @@ class PlaneComponent extends PositionComponent
   /// Procedural ValueNoise generator for secondary aerodynamic wing flutter.
   final ValueNoise _noise = ValueNoise(seed: 2026);
 
+  /// Smoothed local crosswind cached from [WindSystem.currentForceAt]. Render
+  /// reads this instead of resampling game systems, keeping wing flex visually
+  /// stable while the physics loop remains authoritative.
+  double _crosswindForce = 0.0;
+  double _wingFlexStrength = 0.0;
+
   /// Near-miss crumple / damage intensity [0.0 = pristine, 1.0 = curled/crumpled].
   double _crumpleAmount = 0.0;
 
@@ -102,6 +159,20 @@ class PlaneComponent extends PositionComponent
   bool _inThermal = false;
   bool get isInThermal => _inThermal;
 
+  /// The local column currently being surfed, if any. Keeping this on the
+  /// plane lets a pilot's orbit reset cleanly when they leave or switch cells.
+  ThermalColumnComponent? _surfingThermalColumn;
+  bool _thermalSurfBoostActive = false;
+  bool _thermalSurfLoopQueued = false;
+  bool get thermalSurfBoostActive => _thermalSurfBoostActive;
+
+  /// One-shot signal consumed by [StreakSystem] to announce a completed orbit.
+  bool consumeThermalSurfLoop() {
+    if (!_thermalSurfLoopQueued) return false;
+    _thermalSurfLoopQueued = false;
+    return true;
+  }
+
   // ── Active Power-up Visual State ───────────────────────────────────────────
 
   bool _shieldActive = false;
@@ -111,10 +182,23 @@ class PlaneComponent extends PositionComponent
   bool _slowMoActive = false;
   bool _doubleScoreActive = false;
   bool _shrinkActive = false;
+  bool _empoweredShrinkActive = false;
   bool _windCallerActive = false;
   bool _decoyCloneActive = false;
   bool _blackHoleActive = false;
   bool _turboDashActive = false;
+
+  // Stacked power-up synergy channels.
+  bool _phaseShieldActive = false;
+  bool _goldVortexActive = false;
+  bool _timeDashActive = false;
+  bool _cursedMagnetActive = false;
+  bool _unstableGhostActive = false;
+  Set<PowerUpType> _activePowerUps = const {};
+  Map<PowerUpType, double> _powerUpTimerSnapshot = const {};
+  Set<PowerUpType> _activeEmpoweredPowerUps = const {};
+  Set<CorruptedPowerUpType> _activeCorruptedPowerUps = const {};
+  Map<CorruptedPowerUpType, double> _corruptedTimerSnapshot = const {};
 
   // ── Distinct Pulse Channels ───────────────────────────────────────────────
   double _shieldPhase = 0.0;     // 1.2 Hz breathing
@@ -130,10 +214,23 @@ class PlaneComponent extends PositionComponent
   double _ghostFlickerPhase = 0.0;
   double _snapFlashTimer = 0.0;
 
+  /// A snap burst briefly exposes a precise interaction envelope ahead of the
+  /// plane. The spawner resolves at most one target and marks it consumed.
+  double _snapInteractionTimer = 0.0;
+  bool _snapInteractionResolved = false;
+  bool get snapInteractionActive =>
+      _snapInteractionTimer > 0 && !_snapInteractionResolved;
+
+  void markSnapInteractionResolved() {
+    _snapInteractionResolved = true;
+  }
+
   // ── Children ───────────────────────────────────────────────────────────────
 
   late final PlaneTrailComponent _trail;
   late final RectangleHitbox _hitbox;
+  AnimatedPaperSkin? _animatedSkinOverlay;
+  CustomPatternSkinOverlay? _customPatternOverlay;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -147,32 +244,122 @@ class PlaneComponent extends PositionComponent
     _trail = PlaneTrailComponent(plane: this);
     add(_trail);
 
-    final scale = planeType.hitboxScaleForLevel(planeLevel) ??
-        planeType.hitboxScaleOverride ??
-        GameConfig.planeHitboxScale;
-    final hbSize = size * scale;
+    final hbSize = size * _activeHitboxScale;
     _hitbox = RectangleHitbox(
       size: hbSize,
       position: (size - hbSize) / 2,
     );
     add(_hitbox);
+    _syncAnimatedSkinOverlay();
+    _syncCustomPatternOverlay();
 
     await super.onLoad();
   }
 
   void syncHitboxForPlaneType(PlaneType newType) {
     planeType = newType;
-    final baseScale = newType.hitboxScaleForLevel(planeLevel) ??
-        newType.hitboxScaleOverride ??
+    _refreshSkinSynergy();
+    _syncHitboxGeometry();
+  }
+
+  void syncSkin(PaperSkin newSkin) {
+    if (paperSkin == newSkin) return;
+    paperSkin = newSkin;
+    _skinPainter.setSkin(newSkin);
+    _refreshSkinSynergy();
+    _syncHitboxGeometry();
+    _syncAnimatedSkinOverlay();
+    _syncCustomPatternOverlay();
+  }
+
+  /// Receives gameplay signals from coin, near-miss, and shield systems, then
+  /// forwards them to the equipped skin's reactive painter.
+  void onGameEvent(SkinGameEvent eventType) {
+    _skinPainter.onGameEvent(eventType);
+  }
+
+  void syncSkinWear(double newWearLevel) {
+    skinWearLevel = newWearLevel.clamp(0.0, 1.0).toDouble();
+  }
+
+  void syncCustomSkinCraft({
+    required int primaryHex,
+    required int accentHex,
+    required int stamp,
+    required String patternBase64,
+  }) {
+    final patternChanged = customSkinPatternBase64 != patternBase64;
+    customSkinPrimaryHex = primaryHex;
+    customSkinAccentHex = accentHex;
+    customSkinStamp = stamp;
+    customSkinPatternBase64 = patternBase64;
+    if (patternChanged) _syncCustomPatternOverlay();
+  }
+
+  void _refreshSkinSynergy() {
+    _skinSynergy = GameConfig.synergyBonus(planeType, paperSkin);
+  }
+
+  double get _effectiveBaseHitboxScale {
+    final base = planeType.hitboxScaleForLevel(planeLevel) ??
+        planeType.hitboxScaleOverride ??
         GameConfig.planeHitboxScale;
-    final scale = _shrinkActive ? GameConfig.shrinkHitboxScale : baseScale;
-    final hbSize = size * scale;
+    // Keep the premium Stealth + Carbon Fiber pairing meaningfully slimmer
+    // without allowing any skin combination to produce a near-zero hitbox.
+    return (base * _skinSynergy.hitboxScaleMultiplier)
+        .clamp(0.32, 1.0)
+        .toDouble();
+  }
+
+  double get _activeHitboxScale => _shrinkActive
+      ? math.min(
+          _empoweredShrinkActive
+              ? GameConfig.empoweredShrinkHitboxScale
+              : GameConfig.shrinkHitboxScale,
+          _effectiveBaseHitboxScale,
+        ).toDouble()
+      : _effectiveBaseHitboxScale;
+
+  void _syncHitboxGeometry() {
+    final hbSize = size * _activeHitboxScale;
     _hitbox.size = hbSize;
     _hitbox.position = (size - hbSize) / 2;
   }
 
-  void syncSkin(PaperSkin newSkin) {
-    paperSkin = newSkin;
+  /// Attaches/removes the sprite-sheet overlay only for frame-animated skins.
+  /// Other skins keep using the lightweight procedural Canvas pass below.
+  void _syncAnimatedSkinOverlay() {
+    final existing = _animatedSkinOverlay;
+    if (existing != null) {
+      existing.removeFromParent();
+      _animatedSkinOverlay = null;
+    }
+    if (!paperSkin.usesFrameAnimation) return;
+
+    final overlay = AnimatedPaperSkin(
+      skin: paperSkin,
+      planeSize: size.clone(),
+    );
+    _animatedSkinOverlay = overlay;
+    add(overlay);
+  }
+
+  void _syncCustomPatternOverlay() {
+    final existing = _customPatternOverlay;
+    if (existing != null) {
+      existing.removeFromParent();
+      _customPatternOverlay = null;
+    }
+    if (paperSkin != PaperSkin.customCraft ||
+        customSkinPatternBase64.isEmpty) {
+      return;
+    }
+    final overlay = CustomPatternSkinOverlay(
+      patternBase64: customSkinPatternBase64,
+      planeSize: size.clone(),
+    );
+    _customPatternOverlay = overlay;
+    add(overlay);
   }
 
   void syncLevel(int newLevel) {
@@ -184,7 +371,9 @@ class PlaneComponent extends PositionComponent
 
   @override
   void render(Canvas canvas) {
-    final baseColor = Color(paperSkin.baseColorHex);
+    final baseColor = paperSkin == PaperSkin.customCraft
+        ? Color(customSkinPrimaryHex)
+        : Color(paperSkin.baseColorHex);
     final Color planeColor = paperSkin == PaperSkin.plain
         ? const Color(0xFFF5A623)
         : baseColor;
@@ -202,11 +391,21 @@ class PlaneComponent extends PositionComponent
     // ── Thermal Breathing Scale ──────────────────────────────────────────────
     final breathSin = math.sin(_animTime * 5.0);
     var breathScale = 1.0 + 0.042 * breathSin * _thermalBreathFactor;
-    if (_shrinkActive) breathScale *= GameConfig.shrinkVisualScale;
+    if (_shrinkActive) {
+      breathScale *= _empoweredShrinkActive
+          ? GameConfig.empoweredShrinkVisualScale
+          : GameConfig.shrinkVisualScale;
+    }
 
-    // ── Secondary Wing Flex Wobble on top of hold/release fold ───────────────
+    // ── Crosswind-amplified wing flex on top of hold/release fold ───────────
+    // Calm air keeps a small paper flutter; a real local gust amplifies the
+    // same noise field, so wings bend organically instead of snapping between
+    // a separate "windy" pose and a calm pose.
     final flexNoise = _noise.noise1d(_animTime * 3.8);
-    final wingFlexWobble = flexNoise * 0.07 * (1.0 - _wingFold * 0.4);
+    final flexAmplitude = GameConfig.wingFlexBaseNoiseAmplitude +
+        _wingFlexStrength * GameConfig.wingFlexCrosswindNoiseBoost;
+    final wingFlexWobble =
+        flexNoise * flexAmplitude * (1.0 - _wingFold * 0.4);
     final butterflyFlap = planeType == PlaneType.butterfly
         ? math.sin(_animTime * 10.0) * 0.35 * (1.0 - _wingFold * 0.5)
         : 0.0;
@@ -260,7 +459,14 @@ class PlaneComponent extends PositionComponent
     // 4. Directional Top-Left Highlight & Dual Crease Lines
     _drawLightingAndCreases(canvas, w, h, planeColor, effectiveFold);
 
-    // 5. Edge Curl & Crumple Damage Overlay
+    // 5. Crosswind bends the paper along its wing creases. The overlay follows
+    // the same local transform as the silhouette, so it reads as flex rather
+    // than a world-space wind effect sliding over the plane.
+    if (_wingFlexStrength > 0.01) {
+      _drawCrosswindWingFlex(canvas, w, h, effectiveFold);
+    }
+
+    // 6. Edge Curl & Crumple Damage Overlay
     if (_crumpleAmount > 0.01) {
       _drawCrumpleDamage(canvas, w, h, _crumpleAmount);
     }
@@ -269,14 +475,29 @@ class PlaneComponent extends PositionComponent
 
     super.render(canvas);
 
-    // ── Paper-skin overlay patterns ──────────────────────────────────────────
+    // ── Paper-skin overlay patterns and gameplay reactions ──────────────────
     _drawSkinOverlay(canvas, w, h);
+    _skinPainter.renderReactionOverlay(canvas, w, h, _animTime);
+    _weatheredSkinPainter.paint(
+      canvas,
+      skin: paperSkin,
+      wearLevel: skinWearLevel,
+      width: w,
+      height: h,
+    );
+    _drawSeasonalSkinParticles(canvas, w, h);
 
     // ── Aviation Wing Navigation Lights ──────────────────────────────────────
     _drawWingNavLights(canvas, w, h);
 
     // ── Active In-Flight Power-Up Visuals ────────────────────────────────────
     _drawPowerUpOverlays(canvas, w, h);
+
+    // ── Aerodynamic Stall / Spin Readout ────────────────────────────────────
+    _drawStallSpinOverlay(canvas, w, h);
+
+    // ── Unified active-effect status ring ───────────────────────────────────
+    _drawPowerUpStatusRing(canvas, w, h);
 
     // ── Snap charge ring ─────────────────────────────────────────────────────
     _drawSnapChargeRing(canvas, w, h);
@@ -652,6 +873,84 @@ class PlaneComponent extends PositionComponent
     canvas.drawLine(Offset(w * 0.25, h / 2 + 0.5), Offset(w, h / 2 + 0.5), creaseShadow);
   }
 
+  /// Draws subtle, asymmetric crease arcs that bow with the live crosswind.
+  /// The base silhouette already receives the amplified noise fold; these lines
+  /// make the direction and magnitude legible on every paper archetype.
+  void _drawCrosswindWingFlex(
+    Canvas canvas,
+    double w,
+    double h,
+    double effectiveFold,
+  ) {
+    final direction = _crosswindForce == 0 ? 1.0 : _crosswindForce.sign;
+    final bend = direction *
+        GameConfig.wingFlexMaxBendPixels *
+        _wingFlexStrength;
+    final spread = 1.0 - effectiveFold;
+    final upperTipY = h / 2 - h * .34 * spread;
+    final lowerTipY = h / 2 + h * .34 * spread;
+    final root = Offset(w * .63, h / 2);
+
+    final litCrease = Paint()
+      ..color = Color.fromRGBO(
+        255,
+        255,
+        255,
+        (.12 + _wingFlexStrength * .40).clamp(0.0, .58).toDouble(),
+      )
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.05 + _wingFlexStrength * .75
+      ..strokeCap = StrokeCap.round;
+    final shadedCrease = Paint()
+      ..color = Color.fromRGBO(
+        24,
+        38,
+        48,
+        (.10 + _wingFlexStrength * .34).clamp(0.0, .48).toDouble(),
+      )
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .90 + _wingFlexStrength * .65
+      ..strokeCap = StrokeCap.round;
+
+    final upperWingFlex = Path()
+      ..moveTo(root.dx, root.dy - .4)
+      ..quadraticBezierTo(
+        w * .40 + bend * .45,
+        h * .31 - bend * .16,
+        w * .10 + bend,
+        upperTipY,
+      );
+    final lowerWingFlex = Path()
+      ..moveTo(root.dx, root.dy + .4)
+      ..quadraticBezierTo(
+        w * .40 + bend * .45,
+        h * .69 - bend * .16,
+        w * .10 + bend,
+        lowerTipY,
+      );
+    canvas.drawPath(upperWingFlex, litCrease);
+    canvas.drawPath(lowerWingFlex, shadedCrease);
+
+    // A tiny displaced wingtip fold sells the paper bending into the gust even
+    // on compact archetypes whose silhouettes have very short wings.
+    final tipPaint = Paint()
+      ..color = const Color(0xFFFFF9C4)
+          .withOpacity(.20 + _wingFlexStrength * .38)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .8 + _wingFlexStrength * .55;
+    canvas.drawArc(
+      Rect.fromCenter(
+        center: Offset(w * .10 + bend, h / 2),
+        width: 8 + _wingFlexStrength * 8,
+        height: h * .42 * spread + 5,
+      ),
+      direction > 0 ? -math.pi / 2 : math.pi / 2,
+      math.pi * .72,
+      false,
+      tipPaint,
+    );
+  }
+
   // ── Damage / Crumple States (Edge Curl After Near-Miss) ────────────────────
 
   void _drawCrumpleDamage(Canvas canvas, double w, double h, double crumple) {
@@ -773,11 +1072,43 @@ class PlaneComponent extends PositionComponent
         break;
       case PaperSkin.holographicFoil:
         final sweepShift = (_animTime * 35.0) % (w * 1.5);
-        final foilPaint = Paint()..shader = LinearGradient(begin: Alignment(-1.5 + (sweepShift / w), -1.0), end: Alignment(0.5 + (sweepShift / w), 1.0), colors: const [Color(0xFFE040FB), Color(0xFF00E5FF), Color(0xFF76FF03), Color(0xFFFFD740), Color(0xFFE040FB)]).createShader(Rect.fromLTWH(0, 0, w, h))..style = PaintingStyle.fill;
+        final nearMissShift = _skinPainter.holographicHueShiftDegrees;
+        Color hue(double offset, double lightness) => HSLColor.fromAHSL(
+              1.0,
+              (292.0 + offset + nearMissShift) % 360.0,
+              0.88,
+              lightness,
+            ).toColor();
+        final foilPaint = Paint()
+          ..shader = LinearGradient(
+            begin: Alignment(-1.5 + (sweepShift / w), -1.0),
+            end: Alignment(0.5 + (sweepShift / w), 1.0),
+            colors: [
+              hue(0, .63),
+              hue(72, .64),
+              hue(145, .61),
+              hue(220, .66),
+              hue(360, .63),
+            ],
+          ).createShader(Rect.fromLTWH(0, 0, w, h))
+          ..style = PaintingStyle.fill;
         canvas.drawRect(Rect.fromLTWH(0, 0, w, h), foilPaint);
-        final glint = Paint()..color = Colors.white.withOpacity(0.75 * pulse);
+        final glint = Paint()
+          ..color = Colors.white.withOpacity(
+            (0.75 * pulse +
+                    _skinPainter.holographicNearMissIntensity * 0.20)
+                .clamp(0.0, 1.0)
+                .toDouble(),
+          );
         for (int i = 0; i < 3; i++) {
-          canvas.drawCircle(Offset(w * (0.3 + i * 0.22), h * (0.35 + math.sin(_animTime * 4.0 + i * 2.0) * 0.2)), 1.6, glint);
+          canvas.drawCircle(
+            Offset(
+              w * (0.3 + i * 0.22),
+              h * (0.35 + math.sin(_animTime * 4.0 + i * 2.0) * 0.2),
+            ),
+            1.6 + _skinPainter.holographicNearMissIntensity * 1.4,
+            glint,
+          );
         }
         break;
       case PaperSkin.watercolorWash:
@@ -787,13 +1118,49 @@ class PlaneComponent extends PositionComponent
         canvas.drawCircle(Offset(w * 0.38, h * 0.62), 11, washB);
         break;
       case PaperSkin.goldLeaf:
+        final coinSparkle = _skinPainter.goldCoinSparkleIntensity;
         final fleckPaint = Paint()..style = PaintingStyle.fill;
-        for (int i = 0; i < 5; i++) {
-          final sparkleTTL = (math.sin(_animTime * 7.0 + i * 2.1) * 0.5 + 0.5);
-          fleckPaint.color = Color.fromRGBO(255, 215, 0, 0.25 + 0.65 * sparkleTTL);
-          canvas.drawCircle(Offset(w * (0.25 + (i * 0.14)), h * (0.30 + ((i * 37) % 40) * 0.01)), 1.2 + sparkleTTL * 1.2, fleckPaint);
+        final fleckCount = 5 + (coinSparkle * 5).round();
+        for (int i = 0; i < fleckCount; i++) {
+          final sparkleTTL =
+              math.sin(_animTime * 7.0 + i * 2.1) * 0.5 + 0.5;
+          final reactionBoost = coinSparkle *
+              (0.55 + math.sin(_animTime * 18.0 + i) * 0.45);
+          fleckPaint.color = Color.fromRGBO(
+            255,
+            215,
+            0,
+            (0.25 + 0.55 * sparkleTTL + 0.45 * reactionBoost)
+                .clamp(0.0, 1.0)
+                .toDouble(),
+          );
+          canvas.drawCircle(
+            Offset(
+              w * (0.20 + (i % 6).toDouble() * 0.13),
+              h * (0.26 + ((i * 37) % 48).toDouble() * 0.01),
+            ),
+            1.2 + sparkleTTL * 1.2 + coinSparkle * 1.7,
+            fleckPaint,
+          );
         }
-        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(w / 2, h / 2), width: w * 0.94, height: h * 0.74), const Radius.circular(5)), Paint()..color = const Color(0xFFFFD700).withOpacity(0.30 * pulse)..style = PaintingStyle.stroke..strokeWidth = 1.4);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(
+              center: Offset(w / 2, h / 2),
+              width: w * 0.94,
+              height: h * 0.74,
+            ),
+            const Radius.circular(5),
+          ),
+          Paint()
+            ..color = const Color(0xFFFFD700).withOpacity(
+              (0.30 * pulse + coinSparkle * 0.35)
+                  .clamp(0.0, 0.8)
+                  .toDouble(),
+            )
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4 + coinSparkle,
+        );
         break;
       case PaperSkin.blueprint:
         final bpLine = Paint()..color = Colors.white.withOpacity(0.40)..strokeWidth = 0.7..style = PaintingStyle.stroke;
@@ -837,10 +1204,27 @@ class PlaneComponent extends PositionComponent
         canvas.drawRect(Rect.fromLTWH(0, 0, w, h), pridePaint);
         break;
       case PaperSkin.dragonScales:
-        final scalePaint = Paint()..color = const Color(0xFF00E676).withOpacity(0.28)..style = PaintingStyle.stroke..strokeWidth = 0.9;
+        final shieldPulse = _skinPainter.dragonShieldPulseIntensity;
+        final scalePaint = Paint()
+          ..color = Color.lerp(
+            const Color(0xFF00E676),
+            const Color(0xFFB2FF59),
+            shieldPulse,
+          )!
+              .withOpacity(0.28 + shieldPulse * 0.58)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.9 + shieldPulse * 1.1;
         for (double x = w * 0.25; x < w * 0.75; x += 7.0) {
           for (double y = h * 0.28; y < h * 0.75; y += 6.0) {
-            canvas.drawPath(Path()..moveTo(x, y)..lineTo(x + 3.5, y + 4)..lineTo(x, y + 7)..lineTo(x - 3.5, y + 4)..close(), scalePaint);
+            canvas.drawPath(
+              Path()
+                ..moveTo(x, y)
+                ..lineTo(x + 3.5, y + 4)
+                ..lineTo(x, y + 7)
+                ..lineTo(x - 3.5, y + 4)
+                ..close(),
+              scalePaint,
+            );
           }
         }
         break;
@@ -861,23 +1245,166 @@ class PlaneComponent extends PositionComponent
           canvas.drawOval(Rect.fromCenter(center: Offset(w * (0.35 + i * 0.15), h * (0.35 + math.sin(_animTime * 3.0 + i) * 0.15)), width: 5, height: 3), petalPaint);
         }
         break;
+      // Frame-animated skins are rendered by [AnimatedPaperSkin], a child
+      // SpriteAnimationComponent overlay added during syncSkin/onLoad.
       case PaperSkin.lavaLamp:
-        final lavaA = Paint()..color = const Color(0xFFFF4081).withOpacity(0.35 + 0.1 * math.sin(_animTime * 3.0))..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6)..style = PaintingStyle.fill;
-        final lavaB = Paint()..color = const Color(0xFF00E5FF).withOpacity(0.35 + 0.1 * math.cos(_animTime * 2.5))..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6)..style = PaintingStyle.fill;
-        canvas.drawCircle(Offset(w * 0.45, h * 0.5 + math.sin(_animTime * 2.5) * 8), 9, lavaA);
-        canvas.drawCircle(Offset(w * 0.65, h * 0.5 - math.sin(_animTime * 2.0) * 8), 11, lavaB);
-        break;
       case PaperSkin.animatedHologram:
-        final hue = (_animTime * 65.0) % 360.0;
-        final color1 = HSLColor.fromAHSL(0.35, hue, 0.9, 0.6).toColor();
-        final color2 = HSLColor.fromAHSL(0.35, (hue + 120) % 360.0, 0.9, 0.6).toColor();
-        final color3 = HSLColor.fromAHSL(0.35, (hue + 240) % 360.0, 0.9, 0.6).toColor();
-        canvas.drawRect(Rect.fromLTWH(0, 0, w, h), Paint()..shader = LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [color1, color2, color3, color1]).createShader(Rect.fromLTWH(0, 0, w, h))..style = PaintingStyle.fill);
+      case PaperSkin.flipbook:
         break;
       case PaperSkin.customCraft:
-        canvas.drawCircle(Offset(w * 0.4, h * 0.4), 4, Paint()..color = Colors.white.withOpacity(0.35)..style = PaintingStyle.stroke..strokeWidth = 0.9);
-        canvas.drawCircle(Offset(w * 0.6, h * 0.6), 4, Paint()..color = Colors.white.withOpacity(0.35)..style = PaintingStyle.stroke..strokeWidth = 0.9);
+        final accent = Color(customSkinAccentHex);
+        final accentPaint = Paint()
+          ..color = accent.withOpacity(.58)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.15;
+        canvas.drawLine(
+          Offset(w * .18, h * .24),
+          Offset(w * .82, h * .76),
+          accentPaint,
+        );
+        canvas.drawLine(
+          Offset(w * .18, h * .76),
+          Offset(w * .82, h * .24),
+          accentPaint,
+        );
+        _drawCustomCraftStamp(
+          canvas,
+          Offset(w * .62, h * .42),
+          accentPaint,
+        );
         break;
+    }
+  }
+
+  void _drawCustomCraftStamp(Canvas canvas, Offset center, Paint paint) {
+    final stamp = customSkinStamp % 4;
+    switch (stamp) {
+      case 0: // star
+        final star = Path();
+        for (var i = 0; i < 10; i++) {
+          final radius = i.isEven ? 5.0 : 2.3;
+          final angle = -math.pi / 2 + i * math.pi / 5;
+          final point = Offset(
+            center.dx + math.cos(angle) * radius,
+            center.dy + math.sin(angle) * radius,
+          );
+          if (i == 0) {
+            star.moveTo(point.dx, point.dy);
+          } else {
+            star.lineTo(point.dx, point.dy);
+          }
+        }
+        star.close();
+        canvas.drawPath(star, paint);
+        break;
+      case 1: // diamond
+        canvas.drawPath(
+          Path()
+            ..moveTo(center.dx, center.dy - 5)
+            ..lineTo(center.dx + 4, center.dy)
+            ..lineTo(center.dx, center.dy + 5)
+            ..lineTo(center.dx - 4, center.dy)
+            ..close(),
+          paint,
+        );
+        break;
+      case 2: // heart
+        final heart = Path()
+          ..moveTo(center.dx, center.dy + 4)
+          ..cubicTo(
+            center.dx - 10,
+            center.dy - 2,
+            center.dx - 4,
+            center.dy - 8,
+            center.dx,
+            center.dy - 3,
+          )
+          ..cubicTo(
+            center.dx + 4,
+            center.dy - 8,
+            center.dx + 10,
+            center.dy - 2,
+            center.dx,
+            center.dy + 4,
+          );
+        canvas.drawPath(heart, paint);
+        break;
+      default: // lightning
+        final bolt = Path()
+          ..moveTo(center.dx + 1, center.dy - 6)
+          ..lineTo(center.dx - 4, center.dy)
+          ..lineTo(center.dx, center.dy)
+          ..lineTo(center.dx - 1, center.dy + 6)
+          ..lineTo(center.dx + 5, center.dy - 2)
+          ..lineTo(center.dx + 1, center.dy - 2)
+          ..close();
+        canvas.drawPath(bolt, paint);
+    }
+  }
+
+  // ── Seasonal Skin Particles ───────────────────────────────────────────────
+
+  void _drawSeasonalSkinParticles(Canvas canvas, double w, double h) {
+    switch (paperSkin) {
+      case PaperSkin.pumpkin:
+        _drawHalloweenLeafParticles(canvas, w, h);
+        break;
+      case PaperSkin.snowflake:
+        _drawWinterSnowParticles(canvas, w, h);
+        break;
+      case PaperSkin.dragonScales:
+        _drawLunarEmberParticles(canvas, w, h);
+        break;
+      default:
+        break;
+    }
+  }
+
+  void _drawHalloweenLeafParticles(Canvas canvas, double w, double h) {
+    final leaf = Paint()..style = PaintingStyle.fill;
+    for (var i = 0; i < 5; i++) {
+      final phase = _animTime * (1.7 + i.toDouble() * .12) + i.toDouble() * 1.9;
+      final x = w * (.12 + i.toDouble() * .19) + math.sin(phase) * 7;
+      final y = h * .15 + ((phase * 11) % (h * .92));
+      leaf.color = i.isEven
+          ? const Color(0xCCFF7043)
+          : const Color(0xCCFFCA28);
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(phase);
+      canvas.drawOval(
+        const Rect.fromCenter(center: Offset.zero, width: 4.5, height: 2.4),
+        leaf,
+      );
+      canvas.restore();
+    }
+  }
+
+  void _drawWinterSnowParticles(Canvas canvas, double w, double h) {
+    final snow = Paint()
+      ..color = const Color(0xDDE1F5FE)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .75;
+    for (var i = 0; i < 6; i++) {
+      final phase = _animTime * (2.2 + i.toDouble() * .10) + i.toDouble() * 1.3;
+      final x = w * (.08 + i.toDouble() * .17) + math.sin(phase) * 3;
+      final y = (phase * 15) % (h * .98);
+      final radius = 1.4 + (i % 2).toDouble() * .55;
+      canvas.drawLine(Offset(x - radius, y), Offset(x + radius, y), snow);
+      canvas.drawLine(Offset(x, y - radius), Offset(x, y + radius), snow);
+    }
+  }
+
+  void _drawLunarEmberParticles(Canvas canvas, double w, double h) {
+    final ember = Paint()..style = PaintingStyle.fill;
+    for (var i = 0; i < 5; i++) {
+      final phase = _animTime * (2.8 + i.toDouble() * .16) + i.toDouble() * 2.2;
+      final x = w * (.16 + i.toDouble() * .17) + math.sin(phase * 1.3) * 5;
+      final y = h * .82 - ((phase * 10) % (h * .72));
+      ember.color = i.isEven
+          ? const Color(0xFFFFD740)
+          : const Color(0xFFFF5252);
+      canvas.drawCircle(Offset(x, y), 1.1 + (i % 2).toDouble() * .55, ember);
     }
   }
 
@@ -893,6 +1420,12 @@ class PlaneComponent extends PositionComponent
     if (_decoyCloneActive) _drawDecoyClones(canvas, w, h);
     if (_blackHoleActive) _drawBlackHoleVortex(canvas, w, h);
     if (_turboDashActive) _drawTurboDashBlaze(canvas, w, h);
+
+    if (_phaseShieldActive) _drawPhaseShieldCombo(canvas, w, h);
+    if (_goldVortexActive) _drawGoldVortexCombo(canvas, w, h);
+    if (_timeDashActive) _drawTimeDashCombo(canvas, w, h);
+    if (_cursedMagnetActive) _drawCursedMagnetOverlay(canvas, w, h);
+    if (_unstableGhostActive) _drawUnstableGhostOverlay(canvas, w, h);
 
     // Stacking VFX: interlaced resonant aura if multiple active
     int activeCount = (_shieldActive ? 1 : 0) +
@@ -1188,6 +1721,283 @@ class PlaneComponent extends PositionComponent
     canvas.drawPath(cone, blaze);
   }
 
+  // ── Stacked Power-Up Combo Overlays ───────────────────────────────────────
+
+  void _drawPhaseShieldCombo(Canvas canvas, double w, double h) {
+    final center = Offset(w / 2, h / 2);
+    final pulse = .78 + math.sin(_shieldPhase * 1.7) * .18;
+    final radius = w * .78 * pulse;
+    final rim = Paint()
+      ..color = const Color(0xFF80DEEA).withOpacity(.78)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+    final ghostRim = Paint()
+      ..color = const Color(0x99E1BEE7)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1;
+    canvas.drawCircle(center, radius, rim);
+    for (var i = 0; i < 6; i++) {
+      final a = _ghostPhase * .12 + i * math.pi / 3;
+      final x = center.dx + math.cos(a) * radius;
+      final y = center.dy + math.sin(a) * radius;
+      canvas.drawCircle(Offset(x, y), 2.1, ghostRim);
+    }
+  }
+
+  void _drawGoldVortexCombo(Canvas canvas, double w, double h) {
+    final center = Offset(w / 2, h / 2);
+    final vortex = Paint()
+      ..color = const Color(0xCCFFD740)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.7;
+    for (var i = 0; i < 3; i++) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: w * (.48 + i * .16)),
+        _magnetAngle * 2 + i.toDouble() * 1.4,
+        math.pi * 1.15,
+        false,
+        vortex,
+      );
+    }
+    final coin = Paint()..color = const Color(0xFFFFF59D);
+    for (var i = 0; i < 5; i++) {
+      final a = _magnetAngle * 2 + i.toDouble() * (math.pi * 2 / 5);
+      canvas.drawCircle(
+        Offset(
+          center.dx + math.cos(a) * w * .72,
+          center.dy + math.sin(a) * h * .62,
+        ),
+        2.1,
+        coin,
+      );
+    }
+  }
+
+  void _drawTimeDashCombo(Canvas canvas, double w, double h) {
+    final center = Offset(w / 2, h / 2);
+    final ring = Paint()
+      ..color = const Color(0xCCB388FF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8;
+    canvas.drawCircle(center, w * .82, ring);
+    for (var i = 0; i < 4; i++) {
+      final y = h * (.18 + i.toDouble() * .20);
+      final line = Paint()
+        ..color = const Color(0x8864FFDA)
+        ..strokeWidth = 1.2;
+      final shift = math.sin(_turboDashPhase * .65 + i.toDouble()) * 5;
+      canvas.drawLine(Offset(w * .05 + shift, y), Offset(w * .95 + shift, y), line);
+    }
+  }
+
+  void _drawCursedMagnetOverlay(Canvas canvas, double w, double h) {
+    final center = Offset(w / 2, h / 2);
+    final arc = Paint()
+      ..color = const Color(0xCCE53935)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: w * .86),
+      _magnetAngle * 2,
+      math.pi * .82,
+      false,
+      arc,
+    );
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: w * .86),
+      _magnetAngle * 2 + math.pi,
+      math.pi * .82,
+      false,
+      arc,
+    );
+  }
+
+  void _drawUnstableGhostOverlay(Canvas canvas, double w, double h) {
+    final jitter = math.sin(_ghostPhase * 1.8) * 4;
+    final paint = Paint()
+      ..color = const Color(0xAA7C4DFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(w / 2 + jitter, h / 2),
+          width: w + 18,
+          height: h + 18,
+        ),
+        const Radius.circular(9),
+      ),
+      paint,
+    );
+  }
+
+  // ── Aerodynamic Stall / Spin Overlay ──────────────────────────────────────
+
+  void _drawStallSpinOverlay(Canvas canvas, double w, double h) {
+    final state = _flightControlState;
+    if (state == FlightControlState.stable) return;
+
+    final center = Offset(w / 2, h / 2);
+    if (state == FlightControlState.stallWarning) {
+      final risk = _stallRisk.clamp(0.0, 1.0).toDouble();
+      final warningPaint = Paint()
+        ..color = Color.fromRGBO(255, 179, 0, .38 + risk * .52)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6 + risk * 1.4
+        ..strokeCap = StrokeCap.round;
+      final radius = w * (.50 + risk * .18);
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        -math.pi / 2,
+        math.pi * 2 * risk,
+        false,
+        warningPaint,
+      );
+
+      // Buffeting tick marks communicate "unload the wing" before a spin.
+      final buffet = Paint()
+        ..color = Color.fromRGBO(255, 235, 59, .30 + risk * .55)
+        ..strokeWidth = 1.2
+        ..strokeCap = StrokeCap.round;
+      for (var i = 0; i < 4; i++) {
+        final phase = _animTime * (11 + risk * 8) + i * math.pi / 2;
+        final x = center.dx + math.cos(phase) * radius;
+        final y = center.dy + math.sin(phase) * radius * .62;
+        canvas.drawLine(
+          Offset(x, y),
+          Offset(x + math.cos(phase) * 5, y + math.sin(phase) * 4),
+          buffet,
+        );
+      }
+      return;
+    }
+
+    final spinPulse = .72 + math.sin(_animTime * 12) * .18;
+    final spinPaint = Paint()
+      ..color = Color.fromRGBO(255, 82, 82, spinPulse.clamp(0.0, 1.0).toDouble())
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < 3; i++) {
+      final radius = w * (.45 + i * .18);
+      final start = _animTime * GameConfig.spinAngularVelocity * _spinDirection +
+          i * math.pi * .66;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        start,
+        math.pi * 1.05,
+        false,
+        spinPaint,
+      );
+    }
+
+    // Recovery fills only while the pilot counter-steers against rotation; the
+    // arrow points toward the required correction for every control scheme.
+    final recoveryPaint = Paint()
+      ..color = const Color(0xFFB9F6CA)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round;
+    final recoveryRect = Rect.fromCircle(center: center, radius: w * .78);
+    canvas.drawArc(
+      recoveryRect,
+      -math.pi / 2,
+      math.pi * 2 * _spinRecovery.clamp(0.0, 1.0).toDouble(),
+      false,
+      recoveryPaint,
+    );
+
+    final counterDirection = -_spinDirection;
+    final arrowX = center.dx + counterDirection * w * .78;
+    final arrow = Path()
+      ..moveTo(arrowX + counterDirection * 7, center.dy)
+      ..lineTo(arrowX - counterDirection * 4, center.dy - 5)
+      ..lineTo(arrowX - counterDirection * 4, center.dy + 5)
+      ..close();
+    canvas.drawPath(
+      arrow,
+      Paint()
+        ..color = const Color(0xFFB9F6CA)
+        ..style = PaintingStyle.fill,
+    );
+  }
+
+  // ── Unified Power-Up Status Ring ─────────────────────────────────────────
+
+  void _drawPowerUpStatusRing(Canvas canvas, double w, double h) {
+    if (_activePowerUps.isEmpty && _activeCorruptedPowerUps.isEmpty) return;
+
+    final entries = <_PowerUpRingEntry>[
+      for (final type in _activePowerUps)
+        _PowerUpRingEntry(
+          color: type.visualColor,
+          progress: _powerUpRingProgress(type),
+          empowered: _activeEmpoweredPowerUps.contains(type),
+        ),
+      for (final type in _activeCorruptedPowerUps)
+        _PowerUpRingEntry(
+          color: type.color,
+          progress: (_corruptedTimerSnapshot[type] ??
+                  GameConfig.corruptedPowerUpDuration) /
+              GameConfig.corruptedPowerUpDuration,
+          corrupted: true,
+        ),
+    ];
+    if (entries.isEmpty) return;
+
+    final center = Offset(w / 2, h / 2);
+    final count = entries.length;
+    final gap = GameConfig.powerUpStatusRingGapRadians;
+    final totalArc = (math.pi * 2 - gap * count) / count;
+    final background = Paint()
+      ..color = const Color(0x33FFFFFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = GameConfig.powerUpStatusRingStrokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    for (var i = 0; i < entries.length; i++) {
+      final entry = entries[i];
+      final start = -math.pi / 2 + i * (totalArc + gap);
+      final rect = Rect.fromCircle(
+        center: center,
+        radius: GameConfig.powerUpStatusRingRadius,
+      );
+      canvas.drawArc(rect, start, totalArc, false, background);
+      final fill = Paint()
+        ..color = entry.color.withOpacity(entry.corrupted ? .95 : .82)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = GameConfig.powerUpStatusRingStrokeWidth +
+            (entry.empowered ? 1.2 : 0)
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(
+        rect,
+        start,
+        totalArc * entry.progress.clamp(0.0, 1.0).toDouble(),
+        false,
+        fill,
+      );
+      if (entry.empowered) {
+        final end = start +
+            totalArc * entry.progress.clamp(0.0, 1.0).toDouble();
+        final sparkle = Offset(
+          center.dx + math.cos(end) * GameConfig.powerUpStatusRingRadius,
+          center.dy + math.sin(end) * GameConfig.powerUpStatusRingRadius,
+        );
+        canvas.drawCircle(sparkle, 1.8, Paint()..color = const Color(0xFFFFF59D));
+      }
+    }
+  }
+
+  double _powerUpRingProgress(PowerUpType type) {
+    if (!type.isChargeBased) return 1.0;
+    final duration = _activeEmpoweredPowerUps.contains(type)
+        ? GameConfig.empoweredPowerUpBurstDuration
+        : GameConfig.chargePowerUpBurstDuration;
+    return ((_powerUpTimerSnapshot[type] ?? duration) / duration)
+        .clamp(0.0, 1.0)
+        .toDouble();
+  }
+
   // ── Snap Charge Ring (Double Ring Concept & Per-Plane Styles) ──────────────
 
   void _drawSnapChargeRing(Canvas canvas, double w, double h) {
@@ -1425,6 +2235,7 @@ class PlaneComponent extends PositionComponent
     if (game.phase != GamePhase.playing) return;
 
     _animTime += dt;
+    _skinPainter.update(dt);
 
     final input = game.inputManager;
     final wind = game.windSystem;
@@ -1444,10 +2255,27 @@ class PlaneComponent extends PositionComponent
     _slowMoActive = session.activePowerUps.contains(PowerUpType.slowMo);
     _doubleScoreActive = session.activePowerUps.contains(PowerUpType.doubleScore);
     _shrinkActive = session.activePowerUps.contains(PowerUpType.shrink);
+    _empoweredShrinkActive = session.activeEmpoweredPowerUps
+        .contains(PowerUpType.shrink);
     _windCallerActive = session.activePowerUps.contains(PowerUpType.windCaller);
     _decoyCloneActive = session.activePowerUps.contains(PowerUpType.decoyClone) || game.decoyCloneCharges > 0;
     _blackHoleActive = session.activePowerUps.contains(PowerUpType.blackHole);
     _turboDashActive = session.activePowerUps.contains(PowerUpType.turboDash);
+    _activePowerUps = Set<PowerUpType>.from(session.activePowerUps);
+    _powerUpTimerSnapshot = Map<PowerUpType, double>.from(session.powerUpRemaining);
+    _activeEmpoweredPowerUps = Set<PowerUpType>.from(session.activeEmpoweredPowerUps);
+    _activeCorruptedPowerUps =
+        Set<CorruptedPowerUpType>.from(session.activeCorruptedPowerUps);
+    _corruptedTimerSnapshot =
+        Map<CorruptedPowerUpType, double>.from(session.corruptedPowerUpRemaining);
+    final combos = session.activePowerUpCombos;
+    _phaseShieldActive = combos.contains(PowerUpCombo.phaseShield);
+    _goldVortexActive = combos.contains(PowerUpCombo.goldVortex);
+    _timeDashActive = combos.contains(PowerUpCombo.timeDash);
+    _cursedMagnetActive = session.activeCorruptedPowerUps
+        .contains(CorruptedPowerUpType.cursedMagnet);
+    _unstableGhostActive = session.activeCorruptedPowerUps
+        .contains(CorruptedPowerUpType.unstableGhost);
 
     // Update distinct pulse channels
     _shieldPhase += dt * (1.2 * 2 * math.pi);
@@ -1465,21 +2293,40 @@ class PlaneComponent extends PositionComponent
     if (_snapFlashTimer > 0) {
       _snapFlashTimer = (_snapFlashTimer - dt).clamp(0.0, 10.0);
     }
+    if (_snapInteractionTimer > 0) {
+      _snapInteractionTimer = (_snapInteractionTimer - dt)
+          .clamp(0.0, GameConfig.snapInteractionDuration)
+          .toDouble();
+    }
     if (_ceilingStallTimer > 0) {
       _ceilingStallTimer = (_ceilingStallTimer - dt).clamp(0.0, 10.0);
+    }
+    if (_stallSnapGraceTimer > 0) {
+      _stallSnapGraceTimer = (_stallSnapGraceTimer - dt)
+          .clamp(0.0, GameConfig.stallSnapGraceSeconds)
+          .toDouble();
     }
     if (_crumpleAmount > 0) {
       _crumpleAmount = (_crumpleAmount - dt / 3.5).clamp(0.0, 1.0);
     }
 
-    // Shrink hitbox update
-    final baseScale = planeType.hitboxScaleForLevel(planeLevel) ??
-        planeType.hitboxScaleOverride ??
-        GameConfig.planeHitboxScale;
-    final currentScale = _shrinkActive ? GameConfig.shrinkHitboxScale : baseScale;
-    final hbSize = size * currentScale;
-    _hitbox.size = hbSize;
-    _hitbox.position = (size - hbSize) / 2;
+    // Shrink + skin-synergy hitbox update.
+    _syncHitboxGeometry();
+
+    // A spin owns all motion until the pilot releases lift and counter-steers.
+    // It intentionally bypasses normal hold/glide and turn-momentum physics.
+    if (isSpinning) {
+      _updateSpin(
+        dt: dt,
+        input: input,
+        isHolding: isHolding,
+        fallMultiplier: fallMult,
+        gravityScale: wind.profile.gravity,
+        crosswindForce: wind.currentForceAt(position.x),
+      );
+      _wasHolding = isHolding;
+      return;
+    }
 
     // ── Vertical Physics ─────────────────────────────────────────────────────
 
@@ -1555,6 +2402,9 @@ class PlaneComponent extends PositionComponent
           : (planeType == PlaneType.rocket && planeLevel >= 3 ? 1.20 : 1.0);
       _velocityY = GameConfig.snapBurstVelocity * snapMult;
       _glideArcActive = false;
+      _stallSnapGraceTimer = GameConfig.stallSnapGraceSeconds;
+      _snapInteractionTimer = GameConfig.snapInteractionDuration;
+      _snapInteractionResolved = false;
       _triggerSnapFlash();
       _playSnapBurstEffect();
     }
@@ -1564,18 +2414,43 @@ class PlaneComponent extends PositionComponent
       _velocityY = MathUtils.lerp(_velocityY, -60.0, dt * 5.0);
     }
 
-    // Thermal lift bonus from wind lane
+    // Thermal lift comes from a real, visible column inside a favourable lane
+    // rather than from an invisible quarter-screen strip. Wind Caller retains
+    // its intentionally broad calm-updraft effect as a power-up exception.
     final normX = position.x / GameConfig.designWidth;
     final laneIndex = wind.laneForNormX(normX);
     final laneWind = wind.windAt(laneIndex);
-    final inThermal = laneWind.type == WindType.thermal;
+    final windCallerThermal =
+        wind.windCallerActive && laneWind.type == WindType.thermal;
+    final thermalSample = windCallerThermal
+        ? null
+        : game.thermalColumnSystem.sampleAt(position);
+    final inThermal = thermalSample != null || windCallerThermal;
     _inThermal = inThermal;
+
+    double surfLiftMultiplier = 1.0;
+    if (thermalSample != null) {
+      final previousColumn = _surfingThermalColumn;
+      if (previousColumn != null && previousColumn != thermalSample.column) {
+        previousColumn.resetPilotOrbit();
+      }
+      _surfingThermalColumn = thermalSample.column;
+      final surf = thermalSample.trackPilot(position, dt);
+      surfLiftMultiplier = surf.liftMultiplier;
+      _thermalSurfBoostActive = surf.bonusActive;
+      if (surf.completedOrbit) _thermalSurfLoopQueued = true;
+    } else {
+      _surfingThermalColumn?.resetPilotOrbit();
+      _surfingThermalColumn = null;
+      _thermalSurfBoostActive = false;
+    }
 
     _thermalBreathFactor = MathUtils.lerp(
         _thermalBreathFactor, inThermal ? 1.0 : 0.0, dt * 3.5);
 
     if (inThermal) {
-      double lift = laneWind.liftBonus;
+      double lift = thermalSample?.lift ?? laneWind.liftBonus;
+      lift *= surfLiftMultiplier;
       if (planeType == PlaneType.glider) {
         final gMult = planeLevel >= 3 ? 1.50 : (planeLevel == 2 ? 1.35 : 1.20);
         lift *= gMult;
@@ -1585,6 +2460,7 @@ class PlaneComponent extends PositionComponent
       } else if (planeType == PlaneType.crane && planeLevel >= 3) {
         lift *= 1.15;
       }
+      lift *= _skinSynergy.thermalLiftMultiplier;
       _velocityY -= lift * dt;
     }
 
@@ -1593,11 +2469,37 @@ class PlaneComponent extends PositionComponent
       GameConfig.maxFallSpeed * fallMult,
     );
 
+    _updateStallRisk(
+      dt: dt,
+      isHolding: isHolding,
+      crosswindForce: wind.currentForceAt(position.x),
+    );
+    if (isSpinning) {
+      _updateSpin(
+        dt: dt,
+        input: input,
+        isHolding: isHolding,
+        fallMultiplier: fallMult,
+        gravityScale: wind.profile.gravity,
+        crosswindForce: wind.currentForceAt(position.x),
+      );
+      _wasHolding = isHolding;
+      return;
+    }
+
     // ── Horizontal Physics ────────────────────────────────────────────────────
 
-    final controlMult = wind.isInTurbulence(normX)
-        ? (1.0 - GameConfig.turbulenceControlReduction)
-        : 1.0;
+    // A turbulence pocket contributes its own fast-reversing local gust and
+    // scales steering authority by distance from the cell core. Lane wind stays
+    // underneath it, so a pilot has to actively correct for both weather layers.
+    final turbulence = wind.turbulenceAt(normX);
+    final controlMult = turbulence?.controlMultiplier ?? 1.0;
+    final turbulenceForce = turbulence?.lateralForce ?? 0.0;
+
+    // Feed render-time paper flex from the same composed lane + pocket force
+    // the plane is fighting in physics.
+    _syncCrosswindFlex(dt, wind.currentForceAt(position.x));
+
     double biomeControl = wind.profile.control;
     if (planeType == PlaneType.stealthJet) {
       final wBonus = planeLevel >= 3 ? 1.20 : (planeLevel == 2 ? 1.15 : 1.08);
@@ -1621,21 +2523,38 @@ class PlaneComponent extends PositionComponent
       targetVX += autoSway;
     }
 
-    _velocityX = MathUtils.lerp(
-      _velocityX,
-      targetVX + laneWind.lateralForce,
-      GameConfig.tiltVelocityResponse,
+    // Steering intent and crosswind are composed before the input layer applies
+    // the airframe's dynamic wing-loading response. This replaces the old
+    // fixed per-frame lerp: Butterfly/Albatross folds track corrections almost
+    // instantly while Bomber/Rocket folds have to carry their bank through a
+    // reversal. The same state machine is used by tilt, touch zones, and stick.
+    _velocityX = input.resolveTurnMomentum(
+      planeType: planeType,
+      desiredVelocity:
+          targetVX + laneWind.lateralForce + turbulenceForce,
+      hasSteeringInput:
+          input.horizontalInput.abs() > GameConfig.turnMomentumInputDeadZone,
+      dt: dt,
     );
 
     // ── Integrate Position ────────────────────────────────────────────────────
 
-    position.x += _velocityX * dt;
+    final minX = GameConfig.horizontalEdgeMargin;
+    final maxX = GameConfig.designWidth - GameConfig.horizontalEdgeMargin;
+    final proposedX = position.x + _velocityX * dt;
+    position.x = proposedX.clamp(minX, maxX).toDouble();
     position.y += _velocityY * dt;
 
-    position.x = position.x.clamp(
-      GameConfig.horizontalEdgeMargin,
-      GameConfig.designWidth - GameConfig.horizontalEdgeMargin,
-    );
+    // Keep the input model in sync with physical bounds. Without this, a heavy
+    // plane pushed into an edge by a gust would keep invisible outward momentum
+    // and feel sticky when the pilot begins correcting back into the play area.
+    if (proposedX <= minX && _velocityX < 0) {
+      _velocityX = 0;
+      input.blockTurnMomentumAtEdge(left: true);
+    } else if (proposedX >= maxX && _velocityX > 0) {
+      _velocityX = 0;
+      input.blockTurnMomentumAtEdge(right: true);
+    }
 
     // ── Soft Altitude Ceiling ─────────────────────────────────────────────────
     _handleCeiling(dt);
@@ -1655,6 +2574,191 @@ class PlaneComponent extends PositionComponent
     _updateRotation(dt);
     _wingFold = MathUtils.lerp(_wingFold, isHolding ? 1.0 : 0.0, 0.10);
     _wasHolding = isHolding;
+  }
+
+  // ── Stall / Spin Simulation ───────────────────────────────────────────────
+
+  void _updateStallRisk({
+    required double dt,
+    required bool isHolding,
+    required double crosswindForce,
+  }) {
+    final forwardAirspeed = math.max(1.0, game.scrollSpeed).toDouble();
+    // This measures wing airflow, not [angle], which is only visual bank.
+    _angleOfAttack = GameConfig.angleOfAttackFor(
+      forwardAirspeed: forwardAirspeed,
+      verticalVelocity: _velocityY,
+      holdingLift: isHolding,
+    );
+
+    final canBuildStall = game.mode != GameMode.zen &&
+        !_turboDashActive &&
+        game.distanceMeters >= GameConfig.stallArmDistanceMeters &&
+        _stallSnapGraceTimer <= 0 &&
+        forwardAirspeed < GameConfig.stallLowAirspeedThreshold &&
+        _angleOfAttack >= GameConfig.stallAngleOfAttackThreshold;
+
+    if (!canBuildStall) {
+      _stallRisk = math.max(
+        0.0,
+        _stallRisk - GameConfig.stallRiskDecayPerSecond * dt,
+      ).toDouble();
+      if (_flightControlState == FlightControlState.stallWarning &&
+          _stallRisk <= 0.01) {
+        _flightControlState = FlightControlState.stable;
+      }
+      return;
+    }
+
+    _stallRisk = (_stallRisk + dt / GameConfig.stallBuildUpDuration)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    if (_stallRisk >= 1.0) {
+      _enterSpin(crosswindForce);
+    } else {
+      _flightControlState = FlightControlState.stallWarning;
+    }
+  }
+
+  void _enterSpin(double crosswindForce) {
+    if (isSpinning) return;
+
+    final lateralBias = _velocityX.abs() > 18.0 ? _velocityX : crosswindForce;
+    _spinDirection = lateralBias.abs() > 1.0
+        ? lateralBias.sign
+        : (math.sin(_animTime * 2.7) >= 0 ? 1.0 : -1.0);
+    _flightControlState = FlightControlState.spinning;
+    _stallRisk = 0.0;
+    _spinRecovery = 0.0;
+    _glideArcActive = false;
+    _oscillationStrength = 0.0;
+    _velocityY = math.max(_velocityY, 24.0).toDouble();
+    _velocityX += _spinDirection * 35.0;
+    _inThermal = false;
+    _surfingThermalColumn?.resetPilotOrbit(clearBonus: true);
+    _surfingThermalColumn = null;
+    _thermalSurfBoostActive = false;
+    _thermalSurfLoopQueued = false;
+  }
+
+  void _updateSpin({
+    required double dt,
+    required InputManager input,
+    required bool isHolding,
+    required double fallMultiplier,
+    required double gravityScale,
+    required double crosswindForce,
+  }) {
+    _syncCrosswindFlex(dt, crosswindForce);
+    _angleOfAttack = 0.0;
+
+    // Tilt players can release lift while keeping their device banked. Touch
+    // and joystick schemes couple altitude + steering to the same finger, so
+    // their deliberate opposite steer is sufficient to count as recovery.
+    final coupledLiftAndSteer = input.currentScheme == ControlScheme.touchZones ||
+        input.currentScheme == ControlScheme.joystick;
+    final recoveryPosture = coupledLiftAndSteer || !isHolding;
+    final counterSteering = recoveryPosture &&
+        input.horizontalInput.abs() >=
+            GameConfig.spinRecoveryInputThreshold &&
+        input.horizontalInput * _spinDirection < 0;
+    if (counterSteering) {
+      _spinRecovery = (_spinRecovery + dt / GameConfig.spinRecoveryDuration)
+          .clamp(0.0, 1.0)
+          .toDouble();
+    } else {
+      _spinRecovery = math.max(
+        0.0,
+        _spinRecovery - GameConfig.spinRecoveryDecayPerSecond * dt,
+      ).toDouble();
+    }
+
+    if (_spinRecovery >= 1.0) {
+      _exitSpin(input);
+      return;
+    }
+
+    _velocityY += GameConfig.gravity *
+        GameConfig.spinGravityMultiplier *
+        fallMultiplier *
+        gravityScale *
+        dt;
+    _velocityY = _velocityY
+        .clamp(0.0, GameConfig.maxFallSpeed * fallMultiplier)
+        .toDouble();
+    _velocityX +=
+        (_spinDirection * GameConfig.spinLateralAcceleration + crosswindForce * .20) *
+            dt;
+    _velocityX = _velocityX
+        .clamp(
+          -GameConfig.maxTurnMomentumSpeed,
+          GameConfig.maxTurnMomentumSpeed,
+        )
+        .toDouble();
+
+    final minX = GameConfig.horizontalEdgeMargin;
+    final maxX = GameConfig.designWidth - GameConfig.horizontalEdgeMargin;
+    final proposedX = position.x + _velocityX * dt;
+    position.x = proposedX.clamp(minX, maxX).toDouble();
+    position.y += _velocityY * dt;
+    if (proposedX <= minX && _velocityX < 0) {
+      _velocityX = 0;
+      input.blockTurnMomentumAtEdge(left: true);
+    } else if (proposedX >= maxX && _velocityX > 0) {
+      _velocityX = 0;
+      input.blockTurnMomentumAtEdge(right: true);
+    }
+
+    if (position.y < GameConfig.ceilingY) {
+      position.y = GameConfig.ceilingY;
+      _velocityY = GameConfig.ceilingStallPush;
+    }
+    angle = _wrapAngle(angle + _spinDirection * GameConfig.spinAngularVelocity * dt);
+    _wingFold = MathUtils.lerp(
+      _wingFold,
+      .18,
+      (5.0 * dt).clamp(0.0, 1.0).toDouble(),
+    );
+
+    if (position.y > GameConfig.designHeight + size.y) {
+      game.onPlaneCrash();
+    }
+  }
+
+  void _exitSpin(InputManager input) {
+    _flightControlState = FlightControlState.stable;
+    _stallRisk = 0.0;
+    _spinRecovery = 0.0;
+    _stallSnapGraceTimer = GameConfig.stallSnapGraceSeconds * .5;
+    _velocityY = GameConfig.spinRecoveryVerticalKick;
+    _velocityX = -_spinDirection * 45.0;
+    angle = -_spinDirection * .12;
+    input.resetTurnMomentum();
+  }
+
+  void _syncCrosswindFlex(double dt, double liveCrosswindForce) {
+    // Render-time paper flex uses the exact same composed lane + pocket force
+    // the plane is fighting in physics. Smoothing prevents turbulence reversals
+    // from making folded wings visually flicker frame-to-frame.
+    final flexBlend =
+        (GameConfig.wingFlexResponseRate * dt).clamp(0.0, 1.0).toDouble();
+    _crosswindForce = MathUtils.lerp(
+      _crosswindForce,
+      liveCrosswindForce,
+      flexBlend,
+    );
+    _wingFlexStrength = MathUtils.lerp(
+      _wingFlexStrength,
+      GameConfig.wingFlexStrengthForForce(liveCrosswindForce),
+      flexBlend,
+    );
+  }
+
+  double _wrapAngle(double value) {
+    final fullTurn = math.pi * 2;
+    var wrapped = value % fullTurn;
+    if (wrapped > math.pi) wrapped -= fullTurn;
+    return wrapped;
   }
 
   void _updateRotation(double dt) {
@@ -1682,6 +2786,7 @@ class PlaneComponent extends PositionComponent
   }
 
   void onNearMiss(NearMissTier tier) {
+    onGameEvent(SkinGameEvent.nearMiss);
     final addCrumple = switch (tier) {
       NearMissTier.deathDefying => 1.0,
       NearMissTier.hairThin => 0.75,
@@ -1781,6 +2886,7 @@ class PlaneComponent extends PositionComponent
 
   void reset() {
     _isAlive = true;
+    _skinPainter.reset();
     _velocityX = 0;
     _velocityY = 0;
     _wingFold = 0;
@@ -1790,8 +2896,20 @@ class PlaneComponent extends PositionComponent
     _oscillationStrength = 0;
     _ceilingStallTimer = 0.0;
     _ceilingWasInSoftZone = false;
+    _angleOfAttack = 0.0;
+    _flightControlState = FlightControlState.stable;
+    _stallRisk = 0.0;
+    _stallSnapGraceTimer = 0.0;
+    _spinDirection = 1.0;
+    _spinRecovery = 0.0;
     _snapFlashTimer = 0.0;
+    _snapInteractionTimer = 0.0;
+    _snapInteractionResolved = false;
     _inThermal = false;
+    _surfingThermalColumn?.resetPilotOrbit(clearBonus: true);
+    _surfingThermalColumn = null;
+    _thermalSurfBoostActive = false;
+    _thermalSurfLoopQueued = false;
     _thermalBreathFactor = 0.0;
     _crumpleAmount = 0.0;
     _shieldActive = false;
@@ -1801,11 +2919,19 @@ class PlaneComponent extends PositionComponent
     _slowMoActive = false;
     _doubleScoreActive = false;
     _shrinkActive = false;
+    _empoweredShrinkActive = false;
     _windCallerActive = false;
     _decoyCloneActive = false;
     _blackHoleActive = false;
     _turboDashActive = false;
+    _phaseShieldActive = false;
+    _goldVortexActive = false;
+    _timeDashActive = false;
+    _cursedMagnetActive = false;
+    _unstableGhostActive = false;
     _shieldHitRippleTimer = 0.0;
+    _crosswindForce = 0.0;
+    _wingFlexStrength = 0.0;
     angle = 0;
     _animTime = 0.0;
     position = Vector2(
@@ -1819,6 +2945,7 @@ class PlaneComponent extends PositionComponent
 
   void revive() {
     _isAlive = true;
+    _skinPainter.reset();
     _velocityY = 0;
     _velocityX = 0;
     _wingFold = 0;
@@ -1828,10 +2955,25 @@ class PlaneComponent extends PositionComponent
     _oscillationStrength = 0;
     _ceilingStallTimer = 0.0;
     _ceilingWasInSoftZone = false;
+    _angleOfAttack = 0.0;
+    _flightControlState = FlightControlState.stable;
+    _stallRisk = 0.0;
+    _stallSnapGraceTimer = 0.0;
+    _spinDirection = 1.0;
+    _spinRecovery = 0.0;
     _snapFlashTimer = 0.0;
+    _snapInteractionTimer = 0.0;
+    _snapInteractionResolved = false;
     _crumpleAmount = 0.0;
+    _inThermal = false;
+    _surfingThermalColumn?.resetPilotOrbit(clearBonus: true);
+    _surfingThermalColumn = null;
+    _thermalSurfBoostActive = false;
+    _thermalSurfLoopQueued = false;
     _thermalBreathFactor = 0.0;
     _shieldHitRippleTimer = 0.0;
+    _crosswindForce = 0.0;
+    _wingFlexStrength = 0.0;
     angle = 0;
     position.y = GameConfig.designHeight * 0.5;
 
@@ -1849,11 +2991,34 @@ class PlaneComponent extends PositionComponent
   }
 
   void playShieldHitAnimation() {
+    onGameEvent(SkinGameEvent.shieldHit);
     _shieldHitRippleTimer = 1.0;
     add(
       ScaleEffect.by(
         Vector2.all(1.25),
         EffectController(duration: 0.08, reverseDuration: 0.08),
+      ),
+    );
+  }
+
+  void playPhaseShieldHitAnimation() {
+    onGameEvent(SkinGameEvent.shieldHit);
+    _shieldHitRippleTimer = 1.0;
+    children.whereType<ScaleEffect>().toList().forEach(remove);
+    add(
+      ScaleEffect.by(
+        Vector2.all(1.30),
+        EffectController(duration: 0.07, reverseDuration: 0.10),
+      ),
+    );
+  }
+
+  void playTimeDashPhaseAnimation() {
+    children.whereType<ScaleEffect>().toList().forEach(remove);
+    add(
+      ScaleEffect.by(
+        Vector2(1.34, .94),
+        EffectController(duration: 0.06, reverseDuration: 0.10),
       ),
     );
   }
@@ -1866,6 +3031,26 @@ class PlaneComponent extends PositionComponent
         EffectController(duration: 0.06, reverseDuration: 0.06),
       ),
     );
+  }
+
+  void applyTornadoPull(Vector2 velocityDelta) {
+    _velocityX += velocityDelta.x;
+    _velocityY += velocityDelta.y;
+  }
+
+  void applyUnstableGhostTeleport({required double dx, required double dy}) {
+    position.x = (position.x + dx)
+        .clamp(
+          GameConfig.horizontalEdgeMargin,
+          GameConfig.designWidth - GameConfig.horizontalEdgeMargin,
+        )
+        .toDouble();
+    position.y = (position.y + dy)
+        .clamp(GameConfig.ceilingY, GameConfig.designHeight - size.y)
+        .toDouble();
+    _velocityX += dx * 1.2;
+    _velocityY += dy * .6;
+    playGhostPhaseAnimation();
   }
 
   void applyZenBounce({required double pushX, required double pushY}) {
@@ -1904,15 +3089,25 @@ class PlaneComponent extends PositionComponent
   double get verticalVelocity => _velocityY;
 
   Rect get worldAabbRect {
-    final baseScale = planeType.hitboxScaleForLevel(planeLevel) ??
-        planeType.hitboxScaleOverride ??
-        GameConfig.planeHitboxScale;
-    final scale = _shrinkActive ? GameConfig.shrinkHitboxScale : baseScale;
-    final hbSize = size * scale;
+    final hbSize = size * _activeHitboxScale;
     return Rect.fromCenter(
       center: position.toOffset(),
       width: hbSize.x,
       height: hbSize.y,
     );
   }
+}
+
+class _PowerUpRingEntry {
+  const _PowerUpRingEntry({
+    required this.color,
+    required this.progress,
+    this.empowered = false,
+    this.corrupted = false,
+  });
+
+  final Color color;
+  final double progress;
+  final bool empowered;
+  final bool corrupted;
 }
