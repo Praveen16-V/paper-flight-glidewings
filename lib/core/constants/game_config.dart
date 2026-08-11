@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-powerups-7';
+  static const String balanceVersion = '2026.08-powerups-8';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -511,6 +511,11 @@ abstract class GameConfig {
   static const double empoweredGoldVortexCoinValueMultiplier = 4.0;
   static const double empoweredShrinkHitboxScale = 0.27;
   static const double empoweredShrinkVisualScale = 0.56;
+
+  // ── Active Power-Up Status Ring ───────────────────────────────────────────
+  static const double powerUpStatusRingRadius = 45.0;
+  static const double powerUpStatusRingStrokeWidth = 3.5;
+  static const double powerUpStatusRingGapRadians = 0.12;
 
   // ── Corrupted Power-Ups ───────────────────────────────────────────────────
   static const double corruptedPowerUpSpawnChance = 0.12;

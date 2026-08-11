@@ -202,6 +202,7 @@ Key knobs to adjust during playtesting:
 - `corruptedPowerUpSpawnChance` / `unstableGhostTeleportInterval` — risk/reward pickup tuning
 - `empoweredPowerUpBurstDuration` / `empoweredMagnetRadius` — three-charge crafting reward strength
 - `PowerUpScreenEffectComponent` — Ghost, Slow-Mo, and Black Hole screen-space visual treatment
+- `powerUpStatusRingRadius` / `powerUpStatusRingStrokeWidth` — in-flight radial effect readability
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts

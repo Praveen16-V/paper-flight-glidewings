@@ -111,6 +111,10 @@ class PaperFlightGame extends FlameGame
   /// Accumulator for periodic Coin Rush coin showers.
   double _coinRushShowerTimer = 0;
 
+  /// Timed HUD rings publish at a compact cadence instead of changing provider
+  /// state on every simulation frame.
+  double _powerUpTimerAccumulator = 0;
+
   // ── Systems ───────────────────────────────────────────────────────────────
 
   late final InputManager inputManager;
@@ -381,17 +385,33 @@ class PaperFlightGame extends FlameGame
     final scaledDt = dt * _timeScale;
 
     if (_phase != GamePhase.playing) {
-      // Timers drive HUD countdown rings from the same authoritative durations.
-      final active = session.activePowerUps;
-      for (final type in active) {
-        final remaining = session.powerUpRemaining[type];
-        if (remaining != null) {
-          ref.read(gameSessionProvider.notifier).setPowerUpTimer(type, (remaining - scaledDt).clamp(0.0, 999.0).toDouble());
-        }
-      }
-
       super.update(dt);
       return;
+    }
+
+    _powerUpTimerAccumulator += scaledDt;
+    if (_powerUpTimerAccumulator >= GameConfig.hudUpdateIntervalSeconds) {
+      final elapsed = _powerUpTimerAccumulator;
+      _powerUpTimerAccumulator = 0;
+      final notifier = ref.read(gameSessionProvider.notifier);
+      for (final type in session.activePowerUps) {
+        final remaining = session.powerUpRemaining[type];
+        if (remaining != null) {
+          notifier.setPowerUpTimer(
+            type,
+            (remaining - elapsed).clamp(0.0, 999.0).toDouble(),
+          );
+        }
+      }
+      for (final type in session.activeCorruptedPowerUps) {
+        final remaining = session.corruptedPowerUpRemaining[type];
+        if (remaining != null) {
+          notifier.setCorruptedPowerUpTimer(
+            type,
+            (remaining - elapsed).clamp(0.0, 999.0).toDouble(),
+          );
+        }
+      }
     }
 
     // Generic gesture trigger: flick-up / double-tap fires the equipped
@@ -619,6 +639,7 @@ class PaperFlightGame extends FlameGame
     _distanceMeters = 0;
     _timeScale = 1.0;
     _coinRushShowerTimer = 0;
+    _powerUpTimerAccumulator = 0;
     _unstableGhostTeleportTimer = 0;
     _runTimeSeconds = 0;
     _hudUpdateAccumulator = 0;

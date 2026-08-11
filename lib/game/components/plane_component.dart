@@ -194,6 +194,11 @@ class PlaneComponent extends PositionComponent
   bool _timeDashActive = false;
   bool _cursedMagnetActive = false;
   bool _unstableGhostActive = false;
+  Set<PowerUpType> _activePowerUps = const {};
+  Map<PowerUpType, double> _powerUpTimerSnapshot = const {};
+  Set<PowerUpType> _activeEmpoweredPowerUps = const {};
+  Set<CorruptedPowerUpType> _activeCorruptedPowerUps = const {};
+  Map<CorruptedPowerUpType, double> _corruptedTimerSnapshot = const {};
 
   // ── Distinct Pulse Channels ───────────────────────────────────────────────
   double _shieldPhase = 0.0;     // 1.2 Hz breathing
@@ -479,6 +484,9 @@ class PlaneComponent extends PositionComponent
 
     // ── Aerodynamic Stall / Spin Readout ────────────────────────────────────
     _drawStallSpinOverlay(canvas, w, h);
+
+    // ── Unified active-effect status ring ───────────────────────────────────
+    _drawPowerUpStatusRing(canvas, w, h);
 
     // ── Snap charge ring ─────────────────────────────────────────────────────
     _drawSnapChargeRing(canvas, w, h);
@@ -1903,6 +1911,82 @@ class PlaneComponent extends PositionComponent
     );
   }
 
+  // ── Unified Power-Up Status Ring ─────────────────────────────────────────
+
+  void _drawPowerUpStatusRing(Canvas canvas, double w, double h) {
+    if (_activePowerUps.isEmpty && _activeCorruptedPowerUps.isEmpty) return;
+
+    final entries = <_PowerUpRingEntry>[
+      for (final type in _activePowerUps)
+        _PowerUpRingEntry(
+          color: type.visualColor,
+          progress: _powerUpRingProgress(type),
+          empowered: _activeEmpoweredPowerUps.contains(type),
+        ),
+      for (final type in _activeCorruptedPowerUps)
+        _PowerUpRingEntry(
+          color: type.color,
+          progress: (_corruptedTimerSnapshot[type] ??
+                  GameConfig.corruptedPowerUpDuration) /
+              GameConfig.corruptedPowerUpDuration,
+          corrupted: true,
+        ),
+    ];
+    if (entries.isEmpty) return;
+
+    final center = Offset(w / 2, h / 2);
+    final count = entries.length;
+    final gap = GameConfig.powerUpStatusRingGapRadians;
+    final totalArc = (math.pi * 2 - gap * count) / count;
+    final background = Paint()
+      ..color = const Color(0x33FFFFFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = GameConfig.powerUpStatusRingStrokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    for (var i = 0; i < entries.length; i++) {
+      final entry = entries[i];
+      final start = -math.pi / 2 + i * (totalArc + gap);
+      final rect = Rect.fromCircle(
+        center: center,
+        radius: GameConfig.powerUpStatusRingRadius,
+      );
+      canvas.drawArc(rect, start, totalArc, false, background);
+      final fill = Paint()
+        ..color = entry.color.withOpacity(entry.corrupted ? .95 : .82)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = GameConfig.powerUpStatusRingStrokeWidth +
+            (entry.empowered ? 1.2 : 0)
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(
+        rect,
+        start,
+        totalArc * entry.progress.clamp(0.0, 1.0).toDouble(),
+        false,
+        fill,
+      );
+      if (entry.empowered) {
+        final end = start +
+            totalArc * entry.progress.clamp(0.0, 1.0).toDouble();
+        final sparkle = Offset(
+          center.dx + math.cos(end) * GameConfig.powerUpStatusRingRadius,
+          center.dy + math.sin(end) * GameConfig.powerUpStatusRingRadius,
+        );
+        canvas.drawCircle(sparkle, 1.8, Paint()..color = const Color(0xFFFFF59D));
+      }
+    }
+  }
+
+  double _powerUpRingProgress(PowerUpType type) {
+    if (!type.isChargeBased) return 1.0;
+    final duration = _activeEmpoweredPowerUps.contains(type)
+        ? GameConfig.empoweredPowerUpBurstDuration
+        : GameConfig.chargePowerUpBurstDuration;
+    return ((_powerUpTimerSnapshot[type] ?? duration) / duration)
+        .clamp(0.0, 1.0)
+        .toDouble();
+  }
+
   // ── Snap Charge Ring (Double Ring Concept & Per-Plane Styles) ──────────────
 
   void _drawSnapChargeRing(Canvas canvas, double w, double h) {
@@ -2166,6 +2250,13 @@ class PlaneComponent extends PositionComponent
     _decoyCloneActive = session.activePowerUps.contains(PowerUpType.decoyClone) || game.decoyCloneCharges > 0;
     _blackHoleActive = session.activePowerUps.contains(PowerUpType.blackHole);
     _turboDashActive = session.activePowerUps.contains(PowerUpType.turboDash);
+    _activePowerUps = Set<PowerUpType>.from(session.activePowerUps);
+    _powerUpTimerSnapshot = Map<PowerUpType, double>.from(session.powerUpRemaining);
+    _activeEmpoweredPowerUps = Set<PowerUpType>.from(session.activeEmpoweredPowerUps);
+    _activeCorruptedPowerUps =
+        Set<CorruptedPowerUpType>.from(session.activeCorruptedPowerUps);
+    _corruptedTimerSnapshot =
+        Map<CorruptedPowerUpType, double>.from(session.corruptedPowerUpRemaining);
     final combos = session.activePowerUpCombos;
     _phaseShieldActive = combos.contains(PowerUpCombo.phaseShield);
     _goldVortexActive = combos.contains(PowerUpCombo.goldVortex);
@@ -2978,4 +3069,18 @@ class PlaneComponent extends PositionComponent
       height: hbSize.y,
     );
   }
+}
+
+class _PowerUpRingEntry {
+  const _PowerUpRingEntry({
+    required this.color,
+    required this.progress,
+    this.empowered = false,
+    this.corrupted = false,
+  });
+
+  final Color color;
+  final double progress;
+  final bool empowered;
+  final bool corrupted;
 }

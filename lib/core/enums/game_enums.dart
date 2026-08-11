@@ -315,6 +315,33 @@ extension PowerUpLabel on PowerUpType {
     }
   }
 
+  Color get visualColor {
+    switch (this) {
+      case PowerUpType.shield:
+        return const Color(0xFF64B5F6);
+      case PowerUpType.magnet:
+        return const Color(0xFFAB47BC);
+      case PowerUpType.ghost:
+        return const Color(0xFF80DEEA);
+      case PowerUpType.slowMo:
+        return const Color(0xFF64FFDA);
+      case PowerUpType.coinRush:
+        return const Color(0xFFFFD740);
+      case PowerUpType.doubleScore:
+        return const Color(0xFFFF7043);
+      case PowerUpType.shrink:
+        return const Color(0xFFCE93D8);
+      case PowerUpType.windCaller:
+        return const Color(0xFF00E5FF);
+      case PowerUpType.decoyClone:
+        return const Color(0xFF9FA8DA);
+      case PowerUpType.blackHole:
+        return const Color(0xFF7C4DFF);
+      case PowerUpType.turboDash:
+        return const Color(0xFFFF3D00);
+    }
+  }
+
   String get displayName {
     switch (this) {
       case PowerUpType.shield:
