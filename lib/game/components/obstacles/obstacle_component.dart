@@ -3343,24 +3343,58 @@ class LightningStrikeObstacle extends ObstacleComponent {
           ? const Color(0x55FFF59D)
           : const Color(0x33FFFDE7),
     );
+
+    // Broad corona flash behind the bolt.
+    final corona = Paint()
+      ..color = const Color(0x66FFF59D)
+      ..style = PaintingStyle.fill
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 24);
+    canvas.drawOval(Rect.fromCenter(center: Offset(x, size.y * .35), width: 70, height: 140), corona);
+
+    // Main jagged channel with a secondary off-colour branch.
     final bolt = Path()..moveTo(x, 0);
+    final branch = Path();
+    var branchPlaced = false;
     for (var i = 0; i < 12; i++) {
       final y = (i + 1) * size.y / 12;
       final dx = i.isEven ? -10.0 : 10.0;
       bolt.lineTo(x + dx, y - 18);
       bolt.lineTo(x, y);
+      // Split a couple of sub-arcs out of the channel for realism.
+      if (!branchPlaced && i == 3) {
+        branch
+          ..moveTo(x + dx, y - 18)
+          ..lineTo(x + dx + (dx < 0 ? -1 : 1) * 22, y - 8)
+          ..lineTo(x + dx + (dx < 0 ? -1 : 1) * 10, y + 8)
+          ..lineTo(x + dx + (dx < 0 ? -1 : 1) * 26, y + 20);
+        branchPlaced = true;
+      } else if (i == 8) {
+        branch
+          ..moveTo(x + dx, y - 18)
+          ..lineTo(x - dx - 18, y - 4)
+          ..lineTo(x - dx - 8, y + 12);
+      }
     }
+
     final glow = Paint()
       ..color = const Color(0x99FFF176)
       ..style = PaintingStyle.stroke
       ..strokeWidth = _stormCharged ? 12 : 8
+      ..strokeCap = StrokeCap.round
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
     final core = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2;
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
     canvas.drawPath(bolt, glow);
     canvas.drawPath(bolt, core);
+    // Branch arcs are thinner and dimmer, still catching the glow.
+    canvas.drawPath(branch, Paint()
+      ..color = const Color(0xAAFFF9C4)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round);
   }
 }
 
@@ -4019,20 +4053,25 @@ class PaperDragonObstacle extends ObstacleComponent {
 
   void _drawBodySegment(Canvas canvas, _PaperDragonSegment segment) {
     final radius = GameConfig.paperDragonSegmentRadius * segment.scale;
-    _bodyPaint.color = segment.index.isEven
+    final base = segment.index.isEven
         ? const Color(0xFFA5274F)
         : const Color(0xFFB92B56);
+    _bodyPaint.color = base;
 
     canvas.save();
     canvas.translate(segment.center.x, segment.center.y);
     canvas.rotate(segment.heading);
+    final segRect =
+        Rect.fromCenter(center: Offset.zero, width: radius * 2.35, height: radius * 1.58);
     canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset.zero,
-        width: radius * 2.35,
-        height: radius * 1.58,
-      ),
-      _bodyPaint,
+      segRect,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(0, -0.7),
+          radius: 1.1,
+          colors: [Color.lerp(base, Colors.white, .28)!, base, Color.lerp(base, Colors.black, .42)!],
+          stops: const [0.0, .5, 1.0],
+        ).createShader(segRect),
     );
     canvas.drawOval(
       Rect.fromCenter(
@@ -4052,6 +4091,15 @@ class PaperDragonObstacle extends ObstacleComponent {
       Offset(-radius * .22, -radius * .56),
       Offset(radius * .28, radius * .48),
       _bodyFoldPaint,
+    );
+    // Glossy specular sweep along the top of each scale.
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(-radius * .1, -radius * .42),
+        width: radius * 1.7,
+        height: radius * .42,
+      ),
+      Paint()..color = const Color(0x22FFFFFF),
     );
     canvas.restore();
   }
