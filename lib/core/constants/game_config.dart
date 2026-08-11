@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-obstacles-9';
+  static const String balanceVersion = '2026.08-obstacles-10';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -406,6 +406,21 @@ abstract class GameConfig {
 
   /// Minimum spawn interval floor.
   static const double obstacleMinSpawnInterval = 0.55;
+
+  // ── Obstacle Synergies ──────────────────────────────────────────────────
+  /// Complementary hazards can enter a linked state when their planned routes
+  /// overlap. The link distances are deliberately generous enough for a
+  /// staggered combo, while remaining local enough to avoid cross-screen noise.
+  static const double obstacleSynergyMaxHorizontalSeparation = 150.0;
+  static const double obstacleSynergyMaxVerticalSeparation = 360.0;
+  static const double obstacleSynergyRotorSpeedMultiplier = 1.45;
+  static const double obstacleSynergyKiteDriftMultiplier = 1.35;
+  static const double obstacleSynergyTrafficSpeedMultiplier = 1.35;
+  static const double obstacleSynergyStormStrikeDuration = 0.48;
+
+  /// Rotor Run's bird already has a longer early-warning lead than the turbine;
+  /// it does not need the generic extra vertical stagger to share the wake.
+  static const double obstacleCombinationRotorRunFollowSpawnYOffset = 0.0;
 
   // ── Destructible Obstacles ───────────────────────────────────────────────
   /// Paper-snap reaches a destructible target just ahead of the plane. Final

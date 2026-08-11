@@ -31,6 +31,7 @@ import 'components/plane_component.dart';
 import 'components/touch_zones_overlay.dart';
 import 'systems/input_manager.dart';
 import 'systems/obstacle_spawner.dart';
+import 'systems/obstacle_synergy_system.dart';
 import 'systems/collectible_spawner.dart';
 import 'systems/powerup_spawner.dart';
 import 'systems/scoring_system.dart';
@@ -127,6 +128,7 @@ class PaperFlightGame extends FlameGame
   late final StreakSystem streakSystem;
   late final BiomeManager biomeManager;
   late final ObstacleSpawner obstacleSpawner;
+  late final ObstacleSynergySystem obstacleSynergySystem;
   late final CollectibleSpawner collectibleSpawner;
   late final PowerUpSpawner powerUpSpawner;
 
@@ -256,10 +258,12 @@ class PaperFlightGame extends FlameGame
 
     // Spawners.
     obstacleSpawner = ObstacleSpawner(game: this);
+    obstacleSynergySystem = ObstacleSynergySystem(game: this);
     collectibleSpawner = CollectibleSpawner(game: this);
     powerUpSpawner = PowerUpSpawner(game: this);
 
     world.add(obstacleSpawner);
+    world.add(obstacleSynergySystem);
     world.add(collectibleSpawner);
     world.add(powerUpSpawner);
 
@@ -753,6 +757,7 @@ class PaperFlightGame extends FlameGame
 
     plane.reset();
     obstacleSpawner.reset();
+    obstacleSynergySystem.reset();
     collectibleSpawner.reset();
     powerUpSpawner.reset();
     scoringSystem.reset();

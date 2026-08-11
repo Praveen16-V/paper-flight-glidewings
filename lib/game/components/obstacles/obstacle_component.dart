@@ -47,6 +47,10 @@ abstract class ObstacleComponent extends PositionComponent
   String? combinationId;
   bool get isCombinationMember => combinationId != null;
 
+  ObstacleSynergy? _activeSynergy;
+  ObstacleSynergy? get activeSynergy => _activeSynergy;
+  bool get hasActiveSynergy => _activeSynergy != null;
+
   late math.Random _rng;
 
   double rngRange(double min, double max) =>
@@ -108,6 +112,7 @@ abstract class ObstacleComponent extends PositionComponent
     this.safeCorridorX = safeCorridorX;
     this.script = script;
     this.combinationId = combinationId;
+    setObstacleSynergy(null);
     _rng = rng ?? math.Random();
     onActivate(scrollSpeed);
     _playThreatCue();
@@ -119,6 +124,7 @@ abstract class ObstacleComponent extends PositionComponent
     safeCorridorX = null;
     script = null;
     combinationId = null;
+    setObstacleSynergy(null);
     _nearMissAwarded = false;
     _durability = 0;
     _minNearMissClearance = double.infinity;
@@ -142,6 +148,16 @@ abstract class ObstacleComponent extends PositionComponent
   }
 
   void onActivate(double scrollSpeed) {}
+
+  /// Called by the synergy coordinator only when the linked state actually
+  /// changes, keeping per-frame pair detection allocation-free for obstacles.
+  void setObstacleSynergy(ObstacleSynergy? synergy) {
+    if (_activeSynergy == synergy) return;
+    _activeSynergy = synergy;
+    onObstacleSynergyChanged(synergy);
+  }
+
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {}
 
   /// Returns a squared distance when this obstacle is inside a live paper-snap
   /// interaction envelope, otherwise `null`. Subclasses can replace the
@@ -480,6 +496,23 @@ abstract class ObstacleComponent extends PositionComponent
         const Offset(0.8, -16.5),
         linkPaint,
       );
+    }
+
+    final synergy = _activeSynergy;
+    if (synergy != null) {
+      final synergyPaint = Paint()
+        ..color = synergy.color.withOpacity(alpha)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(
+        Rect.fromCircle(center: const Offset(0, -1), radius: 16),
+        animTime * 3.0,
+        math.pi * 1.2,
+        false,
+        synergyPaint,
+      );
+      canvas.drawCircle(const Offset(0, -19), 2.3, synergyPaint);
     }
 
     final badgePath = Path()
@@ -1459,6 +1492,7 @@ class BirdObstacle extends ObstacleComponent {
   bool isGolden = false;
   bool isFlock = false;
   bool _isScared = false;
+  bool _rotorWakeActive = false;
 
   @override
   Color get telegraphColor => isGolden ? const Color(0xFFFFD700) : const Color(0xFF42A5F5);
@@ -1475,9 +1509,15 @@ class BirdObstacle extends ObstacleComponent {
     isGolden = rngRange(0, 1) < 0.18; // 18% Golden Bird elite
     isFlock = rngRange(0, 1) < 0.22;  // 22% V-formation flocking
     _isScared = false;
+    _rotorWakeActive = false;
     _velocityX = 0;
 
     _setupHitboxes();
+  }
+
+  @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _rotorWakeActive = synergy == ObstacleSynergy.rotorWake;
   }
 
   void _setupHitboxes() {
@@ -1493,8 +1533,11 @@ class BirdObstacle extends ObstacleComponent {
 
   @override
   void updateObstacle(double dt) {
-    _patrolPhase += _patrolFreq * dt;
-    _wingFlapPhase += dt * (isGolden ? 12.0 : 9.0);
+    final wakeMultiplier = _rotorWakeActive
+        ? GameConfig.obstacleSynergyRotorSpeedMultiplier
+        : 1.0;
+    _patrolPhase += _patrolFreq * wakeMultiplier * dt;
+    _wingFlapPhase += dt * (isGolden ? 12.0 : 9.0) * wakeMultiplier;
 
     // Ghost Interaction: Scared away when Ghost plane is near!
     try {
@@ -1512,7 +1555,11 @@ class BirdObstacle extends ObstacleComponent {
     }
 
     final prevX = position.x;
-    final targetX = _spawnX + _patrolAmplitude * dynamicMovementFactor * math.sin(_patrolPhase);
+    final targetX = _spawnX +
+        _patrolAmplitude *
+            (_rotorWakeActive ? 1.25 : 1.0) *
+            dynamicMovementFactor *
+            math.sin(_patrolPhase);
     position.x = targetX.clamp(
       GameConfig.horizontalEdgeMargin + 10,
       GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 10,
@@ -1525,6 +1572,20 @@ class BirdObstacle extends ObstacleComponent {
     final w = size.x;
     final h = size.y;
     final bankAngle = (_velocityX * 0.0018).clamp(-0.45, 0.45);
+
+    if (_rotorWakeActive) {
+      final wake = Paint()
+        ..color = ObstacleSynergy.rotorWake.color.withOpacity(.58)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.3;
+      canvas.drawArc(
+        Rect.fromCenter(center: Offset(w * .5, h * .5), width: w * 1.7, height: h * 1.5),
+        animTime * 5.0,
+        math.pi * 1.35,
+        false,
+        wake,
+      );
+    }
 
     if (isFlock) {
       // 3 Birds in aerodynamic V-Formation
@@ -1598,6 +1659,7 @@ class DroneObstacle extends ObstacleComponent {
   bool isArmed = false;
   bool isOrbiting = false;
   bool _shieldClashActive = false;
+  bool _trafficLinked = false;
 
   @override
   Color get telegraphColor => isArmed ? const Color(0xFFFF1744) : const Color(0xFFFF5252);
@@ -1613,8 +1675,14 @@ class DroneObstacle extends ObstacleComponent {
     isArmed = rngRange(0, 1) < 0.25;      // 25% Armed Drone elite
     isOrbiting = rngRange(0, 1) < 0.20;   // 20% Orbiting drone behavior
     _shieldClashActive = false;
+    _trafficLinked = false;
 
     _setupHitboxes();
+  }
+
+  @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _trafficLinked = synergy == ObstacleSynergy.droneTrafficLink;
   }
 
   void _setupHitboxes() {
@@ -1698,6 +1766,14 @@ class DroneObstacle extends ObstacleComponent {
       canvas.drawLine(const Offset(-10, 0), const Offset(10, 0), empPaint);
       canvas.drawCircle(Offset.zero, 16, empPaint);
     }
+    if (_trafficLinked) {
+      final linkPaint = Paint()
+        ..color = ObstacleSynergy.droneTrafficLink.color.withOpacity(.82)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5;
+      canvas.drawCircle(Offset.zero, 20, linkPaint);
+      canvas.drawLine(const Offset(0, -24), const Offset(0, -38), linkPaint);
+    }
 
     canvas.restore();
     renderDestructibleIntegrity(canvas, centerX: w * .5, topY: -6);
@@ -1732,6 +1808,7 @@ class WindTurbineObstacle extends ObstacleComponent {
   double _bladeAngle = 0;
   double _rotSpeed = 1.4;
   double _bladeRadius = 65;
+  bool _rotorWakeActive = false;
 
   @override
   Color get telegraphColor => const Color(0xFF00E676);
@@ -1742,6 +1819,7 @@ class WindTurbineObstacle extends ObstacleComponent {
     size = Vector2(_bladeRadius * 2.2, _bladeRadius * 2.2 + 60);
     _bladeAngle = rngRange(0, math.pi * 2);
     _rotSpeed = rngRange(1.2, 1.9) * (rngBool() ? 1 : -1);
+    _rotorWakeActive = false;
 
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(CircleHitbox(radius: 14, position: Vector2(size.x * 0.5 - 14, _bladeRadius - 14)));
@@ -1749,8 +1827,16 @@ class WindTurbineObstacle extends ObstacleComponent {
   }
 
   @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _rotorWakeActive = synergy == ObstacleSynergy.rotorWake;
+  }
+
+  @override
   void updateObstacle(double dt) {
-    _bladeAngle += _rotSpeed * dt;
+    final multiplier = _rotorWakeActive
+        ? GameConfig.obstacleSynergyRotorSpeedMultiplier
+        : 1.0;
+    _bladeAngle += _rotSpeed * multiplier * dt;
   }
 
   @override
@@ -1772,6 +1858,19 @@ class WindTurbineObstacle extends ObstacleComponent {
     }
 
     canvas.drawCircle(Offset(cx, cy), 8.0, Paint()..color = const Color(0xFFFAFAFA));
+    if (_rotorWakeActive) {
+      final wakePaint = Paint()
+        ..color = ObstacleSynergy.rotorWake.color.withOpacity(.54)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4;
+      canvas.drawArc(
+        Rect.fromCenter(center: Offset(cx, cy), width: _bladeRadius * 2.8, height: _bladeRadius * 1.7),
+        animTime * 4.0,
+        math.pi * 1.45,
+        false,
+        wakePaint,
+      );
+    }
     renderTelegraph(canvas);
   }
 }
@@ -1848,6 +1947,7 @@ class StormCloudObstacle extends ObstacleComponent {
 
   double _chargeTimer = 0;
   double _lightningAlpha = 0;
+  bool _stormCharged = false;
 
   @override
   Color get telegraphColor => const Color(0xFF7C4DFF);
@@ -1857,11 +1957,17 @@ class StormCloudObstacle extends ObstacleComponent {
     size = Vector2(100, 55);
     _chargeTimer = rngRange(1.2, 2.5);
     _lightningAlpha = 0;
+    _stormCharged = false;
 
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(CircleHitbox(radius: 24, position: Vector2(8, 4)));
     add(CircleHitbox(radius: 28, position: Vector2(size.x * 0.5 - 28, 0)));
     add(CircleHitbox(radius: 22, position: Vector2(size.x - 52, 6)));
+  }
+
+  @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _stormCharged = synergy == ObstacleSynergy.stormCharge;
   }
 
   @override
@@ -1881,6 +1987,16 @@ class StormCloudObstacle extends ObstacleComponent {
     canvas.drawCircle(Offset(cx - 26, cy + 4), 22, Paint()..color = const Color(0xFF263238));
     canvas.drawCircle(Offset(cx + 26, cy + 4), 20, Paint()..color = const Color(0xFF263238));
     canvas.drawCircle(Offset(cx, cy), 28, Paint()..color = const Color(0xFF37474F));
+    if (_stormCharged) {
+      canvas.drawCircle(
+        Offset(cx, cy),
+        34 + math.sin(animTime * 9) * 3,
+        Paint()
+          ..color = ObstacleSynergy.stormCharge.color.withOpacity(.48)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.8,
+      );
+    }
 
     if (_lightningAlpha > 0) {
       final bolt = Path()..moveTo(cx, cy + 10)..lineTo(cx - 5, cy + 28)..lineTo(cx + 6, cy + 34)..lineTo(cx, cy + 50);
@@ -1901,6 +2017,7 @@ class KiteObstacle extends ObstacleComponent {
   double _spawnX = 0;
   double _driftAmp = 50;
   double _snapHintStrength = 0;
+  bool _windsockLinked = false;
 
   final TextPainter _snapPrompt = TextPainter(
     text: const TextSpan(
@@ -1925,6 +2042,7 @@ class KiteObstacle extends ObstacleComponent {
     _driftAmp = script?.driftAmp ?? rngRange(35, 65);
     _flutterPhase = rngRange(0, math.pi * 2);
     _snapHintStrength = 0;
+    _windsockLinked = false;
 
     removeAll(children.whereType<ShapeHitbox>().toList());
     // Refined exact 4-point diamond PolygonHitbox.
@@ -1937,10 +2055,21 @@ class KiteObstacle extends ObstacleComponent {
   }
 
   @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _windsockLinked = synergy == ObstacleSynergy.windTether;
+  }
+
+  @override
   void updateObstacle(double dt) {
-    _flutterPhase += dt * 3.5;
+    final multiplier = _windsockLinked
+        ? GameConfig.obstacleSynergyKiteDriftMultiplier
+        : 1.0;
+    _flutterPhase += dt * 3.5 * multiplier;
     position.x = (_spawnX +
-            math.sin(_flutterPhase) * _driftAmp * dynamicMovementFactor)
+            math.sin(_flutterPhase) *
+                _driftAmp *
+                multiplier *
+                dynamicMovementFactor)
         .clamp(
           GameConfig.horizontalEdgeMargin + 20,
           GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 20,
@@ -2022,6 +2151,19 @@ class KiteObstacle extends ObstacleComponent {
     final tilt = math.sin(_flutterPhase) * 0.25;
 
     _drawTetherTail(canvas, cx, kiteY);
+    if (_windsockLinked) {
+      final windPaint = Paint()
+        ..color = ObstacleSynergy.windTether.color.withOpacity(.62)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.25;
+      canvas.drawArc(
+        Rect.fromCenter(center: Offset(cx, kiteY + 22), width: 48, height: 32),
+        animTime * 4.5,
+        math.pi * 1.25,
+        false,
+        windPaint,
+      );
+    }
 
     canvas.save();
     canvas.translate(cx, kiteY);
@@ -2059,8 +2201,11 @@ class KiteObstacle extends ObstacleComponent {
 
   void _drawTetherTail(Canvas canvas, double cx, double kiteY) {
     final tailPaint = Paint()
-      ..color = const Color(0xFF5D4037).withOpacity(.74)
-      ..strokeWidth = 1.2
+      ..color = (_windsockLinked
+              ? ObstacleSynergy.windTether.color
+              : const Color(0xFF5D4037))
+          .withOpacity(.74)
+      ..strokeWidth = _windsockLinked ? 1.6 : 1.2
       ..strokeCap = StrokeCap.round;
     var previous = Offset(cx, kiteY + 18);
     for (var i = 0; i < 4; i++) {
@@ -2112,6 +2257,7 @@ class TrafficPlaneObstacle extends ObstacleComponent {
   TrafficPlaneObstacle() : super(type: ObstacleType.trafficPlane);
 
   double _lateralSpeed = 0;
+  bool _droneDirected = false;
 
   @override
   Color get telegraphColor => const Color(0xFFFF9100);
@@ -2120,6 +2266,7 @@ class TrafficPlaneObstacle extends ObstacleComponent {
   void onActivate(double scrollSpeed) {
     size = Vector2(34, 34);
     _lateralSpeed = rngRange(-45, 45);
+    _droneDirected = false;
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(PolygonHitbox([
       Vector2(size.x * 0.5, size.y),
@@ -2130,10 +2277,18 @@ class TrafficPlaneObstacle extends ObstacleComponent {
   }
 
   @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _droneDirected = synergy == ObstacleSynergy.droneTrafficLink;
+  }
+
+  @override
   void updateObstacle(double dt) {
-    // High-speed oncoming traffic (descends faster toward the player)
-    position.y += 65.0 * dt;
-    position.x += _lateralSpeed * dt;
+    // A linked drone feeds a faster intercept vector to this traffic plane.
+    final multiplier = _droneDirected
+        ? GameConfig.obstacleSynergyTrafficSpeedMultiplier
+        : 1.0;
+    position.y += 65.0 * multiplier * dt;
+    position.x += _lateralSpeed * multiplier * dt;
   }
 
   @override
@@ -2151,9 +2306,24 @@ class TrafficPlaneObstacle extends ObstacleComponent {
     canvas.drawPath(dart, Paint()..color = const Color(0xFFFF7043));
 
     // Wingtip smoke contrails
-    final contrail = Paint()..color = const Color(0x66FFFFFF)..strokeWidth = 1.2;
+    final contrail = Paint()
+      ..color = (_droneDirected
+              ? ObstacleSynergy.droneTrafficLink.color
+              : Colors.white)
+          .withOpacity(_droneDirected ? .72 : .40)
+      ..strokeWidth = _droneDirected ? 1.8 : 1.2;
     canvas.drawLine(Offset(cx - 14, cy - 12), Offset(cx - 14, cy - 26), contrail);
     canvas.drawLine(Offset(cx + 14, cy - 12), Offset(cx + 14, cy - 26), contrail);
+    if (_droneDirected) {
+      canvas.drawCircle(
+        Offset(cx, cy - 12),
+        4.5,
+        Paint()
+          ..color = ObstacleSynergy.droneTrafficLink.color.withOpacity(.62)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2,
+      );
+    }
 
     renderTelegraph(canvas);
   }
@@ -2328,14 +2498,22 @@ class ClotheslineObstacle extends ObstacleComponent {
 class WindSockObstacle extends ObstacleComponent {
   WindSockObstacle() : super(type: ObstacleType.windsock);
 
+  bool _kiteLinked = false;
+
   @override
   Color get telegraphColor => const Color(0xFFFF6D00);
 
   @override
   void onActivate(double scrollSpeed) {
     size = Vector2(48, 54);
+    _kiteLinked = false;
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(RectangleHitbox(size: Vector2(36, 40), position: Vector2(6, 6)));
+  }
+
+  @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _kiteLinked = synergy == ObstacleSynergy.windTether;
   }
 
   @override
@@ -2356,6 +2534,16 @@ class WindSockObstacle extends ObstacleComponent {
     // White stripes
     canvas.drawRect(Rect.fromLTWH(cx + 6, 9.5, 6, 15), Paint()..color = Colors.white);
     canvas.drawRect(Rect.fromLTWH(cx + 15, 12, 5, 13), Paint()..color = Colors.white);
+    if (_kiteLinked) {
+      final windPaint = Paint()
+        ..color = ObstacleSynergy.windTether.color.withOpacity(.70)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.25;
+      for (var i = 0; i < 3; i++) {
+        final y = 12.0 + i * 8.0;
+        canvas.drawLine(Offset(cx + 24, y), Offset(cx + 38, y - 2), windPaint);
+      }
+    }
 
     renderTelegraph(canvas);
   }
@@ -2370,6 +2558,7 @@ class LightningStrikeObstacle extends ObstacleComponent {
 
   bool _struck = false;
   double _strikeTimer = 0;
+  bool _stormCharged = false;
 
   @override
   Color get telegraphColor => const Color(0xFFFFF176);
@@ -2379,17 +2568,26 @@ class LightningStrikeObstacle extends ObstacleComponent {
     size = Vector2(44, GameConfig.designHeight);
     _struck = false;
     _strikeTimer = 0;
+    _stormCharged = false;
     removeAll(children.whereType<ShapeHitbox>().toList());
+  }
+
+  @override
+  void onObstacleSynergyChanged(ObstacleSynergy? synergy) {
+    _stormCharged = synergy == ObstacleSynergy.stormCharge;
   }
 
   @override
   void updateObstacle(double dt) {
     if (!_struck && position.y >= -18) {
       _struck = true;
-      _strikeTimer = .34;
+      final strikeWidth = _stormCharged ? 30.0 : 20.0;
+      _strikeTimer = _stormCharged
+          ? GameConfig.obstacleSynergyStormStrikeDuration
+          : .34;
       add(RectangleHitbox(
-        size: Vector2(20, GameConfig.designHeight),
-        position: Vector2(12, 0),
+        size: Vector2(strikeWidth, GameConfig.designHeight),
+        position: Vector2((size.x - strikeWidth) * .5, 0),
       ));
     }
     if (_struck) {
@@ -2415,7 +2613,9 @@ class LightningStrikeObstacle extends ObstacleComponent {
 
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.x, size.y),
-      Paint()..color = const Color(0x33FFFDE7),
+      Paint()..color = _stormCharged
+          ? const Color(0x55FFF59D)
+          : const Color(0x33FFFDE7),
     );
     final bolt = Path()..moveTo(x, 0);
     for (var i = 0; i < 12; i++) {
@@ -2427,7 +2627,7 @@ class LightningStrikeObstacle extends ObstacleComponent {
     final glow = Paint()
       ..color = const Color(0x99FFF176)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 8
+      ..strokeWidth = _stormCharged ? 12 : 8
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
     final core = Paint()
       ..color = Colors.white

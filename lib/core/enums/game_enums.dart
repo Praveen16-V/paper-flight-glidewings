@@ -349,6 +349,57 @@ extension ObstacleCombinationLabel on ObstacleCombination {
   }
 }
 
+/// A local interaction between two complementary hazards. Unlike a spawn
+/// combination, a synergy may also emerge from procedural overlap; each member
+/// exposes a small, readable behaviour change while the link is active.
+enum ObstacleSynergy {
+  stormCharge,
+  droneTrafficLink,
+  rotorWake,
+  windTether,
+}
+
+extension ObstacleSynergyLabel on ObstacleSynergy {
+  String get displayName {
+    switch (this) {
+      case ObstacleSynergy.stormCharge:
+        return 'Storm Charge';
+      case ObstacleSynergy.droneTrafficLink:
+        return 'Drone Traffic Link';
+      case ObstacleSynergy.rotorWake:
+        return 'Rotor Wake';
+      case ObstacleSynergy.windTether:
+        return 'Wind Tether';
+    }
+  }
+
+  List<ObstacleType> get members {
+    switch (this) {
+      case ObstacleSynergy.stormCharge:
+        return const [ObstacleType.stormCloud, ObstacleType.lightningStrike];
+      case ObstacleSynergy.droneTrafficLink:
+        return const [ObstacleType.drone, ObstacleType.trafficPlane];
+      case ObstacleSynergy.rotorWake:
+        return const [ObstacleType.windTurbine, ObstacleType.bird];
+      case ObstacleSynergy.windTether:
+        return const [ObstacleType.windsock, ObstacleType.kite];
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case ObstacleSynergy.stormCharge:
+        return const Color(0xFFFFF176);
+      case ObstacleSynergy.droneTrafficLink:
+        return const Color(0xFF80DEEA);
+      case ObstacleSynergy.rotorWake:
+        return const Color(0xFFB9F6CA);
+      case ObstacleSynergy.windTether:
+        return const Color(0xFFB2EBF2);
+    }
+  }
+}
+
 /// Visual grammar for an off-screen hazard announcement. The component draws
 /// a shared arrival dial, then uses this profile to preview the collision shape
 /// or route before the physical obstacle enters the viewport.

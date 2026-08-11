@@ -262,12 +262,15 @@ class ObstacleSpawner extends Component {
       safeCorridorX: _safeCorridorX,
       combinationId: combinationId,
     );
+    final followSpawnYOffset = combination == ObstacleCombination.rotorRun
+        ? GameConfig.obstacleCombinationRotorRunFollowSpawnYOffset
+        : GameConfig.obstacleCombinationFollowSpawnYOffset;
     _activateObstacle(
       members.last,
       spawnX: followX,
       safeCorridorX: _safeCorridorX,
       combinationId: combinationId,
-      spawnYOffset: GameConfig.obstacleCombinationFollowSpawnYOffset,
+      spawnYOffset: followSpawnYOffset,
     );
 
     _lastSpawnX = followX;
