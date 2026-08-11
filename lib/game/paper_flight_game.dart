@@ -1072,9 +1072,36 @@ class PaperFlightGame extends FlameGame
     collectibleSpawner.spawnCoinShower();
   }
 
-  /// Applies a timed/charge power-up effect. Shared by on-world pickups
-  /// ([PowerUpComponent]) and gesture-triggered plane power-ups so both paths
-  /// behave identically.
+  /// Receives a world pickup. Timed effects are banked as charges so their
+  /// burst never starts while the player has no tactical use for it.
+  void collectPowerUp(PowerUpType type) {
+    if (type.isChargeBased) {
+      ref.read(gameSessionProvider.notifier).addPowerUpCharge(
+            type,
+            maxCharges: GameConfig.chargePowerUpMaxCharges,
+          );
+      return;
+    }
+    applyPowerUp(type);
+  }
+
+  /// Called by the HUD charge button or a plane signature gesture. Returns
+  /// false without consuming anything when the burst is already active or no
+  /// charge is banked.
+  bool triggerPowerUpCharge(PowerUpType type) {
+    if (!type.isChargeBased) return false;
+    final session = ref.read(gameSessionProvider);
+    if (session.activePowerUps.contains(type)) return false;
+    final consumed =
+        ref.read(gameSessionProvider.notifier).consumePowerUpCharge(type);
+    if (!consumed) return false;
+    spawnPowerUpFeedback(this, plane.position, type);
+    applyPowerUp(type);
+    return true;
+  }
+
+  /// Applies an already-activated timed/charge power-up effect. Shared by HUD
+  /// charges and gesture-triggered plane signature power-ups.
   void applyPowerUp(PowerUpType type) {
     // Track for challenge "without power-up" and "use power-ups"
     _powerUpUsedThisRun = true;
@@ -1088,9 +1115,9 @@ class PaperFlightGame extends FlameGame
         _shieldChargesRemaining = math.max(_shieldChargesRemaining, 1);
       case PowerUpType.magnet:
         notifier.activatePowerUp(PowerUpType.magnet);
-        notifier.setPowerUpTimer(PowerUpType.magnet, GameConfig.magnetDuration);
+        notifier.setPowerUpTimer(PowerUpType.magnet, GameConfig.chargePowerUpBurstDuration);
         Future.delayed(
-          Duration(milliseconds: (GameConfig.magnetDuration * 1000).toInt()),
+          Duration(milliseconds: (GameConfig.chargePowerUpBurstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.magnet);
           },
@@ -1098,52 +1125,52 @@ class PaperFlightGame extends FlameGame
       case PowerUpType.ghost:
         // Phase through every obstacle + chromatic aberration entry!
         notifier.activatePowerUp(PowerUpType.ghost);
-        notifier.setPowerUpTimer(PowerUpType.ghost, GameConfig.ghostDuration);
+        notifier.setPowerUpTimer(PowerUpType.ghost, GameConfig.chargePowerUpBurstDuration);
         gameFeelSystem.onGhostActivated();
         Future.delayed(
-          Duration(milliseconds: (GameConfig.ghostDuration * 1000).toInt()),
+          Duration(milliseconds: (GameConfig.chargePowerUpBurstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.ghost);
           },
         );
       case PowerUpType.slowMo:
         notifier.activatePowerUp(PowerUpType.slowMo);
-        notifier.setPowerUpTimer(PowerUpType.slowMo, GameConfig.slowMoDuration);
-        applySlowMo(GameConfig.slowMoDuration);
+        notifier.setPowerUpTimer(PowerUpType.slowMo, GameConfig.chargePowerUpBurstDuration);
+        applySlowMo(GameConfig.chargePowerUpBurstDuration);
       case PowerUpType.coinRush:
         // 2× coin value for the duration, plus an immediate coin shower.
         notifier.activatePowerUp(PowerUpType.coinRush);
-        notifier.setPowerUpTimer(PowerUpType.coinRush, GameConfig.coinRushDuration);
+        notifier.setPowerUpTimer(PowerUpType.coinRush, GameConfig.chargePowerUpBurstDuration);
         beginCoinRush();
         Future.delayed(
-          Duration(milliseconds: (GameConfig.coinRushDuration * 1000).toInt()),
+          Duration(milliseconds: (GameConfig.chargePowerUpBurstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.coinRush);
           },
         );
       case PowerUpType.doubleScore:
         notifier.activatePowerUp(PowerUpType.doubleScore);
-        notifier.setPowerUpTimer(PowerUpType.doubleScore, GameConfig.doubleScoreDuration);
+        notifier.setPowerUpTimer(PowerUpType.doubleScore, GameConfig.chargePowerUpBurstDuration);
         Future.delayed(
-          Duration(milliseconds: (GameConfig.doubleScoreDuration * 1000).toInt()),
+          Duration(milliseconds: (GameConfig.chargePowerUpBurstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.doubleScore);
           },
         );
       case PowerUpType.shrink:
         notifier.activatePowerUp(PowerUpType.shrink);
-        notifier.setPowerUpTimer(PowerUpType.shrink, GameConfig.shrinkDuration);
+        notifier.setPowerUpTimer(PowerUpType.shrink, GameConfig.chargePowerUpBurstDuration);
         Future.delayed(
-          Duration(milliseconds: (GameConfig.shrinkDuration * 1000).toInt()),
+          Duration(milliseconds: (GameConfig.chargePowerUpBurstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.shrink);
           },
         );
       case PowerUpType.windCaller:
         notifier.activatePowerUp(PowerUpType.windCaller);
-        notifier.setPowerUpTimer(PowerUpType.windCaller, GameConfig.windCallerDuration);
+        notifier.setPowerUpTimer(PowerUpType.windCaller, GameConfig.chargePowerUpBurstDuration);
         Future.delayed(
-          Duration(milliseconds: (GameConfig.windCallerDuration * 1000).toInt()),
+          Duration(milliseconds: (GameConfig.chargePowerUpBurstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.windCaller);
           },
@@ -1153,18 +1180,18 @@ class PaperFlightGame extends FlameGame
         notifier.activatePowerUp(PowerUpType.decoyClone);
       case PowerUpType.blackHole:
         notifier.activatePowerUp(PowerUpType.blackHole);
-        notifier.setPowerUpTimer(PowerUpType.blackHole, GameConfig.blackHoleDuration);
+        notifier.setPowerUpTimer(PowerUpType.blackHole, GameConfig.chargePowerUpBurstDuration);
         Future.delayed(
-          Duration(milliseconds: (GameConfig.blackHoleDuration * 1000).toInt()),
+          Duration(milliseconds: (GameConfig.chargePowerUpBurstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.blackHole);
           },
         );
       case PowerUpType.turboDash:
         notifier.activatePowerUp(PowerUpType.turboDash);
-        notifier.setPowerUpTimer(PowerUpType.turboDash, GameConfig.turboDashDuration);
+        notifier.setPowerUpTimer(PowerUpType.turboDash, GameConfig.chargePowerUpBurstDuration);
         Future.delayed(
-          Duration(milliseconds: (GameConfig.turboDashDuration * 1000).toInt()),
+          Duration(milliseconds: (GameConfig.chargePowerUpBurstDuration * 1000).toInt()),
           () {
             if (!_disposed) notifier.deactivatePowerUp(PowerUpType.turboDash);
           },
@@ -1206,8 +1233,7 @@ class PaperFlightGame extends FlameGame
       return;
     }
 
-    spawnPowerUpFeedback(this, plane.position, type);
-    applyPowerUp(type);
+    triggerPowerUpCharge(type);
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────

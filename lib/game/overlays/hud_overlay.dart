@@ -130,7 +130,9 @@ class HudOverlay extends ConsumerWidget {
             child: _PowerUpBar(
               activePowerUps: session.activePowerUps,
               activeCombos: session.activePowerUpCombos,
+              charges: session.powerUpCharges,
               remaining: session.powerUpRemaining,
+              onActivateCharge: game.triggerPowerUpCharge,
             ),
           ),
 
@@ -534,15 +536,21 @@ class _PowerUpBar extends StatelessWidget {
   const _PowerUpBar({
     required this.activePowerUps,
     required this.activeCombos,
+    required this.charges,
     required this.remaining,
+    required this.onActivateCharge,
   });
   final Set<PowerUpType> activePowerUps;
   final Set<PowerUpCombo> activeCombos;
+  final Map<PowerUpType, int> charges;
   final Map<PowerUpType, double> remaining;
+  final bool Function(PowerUpType type) onActivateCharge;
 
   @override
   Widget build(BuildContext context) {
-    if (activePowerUps.isEmpty) return const SizedBox.shrink();
+    if (activePowerUps.isEmpty && charges.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -552,6 +560,15 @@ class _PowerUpBar extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: _PowerUpComboPill(combo: combo),
+          ),
+        for (final entry in charges.entries)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _PowerUpChargeIcon(
+              type: entry.key,
+              charges: entry.value,
+              onTap: () => onActivateCharge(entry.key),
+            ),
           ),
         ...activePowerUps.map((type) {
           return Padding(
@@ -595,6 +612,74 @@ class _PowerUpComboPill extends StatelessWidget {
   }
 }
 
+class _PowerUpChargeIcon extends StatelessWidget {
+  const _PowerUpChargeIcon({
+    required this.type,
+    required this.charges,
+    required this.onTap,
+  });
+
+  final PowerUpType type;
+  final int charges;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _PowerUpIcon.colorForType(type);
+    return Semantics(
+      button: true,
+      label: 'Activate ${type.displayName}, $charges charges',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: color.withOpacity(.92),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white.withOpacity(.82), width: 1.4),
+            boxShadow: [
+              BoxShadow(color: color.withOpacity(.58), blurRadius: 10),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Center(
+                child: Icon(
+                  _PowerUpIcon.iconForType(type),
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              Positioned(
+                right: 2,
+                bottom: 2,
+                child: Container(
+                  width: 16,
+                  height: 16,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF17232D),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '$charges',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PowerUpIcon extends StatelessWidget {
   const _PowerUpIcon({required this.type, this.remaining});
   final PowerUpType type;
@@ -613,12 +698,12 @@ class _PowerUpIcon extends StatelessWidget {
       width: 36,
       height: 36,
       decoration: BoxDecoration(
-        color: _colorForType(type),
+        color: colorForType(type),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
         boxShadow: [
           BoxShadow(
-            color: _colorForType(type).withOpacity(0.4),
+            color: colorForType(type).withOpacity(0.4),
             blurRadius: 6,
             spreadRadius: 0,
           ),
@@ -626,7 +711,7 @@ class _PowerUpIcon extends StatelessWidget {
       ),
       child: Center(
         child: Icon(
-          _iconForType(type),
+          iconForType(type),
           color: Colors.white,
           size: 18,
         ),
@@ -634,20 +719,12 @@ class _PowerUpIcon extends StatelessWidget {
     ));
   }
 
-  double _duration(PowerUpType type) => switch (type) {
-        PowerUpType.magnet => GameConfig.magnetDuration,
-        PowerUpType.ghost => GameConfig.ghostDuration,
-        PowerUpType.slowMo => GameConfig.slowMoDuration,
-        PowerUpType.coinRush => GameConfig.coinRushDuration,
-        PowerUpType.doubleScore => GameConfig.doubleScoreDuration,
-        PowerUpType.shrink => GameConfig.shrinkDuration,
-        PowerUpType.windCaller => GameConfig.windCallerDuration,
-        PowerUpType.blackHole => GameConfig.blackHoleDuration,
-        PowerUpType.turboDash => GameConfig.turboDashDuration,
-        _ => 1.0,
-      };
+  double _duration(PowerUpType type) {
+    if (type.isChargeBased) return GameConfig.chargePowerUpBurstDuration;
+    return 1.0;
+  }
 
-  Color _colorForType(PowerUpType type) {
+  static Color colorForType(PowerUpType type) {
     switch (type) {
       case PowerUpType.shield:
         return const Color(0xFF1565C0);
@@ -674,7 +751,7 @@ class _PowerUpIcon extends StatelessWidget {
     }
   }
 
-  IconData _iconForType(PowerUpType type) {
+  static IconData iconForType(PowerUpType type) {
     switch (type) {
       case PowerUpType.shield:
         return Icons.shield_rounded;

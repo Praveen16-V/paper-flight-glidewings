@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-powerups-1';
+  static const String balanceVersion = '2026.08-powerups-2';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -495,6 +495,11 @@ abstract class GameConfig {
   static const double windCallerDuration = 8.0; // seconds — calm wind & thermals
   static const double blackHoleDuration = 1.5; // seconds — cosmic vacuum
   static const double turboDashDuration = 2.0; // seconds — invincible thrust dash
+
+  // Timed pickups are banked, then tapped deliberately instead of starting
+  // their countdown at an inconvenient moment.
+  static const int chargePowerUpMaxCharges = 3;
+  static const double chargePowerUpBurstDuration = 3.0;
 
   /// Shrink micro-fold hitbox and visual scale factors.
   static const double shrinkHitboxScale = 0.35;

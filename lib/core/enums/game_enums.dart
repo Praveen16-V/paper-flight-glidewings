@@ -256,6 +256,20 @@ enum PowerUpType {
 }
 
 extension PowerUpLabel on PowerUpType {
+  /// Timed effects are stored as charges and manually fired as a short burst.
+  bool get isChargeBased => switch (this) {
+        PowerUpType.magnet ||
+        PowerUpType.ghost ||
+        PowerUpType.slowMo ||
+        PowerUpType.coinRush ||
+        PowerUpType.doubleScore ||
+        PowerUpType.shrink ||
+        PowerUpType.windCaller ||
+        PowerUpType.blackHole ||
+        PowerUpType.turboDash => true,
+        PowerUpType.shield || PowerUpType.decoyClone => false,
+      };
+
   String get displayName {
     switch (this) {
       case PowerUpType.shield:

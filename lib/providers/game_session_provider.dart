@@ -48,6 +48,7 @@ class GameSessionState {
     this.comboGauge = 0.0,
     this.currentBiome = Biome.city,
     this.activePowerUps = const {},
+    this.powerUpCharges = const {},
     this.shieldActive = false,
     this.powerUpRemaining = const {},
     this.lastRunResult,
@@ -75,6 +76,9 @@ class GameSessionState {
   final double comboGauge;
   final Biome currentBiome;
   final Set<PowerUpType> activePowerUps;
+
+  /// Banked charges for manually activated timed power-ups.
+  final Map<PowerUpType, int> powerUpCharges;
 
   /// Derived stacked effects for HUD and gameplay systems. Keeping it derived
   /// prevents stale combo state when any underlying timer expires.
@@ -108,6 +112,7 @@ class GameSessionState {
     double? comboGauge,
     Biome? currentBiome,
     Set<PowerUpType>? activePowerUps,
+    Map<PowerUpType, int>? powerUpCharges,
     bool? shieldActive,
     Map<PowerUpType, double>? powerUpRemaining,
     RunResult? lastRunResult,
@@ -129,6 +134,7 @@ class GameSessionState {
       comboGauge: comboGauge ?? this.comboGauge,
       currentBiome: currentBiome ?? this.currentBiome,
       activePowerUps: activePowerUps ?? this.activePowerUps,
+      powerUpCharges: powerUpCharges ?? this.powerUpCharges,
       shieldActive: shieldActive ?? this.shieldActive,
       powerUpRemaining: powerUpRemaining ?? this.powerUpRemaining,
       lastRunResult: lastRunResult ?? this.lastRunResult,
@@ -212,6 +218,26 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
       activePowerUps: updated,
       shieldActive: type == PowerUpType.shield ? true : state.shieldActive,
     );
+  }
+
+  void addPowerUpCharge(PowerUpType type, {int maxCharges = 3}) {
+    final charges = Map<PowerUpType, int>.from(state.powerUpCharges);
+    charges[type] =
+        ((charges[type] ?? 0) + 1).clamp(0, maxCharges).toInt();
+    state = state.copyWith(powerUpCharges: charges);
+  }
+
+  bool consumePowerUpCharge(PowerUpType type) {
+    final current = state.powerUpCharges[type] ?? 0;
+    if (current <= 0) return false;
+    final charges = Map<PowerUpType, int>.from(state.powerUpCharges);
+    if (current == 1) {
+      charges.remove(type);
+    } else {
+      charges[type] = current - 1;
+    }
+    state = state.copyWith(powerUpCharges: charges);
+    return true;
   }
 
   void deactivatePowerUp(PowerUpType type) {

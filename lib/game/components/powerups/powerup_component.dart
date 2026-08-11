@@ -117,7 +117,7 @@ class PowerUpComponent extends PositionComponent
 
   void _applyEffect() {
     spawnPowerUpFeedback(gameRef, position, type);
-    gameRef.applyPowerUp(type);
+    gameRef.collectPowerUp(type);
   }
 
   // ── Render Floating 3D Origami Prism Gift Box ─────────────────────────────

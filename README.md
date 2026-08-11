@@ -196,6 +196,7 @@ Key knobs to adjust during playtesting:
 - `CustomSkinManager.maxPatternBytes` — workshop image-import size guard
 - `PaperSkin.rarity` — common → mythic Hangar/list treatment
 - `goldVortexCoinValueMultiplier` / `timeDashWorldSpeedMultiplier` — stacked power-up combo strength
+- `chargePowerUpMaxCharges` / `chargePowerUpBurstDuration` — banked timed-power-up bursts
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts
