@@ -137,6 +137,10 @@ class PlaneComponent extends PositionComponent
   /// Wing-fold amount [0 = fully spread (gliding), 1 = folded up (holding)].
   double _wingFold = 0.0;
 
+  /// Elapsed time since the finger was released; drives the damped paper
+  /// flutter that plays as the wings spring back open. -1 = not fluttering.
+  double _wingFlutterTime = -1.0;
+
   /// Total elapsed time in seconds.
   double _animTime = 0.0;
 
@@ -409,8 +413,11 @@ class PlaneComponent extends PositionComponent
     final butterflyFlap = planeType == PlaneType.butterfly
         ? math.sin(_animTime * 10.0) * 0.35 * (1.0 - _wingFold * 0.5)
         : 0.0;
-    final effectiveFold =
-        (_wingFold + wingFlexWobble + butterflyFlap).clamp(0.0, 1.0);
+    final effectiveFold = (_wingFold +
+            _wingFlutterOffset +
+            wingFlexWobble +
+            butterflyFlap)
+        .clamp(-GameConfig.wingFoldOpenOvershoot, 1.0);
 
     // ── Night Lighting: Forward Projector Headlamp Beam ──────────────────────
     if (game.biomeManager.currentBiome == Biome.night) {
@@ -496,12 +503,6 @@ class PlaneComponent extends PositionComponent
 
     // ── Aerodynamic Stall / Spin Readout ────────────────────────────────────
     _drawStallSpinOverlay(canvas, w, h);
-
-    // ── Unified active-effect status ring ───────────────────────────────────
-    _drawPowerUpStatusRing(canvas, w, h);
-
-    // ── Snap charge ring ─────────────────────────────────────────────────────
-    _drawSnapChargeRing(canvas, w, h);
   }
 
   // ── Silhouette per type ────────────────────────────────────────────────────
@@ -569,9 +570,10 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawDartSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final spreadY = h * 0.08;
-    final topWingY = (h * 0.14) * (1.0 - wingFold) - spreadY * (1.0 - wingFold);
-    final botWingY = h - (h * 0.14) * (1.0 - wingFold) + spreadY * (1.0 - wingFold);
+    // Wings sweep from fully spread toward the keel as the fold deepens —
+    // like pinching a real dart's wings between finger and thumb.
+    final topWingY = MathUtils.lerp(h * 0.06, h * 0.42, wingFold);
+    final botWingY = h - topWingY;
     const noseX = 2.0;
 
     final upperWing = Path()..moveTo(w + noseX, h / 2)..lineTo(w * 0.32, h / 2)..lineTo(0, topWingY)..close();
@@ -619,8 +621,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawStuntFoldSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topWingY = (h * 0.05) * (1.0 - wingFold);
-    final botWingY = h - (h * 0.05) * (1.0 - wingFold);
+    final topWingY = MathUtils.lerp(h * 0.05, h * 0.40, wingFold);
+    final botWingY = h - topWingY;
     final noseX = w + 3.0;
 
     final upperWing = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.55, h / 2)..lineTo(w * 0.12, topWingY)..lineTo(0, topWingY + 4)..lineTo(w * 0.28, h / 2)..close();
@@ -642,8 +644,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawCraneSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topWingY = (h * 0.02) * (1.0 - wingFold) - 4 * (1.0 - wingFold);
-    final botWingY = h - (h * 0.02) * (1.0 - wingFold) + 4 * (1.0 - wingFold);
+    final topWingY = MathUtils.lerp(h * 0.02 - 4, h * 0.40, wingFold);
+    final botWingY = h - topWingY;
     final headX = w + 14.0;
 
     final neckPath = Path()..moveTo(w * 0.65, h / 2)..lineTo(w * 0.95, h / 2 - 2)..lineTo(headX, h / 2 - 1)..lineTo(w * 0.92, h / 2 + 2)..lineTo(w * 0.65, h / 2)..close();
@@ -667,8 +669,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawStealthJetSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topWingY = (h * 0.10) * (1.0 - wingFold);
-    final botWingY = h - (h * 0.10) * (1.0 - wingFold);
+    final topWingY = MathUtils.lerp(h * 0.10, h * 0.44, wingFold);
+    final botWingY = h - topWingY;
     final noseX = w + 5.0;
 
     final upperWing = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.70, h * 0.32)..lineTo(w * 0.05, topWingY)..lineTo(w * 0.15, h / 2)..close();
@@ -716,8 +718,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawBomberSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topWingY = (h * 0.04) * (1.0 - wingFold);
-    final botWingY = h - (h * 0.04) * (1.0 - wingFold);
+    final topWingY = MathUtils.lerp(h * 0.04, h * 0.36, wingFold);
+    final botWingY = h - topWingY;
 
     final upperWing = Path()..moveTo(w * 0.88, h / 2)..lineTo(w * 0.50, topWingY)..lineTo(w * 0.08, topWingY + 3)..lineTo(w * 0.20, h / 2)..close();
     final lowerWing = Path()..moveTo(w * 0.88, h / 2)..lineTo(w * 0.50, botWingY)..lineTo(w * 0.08, botWingY - 3)..lineTo(w * 0.20, h / 2)..close();
@@ -739,8 +741,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawInterceptorSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topWingY = (h * 0.12) * (1.0 - wingFold);
-    final botWingY = h - (h * 0.12) * (1.0 - wingFold);
+    final topWingY = MathUtils.lerp(h * 0.12, h * 0.42, wingFold);
+    final botWingY = h - topWingY;
     final noseX = w + 7.0;
 
     final upperWing = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.65, h * 0.36)..lineTo(0, topWingY)..lineTo(w * 0.18, h / 2)..close();
@@ -787,8 +789,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawBiplaneSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topWingY = (h * 0.08) * (1.0 - wingFold);
-    final botWingY = h - (h * 0.08) * (1.0 - wingFold);
+    final topWingY = MathUtils.lerp(h * 0.08, h * 0.34, wingFold);
+    final botWingY = h - topWingY;
     final upperWing = Path()..moveTo(w * 0.85, h / 2)..lineTo(w * 0.65, topWingY)..lineTo(w * 0.15, topWingY)..lineTo(w * 0.25, h / 2)..close();
     final lowerWing = Path()..moveTo(w * 0.85, h / 2)..lineTo(w * 0.65, botWingY)..lineTo(w * 0.15, botWingY)..lineTo(w * 0.25, h / 2)..close();
     final cowl = Path()..moveTo(w + 2, h / 2)..lineTo(w * 0.80, h / 2 - 4)..lineTo(0, h / 2 - 2)..lineTo(0, h / 2 + 2)..lineTo(w * 0.80, h / 2 + 4)..close();
@@ -808,7 +810,7 @@ class PlaneComponent extends PositionComponent
   void _drawNinjaStarSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
     final cx = w / 2;
     final cy = h / 2;
-    final r = w * 0.45;
+    final r = w * 0.45 * (1.0 - wingFold.clamp(0.0, 1.0) * 0.12);
     final b1 = Path()..moveTo(cx, cy)..lineTo(cx + r, cy)..lineTo(cx + r * 0.4, cy - r * 0.5)..close();
     final b2 = Path()..moveTo(cx, cy)..lineTo(cx, cy - r)..lineTo(cx - r * 0.5, cy - r * 0.4)..close();
     final b3 = Path()..moveTo(cx, cy)..lineTo(cx - r, cy)..lineTo(cx - r * 0.4, cy + r * 0.5)..close();
@@ -825,8 +827,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawRocketSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topFinY = (h * 0.08) * (1.0 - wingFold);
-    final botFinY = h - (h * 0.08) * (1.0 - wingFold);
+    final topFinY = MathUtils.lerp(h * 0.08, h * 0.34, wingFold);
+    final botFinY = h - topFinY;
     final noseX = w + 6.0;
 
     final fuselage = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.65, h / 2 - 5)..lineTo(w * 0.12, h / 2 - 5)..lineTo(w * 0.05, h / 2)..lineTo(w * 0.12, h / 2 + 5)..lineTo(w * 0.65, h / 2 + 5)..close();
@@ -1923,307 +1925,6 @@ class PlaneComponent extends PositionComponent
     );
   }
 
-  // ── Unified Power-Up Status Ring ─────────────────────────────────────────
-
-  void _drawPowerUpStatusRing(Canvas canvas, double w, double h) {
-    if (_activePowerUps.isEmpty && _activeCorruptedPowerUps.isEmpty) return;
-
-    final entries = <_PowerUpRingEntry>[
-      for (final type in _activePowerUps)
-        _PowerUpRingEntry(
-          color: type.visualColor,
-          progress: _powerUpRingProgress(type),
-          empowered: _activeEmpoweredPowerUps.contains(type),
-        ),
-      for (final type in _activeCorruptedPowerUps)
-        _PowerUpRingEntry(
-          color: type.color,
-          progress: (_corruptedTimerSnapshot[type] ??
-                  GameConfig.corruptedPowerUpDuration) /
-              GameConfig.corruptedPowerUpDuration,
-          corrupted: true,
-        ),
-    ];
-    if (entries.isEmpty) return;
-
-    final center = Offset(w / 2, h / 2);
-    final count = entries.length;
-    final gap = GameConfig.powerUpStatusRingGapRadians;
-    final totalArc = (math.pi * 2 - gap * count) / count;
-    final background = Paint()
-      ..color = const Color(0x33FFFFFF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = GameConfig.powerUpStatusRingStrokeWidth
-      ..strokeCap = StrokeCap.round;
-
-    for (var i = 0; i < entries.length; i++) {
-      final entry = entries[i];
-      final start = -math.pi / 2 + i * (totalArc + gap);
-      final rect = Rect.fromCircle(
-        center: center,
-        radius: GameConfig.powerUpStatusRingRadius,
-      );
-      canvas.drawArc(rect, start, totalArc, false, background);
-      final fill = Paint()
-        ..color = entry.color.withOpacity(entry.corrupted ? .95 : .82)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = GameConfig.powerUpStatusRingStrokeWidth +
-            (entry.empowered ? 1.2 : 0)
-        ..strokeCap = StrokeCap.round;
-      canvas.drawArc(
-        rect,
-        start,
-        totalArc * entry.progress.clamp(0.0, 1.0).toDouble(),
-        false,
-        fill,
-      );
-      if (entry.empowered) {
-        final end = start +
-            totalArc * entry.progress.clamp(0.0, 1.0).toDouble();
-        final sparkle = Offset(
-          center.dx + math.cos(end) * GameConfig.powerUpStatusRingRadius,
-          center.dy + math.sin(end) * GameConfig.powerUpStatusRingRadius,
-        );
-        canvas.drawCircle(sparkle, 1.8, Paint()..color = const Color(0xFFFFF59D));
-      }
-    }
-  }
-
-  double _powerUpRingProgress(PowerUpType type) {
-    if (!type.isChargeBased) return 1.0;
-    final duration = _activeEmpoweredPowerUps.contains(type)
-        ? GameConfig.empoweredPowerUpBurstDuration
-        : GameConfig.chargePowerUpBurstDuration;
-    return ((_powerUpTimerSnapshot[type] ?? duration) / duration)
-        .clamp(0.0, 1.0)
-        .toDouble();
-  }
-
-  // ── Snap Charge Ring (Double Ring Concept & Per-Plane Styles) ──────────────
-
-  void _drawSnapChargeRing(Canvas canvas, double w, double h) {
-    if (game.phase != GamePhase.playing && game.phase != GamePhase.paused) {
-      return;
-    }
-
-    final input = game.inputManager;
-    final maxC = (planeType == PlaneType.stuntFold && planeLevel >= 3) ? 3 : GameConfig.snapMaxCharges;
-    final charges = input.snapCharges;
-    final progress = input.snapRechargeFraction;
-    final center = Offset(w / 2, h / 2);
-    final outerRadius = GameConfig.snapRingRadius;
-    final innerRadius = outerRadius * 0.72;
-    final stroke = GameConfig.snapRingStrokeWidth;
-
-    // ── Charge States: 0 = Red slow pulse, 1 = Amber breathing, Max = Gold shimmer
-    final Color stateColor;
-    if (charges == 0) {
-      final redPulse = math.sin(_animTime * 4.0) * 0.25 + 0.75;
-      stateColor = Color.fromRGBO(255, 82, 82, redPulse);
-    } else if (charges < maxC) {
-      final amberPulse = math.sin(_animTime * 3.0) * 0.2 + 0.8;
-      stateColor = Color.fromRGBO(255, 160, 0, amberPulse);
-    } else {
-      final goldShimmer = math.sin(_animTime * 6.0) * 0.15 + 0.85;
-      stateColor = Color.fromRGBO(255, 215, 0, goldShimmer);
-    }
-
-    // ── 1. Inner Ring: Defensive / Ability Buffer (Shield / Crane / Decoys) ───
-    final shieldCharges = _shieldActive ? 1 : 0;
-    final craneCharges = game.craneChargesRemaining;
-    final decoyCharges = game.decoyCloneCharges;
-    final innerActive = shieldCharges > 0 || craneCharges > 0 || decoyCharges > 0;
-
-    if (innerActive) {
-      final innerAngle = _magnetActive ? _magnetAngle : (_slowMoActive ? _animTime * 0.5 : _animTime);
-      final Color innerColor = shieldCharges > 0
-          ? const Color(0xFF64B5F6) // glowing blue
-          : (craneCharges > 0 ? const Color(0xFF81C784) : const Color(0xFF7986CB));
-
-      final innerPaint = Paint()
-        ..color = innerColor.withOpacity(0.85)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0
-        ..strokeCap = StrokeCap.round;
-
-      canvas.save();
-      canvas.translate(center.dx, center.dy);
-      canvas.rotate(innerAngle);
-      canvas.drawArc(
-        Rect.fromCircle(center: Offset.zero, radius: innerRadius),
-        0,
-        math.pi * 1.6,
-        false,
-        innerPaint,
-      );
-      canvas.restore();
-    }
-
-    // ── 2. Outer Ring: Snap Boost Charges with Per-Plane Style ───────────────
-    final bgPaint = Paint()
-      ..color = const Color(0x22FFFFFF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round;
-    canvas.drawCircle(center, outerRadius, bgPaint);
-
-    const gap = GameConfig.snapRingGapRadians;
-    final totalArc = (2 * math.pi - gap * maxC) / maxC;
-
-    for (int i = 0; i < maxC; i++) {
-      final start = -math.pi / 2 + i * (totalArc + gap);
-      double sweep = totalArc;
-      final bool isFilled = i < charges;
-      Paint segPaint;
-
-      if (isFilled) {
-        segPaint = Paint()
-          ..color = stateColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = stroke
-          ..strokeCap = StrokeCap.round;
-      } else if (i == charges && charges < maxC) {
-        final fillFraction = progress.clamp(0.0, 1.0);
-        if (fillFraction <= 0.01) continue;
-        sweep = totalArc * fillFraction;
-        segPaint = Paint()
-          ..color = stateColor.withOpacity(0.5 + 0.4 * progress)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = stroke
-          ..strokeCap = StrokeCap.round;
-      } else {
-        segPaint = Paint()
-          ..color = const Color(0x33FFFFFF)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = stroke * 0.8
-          ..strokeCap = StrokeCap.round;
-      }
-
-      // Per-plane styling
-      if (_ghostActive) {
-        segPaint.strokeWidth = 1.4;
-        segPaint.color = segPaint.color.withOpacity(0.45);
-      }
-
-      _drawStyledRingSegment(canvas, center, outerRadius, start, sweep, segPaint);
-    }
-
-    // Gold Sparkle Particles when Fully Charged
-    if (charges >= maxC) {
-      final spark = Paint()..color = const Color(0xFFFFF9C4)..style = PaintingStyle.fill;
-      for (int i = 0; i < 3; i++) {
-        final a = _animTime * 4.0 + i * (2 * math.pi / 3);
-        final sx = center.dx + math.cos(a) * (outerRadius + 3);
-        final sy = center.dy + math.sin(a) * (outerRadius + 3);
-        canvas.drawCircle(Offset(sx, sy), 1.2, spark);
-      }
-    }
-
-    // ── 3. Exploding Paper-Confetti Shards on Boost Burst ────────────────────
-    if (_snapFlashTimer > 0) {
-      final f = (_snapFlashTimer / 0.22).clamp(0.0, 1.0);
-      final expand = (1.0 - f) * 28.0;
-
-      final flashPaint = Paint()
-        ..color = stateColor.withOpacity(0.6 * f)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke + 3.0 * f
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-      canvas.drawCircle(center, outerRadius + expand, flashPaint);
-
-      // Radiating origami confetti shards
-      final shardPaint = Paint()
-        ..color = Color.fromRGBO(255, 215, 0, 0.85 * f)
-        ..style = PaintingStyle.fill;
-
-      for (int i = 0; i < 8; i++) {
-        final a = i * math.pi / 4;
-        final px = center.dx + math.cos(a) * (outerRadius + expand);
-        final py = center.dy + math.sin(a) * (outerRadius + expand);
-        final shard = Path()
-          ..moveTo(px, py - 3 * f)
-          ..lineTo(px + 4 * f, py)
-          ..lineTo(px, py + 3 * f)
-          ..lineTo(px - 4 * f, py)
-          ..close();
-        canvas.drawPath(shard, shardPaint);
-      }
-    }
-  }
-
-  void _drawStyledRingSegment(
-    Canvas canvas,
-    Offset center,
-    double radius,
-    double start,
-    double sweep,
-    Paint paint,
-  ) {
-    switch (planeType) {
-      case PlaneType.glider:
-        // Feathered / dashed aerodynamic arcs
-        const dashes = 4;
-        final dashSweep = sweep / (dashes * 1.5);
-        for (int d = 0; d < dashes; d++) {
-          canvas.drawArc(
-            Rect.fromCircle(center: center, radius: radius),
-            start + d * dashSweep * 1.5,
-            dashSweep,
-            false,
-            paint,
-          );
-        }
-        break;
-
-      case PlaneType.stuntFold:
-        // Angular zig-zag lightning styling
-        canvas.drawArc(
-          Rect.fromCircle(center: center, radius: radius),
-          start,
-          sweep,
-          false,
-          paint..strokeWidth = paint.strokeWidth * 1.2,
-        );
-        break;
-
-      case PlaneType.crane:
-        // Origami mountain/valley fold line with diamond node
-        canvas.drawArc(
-          Rect.fromCircle(center: center, radius: radius),
-          start,
-          sweep,
-          false,
-          paint,
-        );
-        final nodeA = start + sweep;
-        final nx = center.dx + math.cos(nodeA) * radius;
-        final ny = center.dy + math.sin(nodeA) * radius;
-        canvas.drawCircle(Offset(nx, ny), 2.2, Paint()..color = paint.color..style = PaintingStyle.fill);
-        break;
-
-      case PlaneType.stealthJet:
-        // Tactical HUD hexagon brackets
-        canvas.drawArc(
-          Rect.fromCircle(center: center, radius: radius),
-          start,
-          sweep,
-          false,
-          paint..strokeCap = StrokeCap.square,
-        );
-        break;
-
-      default:
-        canvas.drawArc(
-          Rect.fromCircle(center: center, radius: radius),
-          start,
-          sweep,
-          false,
-          paint,
-        );
-        break;
-    }
-  }
-
   void _triggerSnapFlash() {
     _snapFlashTimer = 0.22;
   }
@@ -2573,8 +2274,48 @@ class PlaneComponent extends PositionComponent
     }
 
     _updateRotation(dt);
-    _wingFold = MathUtils.lerp(_wingFold, isHolding ? 1.0 : 0.0, 0.10);
+    _updateWingFold(dt, isHolding, releaseEdge);
     _wasHolding = isHolding;
+  }
+
+  // ── Paper-Wing Fold (finger tap & release) ────────────────────────────────
+
+  /// Wings pinch in quickly while the pilot's finger is held and spring back
+  /// open on release with a short damped flutter — the squeeze-and-let-go
+  /// feel of a real paper dart.
+  void _updateWingFold(double dt, bool isHolding, bool releaseEdge) {
+    if (releaseEdge) {
+      _wingFlutterTime = 0.0;
+    }
+    final target = isHolding ? 1.0 : 0.0;
+    final rate = isHolding
+        ? GameConfig.wingFoldPressRate
+        : GameConfig.wingFoldReleaseRate;
+    final blend = (rate * dt).clamp(0.0, 1.0).toDouble();
+    _wingFold = MathUtils.lerp(_wingFold, target, blend);
+    _tickWingFlutter(dt);
+  }
+
+  /// Ages the release flutter and expires it when the paper has settled.
+  void _tickWingFlutter(double dt) {
+    if (_wingFlutterTime < 0.0) return;
+    _wingFlutterTime += dt;
+    if (_wingFlutterTime >= GameConfig.wingReleaseFlutterDuration) {
+      _wingFlutterTime = -1.0;
+    }
+  }
+
+  /// Damped sinusoid added to the fold while the released paper settles:
+  /// the wings bow slightly past flat, then beat a couple of times.
+  double get _wingFlutterOffset {
+    if (_wingFlutterTime < 0.0) return 0.0;
+    final t = _wingFlutterTime;
+    final progress =
+        (t / GameConfig.wingReleaseFlutterDuration).clamp(0.0, 1.0);
+    final decay = (1.0 - progress) * (1.0 - progress);
+    return -math.sin(t * GameConfig.wingReleaseFlutterFrequency * 2 * math.pi) *
+        GameConfig.wingReleaseFlutterAmplitude *
+        decay;
   }
 
   // ── Stall / Spin Simulation ───────────────────────────────────────────────
@@ -2720,6 +2461,7 @@ class PlaneComponent extends PositionComponent
       .18,
       (5.0 * dt).clamp(0.0, 1.0).toDouble(),
     );
+    _tickWingFlutter(dt);
 
     if (position.y > GameConfig.designHeight + size.y) {
       game.onPlaneCrash();
@@ -2891,6 +2633,7 @@ class PlaneComponent extends PositionComponent
     _velocityX = 0;
     _velocityY = 0;
     _wingFold = 0;
+    _wingFlutterTime = -1.0;
     _wasHolding = false;
     _glideArcActive = false;
     _oscillationPhase = 0;
@@ -2950,6 +2693,7 @@ class PlaneComponent extends PositionComponent
     _velocityY = 0;
     _velocityX = 0;
     _wingFold = 0;
+    _wingFlutterTime = -1.0;
     _wasHolding = false;
     _glideArcActive = false;
     _oscillationPhase = 0;
@@ -3097,18 +2841,4 @@ class PlaneComponent extends PositionComponent
       height: hbSize.y,
     );
   }
-}
-
-class _PowerUpRingEntry {
-  const _PowerUpRingEntry({
-    required this.color,
-    required this.progress,
-    this.empowered = false,
-    this.corrupted = false,
-  });
-
-  final Color color;
-  final double progress;
-  final bool empowered;
-  final bool corrupted;
 }
