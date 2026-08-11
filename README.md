@@ -189,6 +189,7 @@ Key knobs to adjust during playtesting:
 - `wingmanFormationRadius` / `wingmanCoinScoreMultiplier` — formation tolerance and wingman reward strength
 - `goldLeafCoinSparkleDuration` / `holographicNearMissShiftDuration` — reactive skin response windows
 - `skinWearDistanceForVeteran` / `skinWearCrashImpact` — cosmetic patina pace and crash marks
+- `GameConfig.synergyBonus(...)` — exact plane + skin combo bonuses and visual trail effects
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts

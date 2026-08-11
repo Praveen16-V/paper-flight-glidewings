@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_typography.dart';
+import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
 import '../core/widgets/currency_chip.dart';
 import '../core/widgets/paper_button.dart';
@@ -750,12 +751,20 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
 
   @override
   Widget build(BuildContext context) {
-    final wearLevel = ref
-        .watch(saveDataProvider)
-        .skinWearLevelFor(widget.selectedIndex);
+    final save = ref.watch(saveDataProvider);
+    final wearLevel = save.skinWearLevelFor(widget.selectedIndex);
     final wearLabel = wearLevel < .18
         ? 'PRISTINE'
         : (wearLevel < .68 ? 'SEASONED' : 'VETERAN');
+    final equippedPlane = PlaneType.values[save.equippedPlaneIndex
+        .clamp(0, PlaneType.values.length - 1)
+        .toInt()];
+    final synergy = GameConfig.synergyBonus(equippedPlane, widget.skin);
+    final synergyDetail = synergy.trailEffect == SkinTrailEffect.petals
+        ? 'PETAL TRAIL'
+        : (synergy.hitboxScaleMultiplier < 1.0
+            ? 'HITBOX ${(synergy.hitboxScaleMultiplier * 100).round()}%'
+            : 'THERMAL ${(synergy.thermalLiftMultiplier * 100).round()}%');
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
@@ -952,6 +961,28 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
                             ),
                           ),
                         ),
+                        if (synergy.isActive) ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF80DEEA).withOpacity(.16),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFF80DEEA).withOpacity(.42),
+                              ),
+                            ),
+                            child: Text(
+                              'SYNERGY • ${synergy.label.toUpperCase()} • $synergyDetail',
+                              style: AppTypography.overline.copyWith(
+                                color: const Color(0xFFB2EBF2),
+                                fontSize: 7.2,
+                                letterSpacing: .55,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ],
                   ),

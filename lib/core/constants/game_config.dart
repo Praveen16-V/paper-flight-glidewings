@@ -1,12 +1,41 @@
 import 'dart:math' as math;
 
+import '../enums/game_enums.dart';
+
+/// Extra visual trail supplied by a specific plane + paper-skin pairing.
+enum SkinTrailEffect { none, petals }
+
+/// Data-driven bonus returned by [GameConfig.synergyBonus]. All neutral values
+/// are deliberately safe defaults, so adding a skin never changes an airframe
+/// unless an explicit pairing is configured.
+class SkinSynergyBonus {
+  const SkinSynergyBonus({
+    this.label = '',
+    this.hitboxScaleMultiplier = 1.0,
+    this.thermalLiftMultiplier = 1.0,
+    this.trailEffect = SkinTrailEffect.none,
+  });
+
+  static const SkinSynergyBonus none = SkinSynergyBonus();
+
+  final String label;
+  final double hitboxScaleMultiplier;
+  final double thermalLiftMultiplier;
+  final SkinTrailEffect trailEffect;
+
+  bool get isActive =>
+      hitboxScaleMultiplier != 1.0 ||
+      thermalLiftMultiplier != 1.0 ||
+      trailEffect != SkinTrailEffect.none;
+}
+
 /// Central tuning knobs for all gameplay systems.
 /// Adjust here — never hard-code magic numbers in components.
 abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-skins-3';
+  static const String balanceVersion = '2026.08-skins-4';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -633,6 +662,32 @@ abstract class GameConfig {
   static const double skinWearDistanceForVeteran = 60000.0;
   static const double skinWearMaxDistanceIncrementPerRun = 0.08;
   static const double skinWearCrashImpact = 0.10;
+
+  // ── Plane + Skin Synergies ────────────────────────────────────────────────
+  /// Returns the bonus for an exact plane/paper pairing. Keep this method the
+  /// single source of truth so gameplay, hitboxes, and visual trails cannot
+  /// drift out of balance from one another.
+  static SkinSynergyBonus synergyBonus(PlaneType plane, PaperSkin skin) {
+    if (plane == PlaneType.stealthJet && skin == PaperSkin.carbonFiber) {
+      return const SkinSynergyBonus(
+        label: 'Shadow Weave',
+        hitboxScaleMultiplier: .88,
+      );
+    }
+    if (plane == PlaneType.butterfly && skin == PaperSkin.cherryBlossom) {
+      return const SkinSynergyBonus(
+        label: 'Petal Drift',
+        trailEffect: SkinTrailEffect.petals,
+      );
+    }
+    if (plane == PlaneType.glider && skin == PaperSkin.graphPaper) {
+      return const SkinSynergyBonus(
+        label: 'Drafting Current',
+        thermalLiftMultiplier: 1.10,
+      );
+    }
+    return SkinSynergyBonus.none;
+  }
 
   // ── Challenges ─────────────────────────────────────────────────────────────
   /// Daily: 3 challenges refreshed at midnight.

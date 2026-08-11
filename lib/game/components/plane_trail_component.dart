@@ -20,7 +20,7 @@ import 'plane_component.dart';
 ///   - Per-plane signature trail geometry:
 ///     - Stealth Jet: thin grey dashed supersonic wake (#90A4AE).
 ///     - Glider: double wavy wingtip vapor ribbons from port and starboard wingtips.
-///   - Per-skin customized palettes.
+///   - Per-skin customized palettes plus plane+skin synergy particles (Petal Drift).
 ///   - Exposes [recentPositions] for Ghost after-image rendering.
 class PlaneTrailComponent extends Component
     with HasGameRef<PaperFlightGame> {
@@ -66,6 +66,8 @@ class PlaneTrailComponent extends Component
     final PlaneComponent? pc = plane is PlaneComponent ? (plane as PlaneComponent) : null;
     final PaperSkin skin = pc?.paperSkin ?? PaperSkin.plain;
     final PlaneType pType = pc?.planeType ?? PlaneType.dart;
+    final hasPetalTrail =
+        pc?.skinSynergy.trailEffect == SkinTrailEffect.petals;
 
     final session = gameRef.ref.read(gameSessionProvider);
     final bool isTurboDash = session.activePowerUps.contains(PowerUpType.turboDash);
@@ -165,7 +167,41 @@ class PlaneTrailComponent extends Component
       );
     }
 
+    if (hasPetalTrail) {
+      _drawPetalTrail(canvas, positions);
+    }
+
     canvas.restore();
+  }
+
+  /// Butterfly + Cherry Blossom synergy: a handful of wind-carried petals
+  /// drift through the existing trail history rather than spawning components
+  /// every frame.
+  void _drawPetalTrail(Canvas canvas, List<Vector2> positions) {
+    final count = positions.length;
+    final petalPaint = Paint()..style = PaintingStyle.fill;
+    for (var i = 1; i < count; i += 3) {
+      final fraction = i / (count - 1);
+      final point = positions[i];
+      final wind = gameRef.windSystem.currentForceAt(point.x);
+      final flutter = math.sin(_animTime * 8.0 + i * 1.7);
+      final drift = wind * (1.0 - fraction) * .12;
+      final alpha = (.10 + fraction * .48).clamp(0.0, .58).toDouble();
+      petalPaint.color = Color.fromRGBO(244, 143, 177, alpha);
+
+      canvas.save();
+      canvas.translate(point.x + drift, point.y + flutter * 3.0);
+      canvas.rotate(flutter * .55 + i * .3);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset.zero,
+          width: 3.5 + fraction * 3.2,
+          height: 2.0 + fraction * 1.7,
+        ),
+        petalPaint,
+      );
+      canvas.restore();
+    }
   }
 
   Color _getSegmentColor(PaperSkin skin, double headFraction, int index) {

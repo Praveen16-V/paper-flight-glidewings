@@ -61,6 +61,7 @@ class PlaneComponent extends PositionComponent
     this.skinWearLevel = 0.0,
   })  : paperSkin = paperSkin,
         _skinPainter = ReactivePaperSkinPainter(paperSkin),
+        _skinSynergy = GameConfig.synergyBonus(planeType, paperSkin),
         super(
           size: Vector2(48, 32),
           anchor: Anchor.center,
@@ -70,6 +71,8 @@ class PlaneComponent extends PositionComponent
   PlaneType planeType;
   PaperSkin paperSkin;
   final ReactivePaperSkinPainter _skinPainter;
+  SkinSynergyBonus _skinSynergy;
+  SkinSynergyBonus get skinSynergy => _skinSynergy;
   int planeLevel;
 
   /// Persistent blend from pristine (0) to veteran (1) paper texture.
@@ -205,10 +208,7 @@ class PlaneComponent extends PositionComponent
     _trail = PlaneTrailComponent(plane: this);
     add(_trail);
 
-    final scale = planeType.hitboxScaleForLevel(planeLevel) ??
-        planeType.hitboxScaleOverride ??
-        GameConfig.planeHitboxScale;
-    final hbSize = size * scale;
+    final hbSize = size * _activeHitboxScale;
     _hitbox = RectangleHitbox(
       size: hbSize,
       position: (size - hbSize) / 2,
@@ -221,19 +221,16 @@ class PlaneComponent extends PositionComponent
 
   void syncHitboxForPlaneType(PlaneType newType) {
     planeType = newType;
-    final baseScale = newType.hitboxScaleForLevel(planeLevel) ??
-        newType.hitboxScaleOverride ??
-        GameConfig.planeHitboxScale;
-    final scale = _shrinkActive ? GameConfig.shrinkHitboxScale : baseScale;
-    final hbSize = size * scale;
-    _hitbox.size = hbSize;
-    _hitbox.position = (size - hbSize) / 2;
+    _refreshSkinSynergy();
+    _syncHitboxGeometry();
   }
 
   void syncSkin(PaperSkin newSkin) {
     if (paperSkin == newSkin) return;
     paperSkin = newSkin;
     _skinPainter.setSkin(newSkin);
+    _refreshSkinSynergy();
+    _syncHitboxGeometry();
     _syncAnimatedSkinOverlay();
   }
 
@@ -245,6 +242,32 @@ class PlaneComponent extends PositionComponent
 
   void syncSkinWear(double newWearLevel) {
     skinWearLevel = newWearLevel.clamp(0.0, 1.0).toDouble();
+  }
+
+  void _refreshSkinSynergy() {
+    _skinSynergy = GameConfig.synergyBonus(planeType, paperSkin);
+  }
+
+  double get _effectiveBaseHitboxScale {
+    final base = planeType.hitboxScaleForLevel(planeLevel) ??
+        planeType.hitboxScaleOverride ??
+        GameConfig.planeHitboxScale;
+    // Keep the premium Stealth + Carbon Fiber pairing meaningfully slimmer
+    // without allowing any skin combination to produce a near-zero hitbox.
+    return (base * _skinSynergy.hitboxScaleMultiplier)
+        .clamp(0.32, 1.0)
+        .toDouble();
+  }
+
+  double get _activeHitboxScale => _shrinkActive
+      ? math.min(GameConfig.shrinkHitboxScale, _effectiveBaseHitboxScale)
+          .toDouble()
+      : _effectiveBaseHitboxScale;
+
+  void _syncHitboxGeometry() {
+    final hbSize = size * _activeHitboxScale;
+    _hitbox.size = hbSize;
+    _hitbox.position = (size - hbSize) / 2;
   }
 
   /// Attaches/removes the sprite-sheet overlay only for frame-animated skins.
@@ -1839,14 +1862,8 @@ class PlaneComponent extends PositionComponent
       _crumpleAmount = (_crumpleAmount - dt / 3.5).clamp(0.0, 1.0);
     }
 
-    // Shrink hitbox update
-    final baseScale = planeType.hitboxScaleForLevel(planeLevel) ??
-        planeType.hitboxScaleOverride ??
-        GameConfig.planeHitboxScale;
-    final currentScale = _shrinkActive ? GameConfig.shrinkHitboxScale : baseScale;
-    final hbSize = size * currentScale;
-    _hitbox.size = hbSize;
-    _hitbox.position = (size - hbSize) / 2;
+    // Shrink + skin-synergy hitbox update.
+    _syncHitboxGeometry();
 
     // A spin owns all motion until the pilot releases lift and counter-steers.
     // It intentionally bypasses normal hold/glide and turn-momentum physics.
@@ -1993,6 +2010,7 @@ class PlaneComponent extends PositionComponent
       } else if (planeType == PlaneType.crane && planeLevel >= 3) {
         lift *= 1.15;
       }
+      lift *= _skinSynergy.thermalLiftMultiplier;
       _velocityY -= lift * dt;
     }
 
@@ -2569,11 +2587,7 @@ class PlaneComponent extends PositionComponent
   double get verticalVelocity => _velocityY;
 
   Rect get worldAabbRect {
-    final baseScale = planeType.hitboxScaleForLevel(planeLevel) ??
-        planeType.hitboxScaleOverride ??
-        GameConfig.planeHitboxScale;
-    final scale = _shrinkActive ? GameConfig.shrinkHitboxScale : baseScale;
-    final hbSize = size * scale;
+    final hbSize = size * _activeHitboxScale;
     return Rect.fromCenter(
       center: position.toOffset(),
       width: hbSize.x,
