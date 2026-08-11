@@ -32,7 +32,7 @@ class HangarScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final save = ref.watch(saveDataProvider);
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
@@ -63,6 +63,7 @@ class HangarScreen extends ConsumerWidget {
             tabs: const [
               Tab(text: 'PLANES'),
               Tab(text: 'SKINS'),
+              Tab(text: 'POWER-UPS'),
             ],
           ),
         ),
@@ -70,6 +71,7 @@ class HangarScreen extends ConsumerWidget {
           children: [
             _PlanesTab(),
             _SkinsTab(),
+            _PowerUpsTab(),
           ],
         ),
       ),
@@ -570,6 +572,193 @@ class _PlaneShowcaseStageState extends ConsumerState<_PlaneShowcaseStage>
           ),
         ],
       ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Power-Up Evolution Tab
+// ════════════════════════════════════════════════════════════════════════════
+
+class _PowerUpsTab extends ConsumerWidget {
+  const _PowerUpsTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final save = ref.watch(saveDataProvider);
+    final notifier = ref.read(saveDataProvider.notifier);
+    const evolvable = [PowerUpType.magnet, PowerUpType.shield];
+
+    return Container(
+      color: AppColors.backgroundDeep,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+        children: [
+          Text('POWER-UP EVOLUTION', style: AppTypography.headline),
+          const SizedBox(height: 6),
+          Text(
+            'Invest coins in permanent Hangar research. Timed bursts inherit these upgrades in every run.',
+            style: AppTypography.bodyMedium.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 18),
+          for (final type in evolvable) ...[
+            _PowerUpEvolutionCard(
+              type: type,
+              level: save.getPowerUpLevel(type.index),
+              canAfford: save.coins >= type.evolutionCost(2),
+              onUpgrade: () async {
+                final success = await notifier.upgradePowerUp(type);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(success
+                      ? '${type.displayName} evolved to Lv2!'
+                      : 'Not enough coins or already at max level.'),
+                  backgroundColor:
+                      success ? AppColors.success : AppColors.danger,
+                ));
+              },
+            ),
+            const SizedBox(height: 14),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            'More power-up evolutions are planned for future research pages.',
+            textAlign: TextAlign.center,
+            style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PowerUpEvolutionCard extends StatelessWidget {
+  const _PowerUpEvolutionCard({
+    required this.type,
+    required this.level,
+    required this.canAfford,
+    required this.onUpgrade,
+  });
+
+  final PowerUpType type;
+  final int level;
+  final bool canAfford;
+  final VoidCallback onUpgrade;
+
+  @override
+  Widget build(BuildContext context) {
+    final isMax = level >= GameConfig.powerUpEvolutionMaxLevel;
+    final color = type == PowerUpType.magnet
+        ? const Color(0xFFAB47BC)
+        : const Color(0xFF64B5F6);
+    final icon = type == PowerUpType.magnet
+        ? Icons.my_location_rounded
+        : Icons.shield_rounded;
+    final cost = type.evolutionCost(level + 1);
+
+    return PaperCard(
+      color: AppColors.paper,
+      padding: const EdgeInsets.all(16),
+      borderColor: color.withOpacity(.62),
+      borderWidth: 1.4,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(.16),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(icon, color: color, size: 26),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(type.displayName,
+                        style: AppTypography.bodyLarge.copyWith(
+                            color: AppColors.paperInk, fontSize: 16)),
+                    const SizedBox(height: 3),
+                    Text(
+                      type.evolutionDescription(level),
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.paperInkSoft,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _EvolutionLevelPips(level: level),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.arrow_forward_rounded, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    isMax
+                        ? 'Evolution complete'
+                        : type.evolutionDescription(level + 1),
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.paperInk,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (!isMax) ...[
+            const SizedBox(height: 12),
+            PaperButton(
+              label: 'EVOLVE • $cost ●',
+              compact: true,
+              expand: true,
+              color: canAfford ? color : AppColors.paperInkSoft,
+              textColor: Colors.white,
+              onPressed: canAfford ? onUpgrade : null,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EvolutionLevelPips extends StatelessWidget {
+  const _EvolutionLevelPips({required this.level});
+  final int level;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text('LV $level', style: AppTypography.overline.copyWith(fontSize: 9)),
+        const SizedBox(height: 3),
+        Row(
+          children: List.generate(
+            GameConfig.powerUpEvolutionMaxLevel,
+            (index) => Icon(
+              index < level ? Icons.star_rounded : Icons.star_outline_rounded,
+              size: 14,
+              color: index < level ? AppColors.coinGold : AppColors.paperInkSoft,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

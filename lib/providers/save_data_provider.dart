@@ -254,6 +254,38 @@ class SaveDataNotifier extends Notifier<SaveData> {
     return true;
   }
 
+  // ── Power-Up Evolution ───────────────────────────────────────────────────
+
+  int getPowerUpLevel(PowerUpType type) => state.getPowerUpLevel(type.index);
+
+  Future<bool> upgradePowerUp(PowerUpType type) async {
+    if (!type.hasEvolution) return false;
+    final current = getPowerUpLevel(type);
+    final next = current + 1;
+    if (next > GameConfig.powerUpEvolutionMaxLevel) return false;
+    final cost = type.evolutionCost(next);
+    if (cost <= 0 || state.coins < cost) return false;
+
+    state = await PersistenceService.instance.updateSave((s) {
+      final levels = List<int>.from(s.powerUpUpgradeLevels);
+      while (levels.length <= type.index) {
+        levels.add(1);
+      }
+      levels[type.index] = next;
+      s.powerUpUpgradeLevels = levels;
+      s.coins -= cost;
+      return s;
+    });
+    _logEconomy(
+      currency: 'coin',
+      direction: 'sink',
+      amount: cost,
+      balanceAfter: state.coins,
+      reason: 'powerup_evolution_${type.name}_lv$next',
+    );
+    return true;
+  }
+
   // ── Skin Unlocks ─────────────────────────────────────────────────────────
 
   bool isSkinUnlocked(int skinIndex) =>

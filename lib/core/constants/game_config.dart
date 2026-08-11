@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-powerups-2';
+  static const String balanceVersion = '2026.08-powerups-3';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -521,6 +521,14 @@ abstract class GameConfig {
 
   /// Coin magnet pull speed (px/s) while Magnet is active.
   static const double coinMagnetPullSpeed = 340.0;
+
+  // ── Power-Up Evolution ───────────────────────────────────────────────────
+  static const int powerUpEvolutionMaxLevel = 2;
+  static const int magnetEvolutionLevel2Cost = 1200;
+  static const int shieldEvolutionLevel2Cost = 1500;
+  static const double magnetLevel2Radius = 245.0;
+  static const double magnetLevel2PullSpeed = 430.0;
+  static const double magnetLevel2GemAutoCollectRadius = 210.0;
 
   // ── Monetization / Ad Timing ──────────────────────────────────────────────
   /// Minimum runs before first interstitial is ever shown.

@@ -187,6 +187,10 @@ class PaperFlightGame extends FlameGame
   int _decoyCloneCharges = 0;
   int get decoyCloneCharges => _decoyCloneCharges;
 
+  /// Reads persistent Hangar evolution for live component effects.
+  int powerUpLevel(PowerUpType type) =>
+      ref.read(saveDataProvider).getPowerUpLevel(type.index);
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
@@ -809,6 +813,18 @@ class PaperFlightGame extends FlameGame
 
     // Shield absorbs the hit — handles multi-hit shields (Bomber 2..3 hits).
     if (session.shieldActive || _shieldChargesRemaining > 0) {
+      if (powerUpLevel(PowerUpType.shield) >= 2 &&
+          obstacle != null &&
+          obstacle.type.isReflectableProjectile) {
+        obstacle.deflectByShield();
+        plane.playShieldHitAnimation();
+        gameFeelSystem.onShieldBreak();
+        world.add(ColoredBurst(
+          position: plane.position.clone(),
+          color: const Color(0xFFFFD740),
+        ));
+        return;
+      }
       if (_shieldChargesRemaining > 1) {
         _shieldChargesRemaining--;
         plane.playShieldHitAnimation();

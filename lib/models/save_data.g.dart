@@ -57,13 +57,15 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
           .toList(),
       customSkinPatternBase64: fields[35] as String? ?? '',
       customSkinPatternName: fields[36] as String? ?? '',
+      powerUpUpgradeLevels: (fields[37] as List?)?.cast<int>() ??
+          List.filled(16, 1),
     );
   }
 
   @override
   void write(BinaryWriter writer, SaveData obj) {
     writer
-      ..writeByte(37)
+      ..writeByte(38)
       ..writeByte(0)
       ..write(obj.coins)
       ..writeByte(1)
@@ -137,7 +139,9 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
       ..writeByte(35)
       ..write(obj.customSkinPatternBase64)
       ..writeByte(36)
-      ..write(obj.customSkinPatternName);
+      ..write(obj.customSkinPatternName)
+      ..writeByte(37)
+      ..write(obj.powerUpUpgradeLevels);
   }
 
   @override

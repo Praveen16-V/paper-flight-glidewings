@@ -158,6 +158,10 @@ class SaveData extends HiveObject {
   @HiveField(36)
   String customSkinPatternName;
 
+  /// Evolution level per PowerUpType index (range 1..2).
+  @HiveField(37)
+  List<int> powerUpUpgradeLevels;
+
   SaveData({
     this.coins = 0,
     this.gems = 0,
@@ -196,6 +200,7 @@ class SaveData extends HiveObject {
     List<double>? skinWearLevels,
     this.customSkinPatternBase64 = '',
     this.customSkinPatternName = '',
+    List<int>? powerUpUpgradeLevels,
   })  : unlockedPlaneIndices = unlockedPlaneIndices ?? [0],
         unlockedSkinIndices = unlockedSkinIndices ?? [0],
         dailyChallengeIds = dailyChallengeIds ?? [],
@@ -208,12 +213,21 @@ class SaveData extends HiveObject {
         weeklyChallengeClaimed = weeklyChallengeClaimed ?? [],
         trialStars = trialStars ?? [],
         planeUpgradeLevels = planeUpgradeLevels ?? List.filled(16, 1),
-        skinWearLevels = skinWearLevels ?? [];
+        skinWearLevels = skinWearLevels ?? [],
+        powerUpUpgradeLevels = powerUpUpgradeLevels ?? List.filled(16, 1);
 
   /// Returns the current upgrade level (1..3) for a given plane index.
   int getPlaneLevel(int planeIndex) {
     if (planeIndex < 0 || planeIndex >= planeUpgradeLevels.length) return 1;
     return planeUpgradeLevels[planeIndex].clamp(1, 3);
+  }
+
+  /// Returns the current evolution level (1..2) for a power-up index.
+  int getPowerUpLevel(int powerUpIndex) {
+    if (powerUpIndex < 0 || powerUpIndex >= powerUpUpgradeLevels.length) {
+      return 1;
+    }
+    return powerUpUpgradeLevels[powerUpIndex].clamp(1, 2).toInt();
   }
 
   /// Returns weathering for [skinIndex] (0 = pristine, 1 = veteran).
@@ -265,6 +279,7 @@ class SaveData extends HiveObject {
       skinWearLevels: List<double>.from(skinWearLevels),
       customSkinPatternBase64: customSkinPatternBase64,
       customSkinPatternName: customSkinPatternName,
+      powerUpUpgradeLevels: List<int>.from(powerUpUpgradeLevels),
     );
   }
 }

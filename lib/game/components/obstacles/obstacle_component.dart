@@ -85,6 +85,15 @@ abstract class ObstacleComponent extends PositionComponent
     removeAll(children.whereType<ShapeHitbox>().toList());
   }
 
+  /// Shield Lv2 can reflect projectile-class hazards. Recycling through the
+  /// original callback preserves object-pool ownership and avoids a duplicate
+  /// collision on the next frame.
+  void deflectByShield() {
+    if (!_active) return;
+    _active = false;
+    onRecycle?.call(this);
+  }
+
   void onActivate(double scrollSpeed) {}
 
   void _playThreatCue() {

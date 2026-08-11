@@ -86,13 +86,26 @@ class CoinComponent extends CircleComponent
     if (plane.planeType == PlaneType.interceptor) {
       // Interceptor downside: no coin attraction
     } else if (session.activePowerUps.contains(PowerUpType.magnet)) {
+      final magnetLevel = gameRef.powerUpLevel(PowerUpType.magnet);
+      final radius = magnetLevel >= 2
+          ? GameConfig.magnetLevel2Radius
+          : GameConfig.coinMagnetRadius;
+      final pullSpeed = magnetLevel >= 2
+          ? GameConfig.magnetLevel2PullSpeed
+          : GameConfig.coinMagnetPullSpeed;
       final dist = MathUtils.distance(
         position.x, position.y,
         plane.position.x, plane.position.y,
       );
-      if (dist < GameConfig.coinMagnetRadius) {
+      if (variant == CollectibleVariant.gem3D &&
+          magnetLevel >= 2 &&
+          dist < GameConfig.magnetLevel2GemAutoCollectRadius) {
+        _collect();
+        return;
+      }
+      if (dist < radius) {
         final dir = (plane.position - position).normalized();
-        position += dir * (GameConfig.coinMagnetPullSpeed * dt);
+        position += dir * (pullSpeed * dt);
       }
     } else if (plane.planeType == PlaneType.glider) {
       final rAttract = plane.planeLevel >= 3 ? 160.0 : (plane.planeLevel == 2 ? 125.0 : GameConfig.gliderCoinAttractRadius);

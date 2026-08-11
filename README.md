@@ -197,6 +197,7 @@ Key knobs to adjust during playtesting:
 - `PaperSkin.rarity` — common → mythic Hangar/list treatment
 - `goldVortexCoinValueMultiplier` / `timeDashWorldSpeedMultiplier` — stacked power-up combo strength
 - `chargePowerUpMaxCharges` / `chargePowerUpBurstDuration` — banked timed-power-up bursts
+- `magnetLevel2Radius` / `shieldEvolutionLevel2Cost` — Hangar power-up evolution tuning
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts

@@ -237,6 +237,10 @@ extension ObstacleLabel on ObstacleType {
 
   /// True for building gap obstacles — used for challenge tracking.
   bool get isBuildingGap => this == ObstacleType.building;
+
+  /// Firework rockets are the current projectile-class hazard that Shield Lv2
+  /// can reflect instead of consuming the shield.
+  bool get isReflectableProjectile => this == ObstacleType.fireworks;
 }
 
 // ── Power-ups ─────────────────────────────────────────────────────────────────
@@ -269,6 +273,37 @@ extension PowerUpLabel on PowerUpType {
         PowerUpType.turboDash => true,
         PowerUpType.shield || PowerUpType.decoyClone => false,
       };
+
+  /// Hangar-evolvable effects currently supported by the live game loop.
+  bool get hasEvolution =>
+      this == PowerUpType.magnet || this == PowerUpType.shield;
+
+  int evolutionCost(int toLevel) {
+    if (toLevel != 2) return 0;
+    switch (this) {
+      case PowerUpType.magnet:
+        return GameConfig.magnetEvolutionLevel2Cost;
+      case PowerUpType.shield:
+        return GameConfig.shieldEvolutionLevel2Cost;
+      default:
+        return 0;
+    }
+  }
+
+  String evolutionDescription(int level) {
+    switch (this) {
+      case PowerUpType.magnet:
+        return level >= 2
+            ? 'Lv2 • 245px pull + auto-collect gems'
+            : 'Lv1 • Standard coin pull';
+      case PowerUpType.shield:
+        return level >= 2
+            ? 'Lv2 • Reflects firework projectiles'
+            : 'Lv1 • Absorbs one impact';
+      default:
+        return 'No evolution installed';
+    }
+  }
 
   String get displayName {
     switch (this) {
