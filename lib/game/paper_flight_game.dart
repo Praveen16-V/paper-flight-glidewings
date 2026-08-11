@@ -261,6 +261,10 @@ class PaperFlightGame extends FlameGame
       paperSkin: skin,
       planeLevel: planeLvl,
       skinWearLevel: save.skinWearLevelFor(skinIndex),
+      customSkinPrimaryHex: save.customSkinPrimaryHex,
+      customSkinAccentHex: save.customSkinAccentHex,
+      customSkinStamp: save.customSkinStamp,
+      customSkinPatternBase64: save.customSkinPatternBase64,
     );
     world.add(plane);
 
@@ -462,6 +466,12 @@ class PaperFlightGame extends FlameGame
       if (pType != plane.planeType) plane.syncHitboxForPlaneType(pType);
       if (pSkin != plane.paperSkin) plane.syncSkin(pSkin);
       plane.syncSkinWear(save.skinWearLevelFor(skinIndex));
+      plane.syncCustomSkinCraft(
+        primaryHex: save.customSkinPrimaryHex,
+        accentHex: save.customSkinAccentHex,
+        stamp: save.customSkinStamp,
+        patternBase64: save.customSkinPatternBase64,
+      );
       if (pLvl != plane.planeLevel) plane.syncLevel(pLvl);
     } catch (_) {}
   }
@@ -641,6 +651,12 @@ class PaperFlightGame extends FlameGame
       plane.syncHitboxForPlaneType(pType);
       plane.syncSkin(pSkin);
       plane.syncSkinWear(save.skinWearLevelFor(skinIndex));
+      plane.syncCustomSkinCraft(
+        primaryHex: save.customSkinPrimaryHex,
+        accentHex: save.customSkinAccentHex,
+        stamp: save.customSkinStamp,
+        patternBase64: save.customSkinPatternBase64,
+      );
       plane.syncLevel(pLvl);
 
       // Crane branch brush-off charges (1 at L1/L2, 2 at L3)

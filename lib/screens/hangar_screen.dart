@@ -8,6 +8,7 @@ import '../core/constants/app_typography.dart';
 import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
 import '../core/widgets/currency_chip.dart';
+import '../core/widgets/custom_skin_workshop_dialog.dart';
 import '../core/widgets/paper_button.dart';
 import '../core/widgets/paper_card.dart';
 import '../core/widgets/paper_icons.dart';
@@ -864,7 +865,9 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
                                         width: 136,
                                         height: 86,
                                         decoration: BoxDecoration(
-                                          color: Color(widget.skin.baseColorHex),
+                                          color: widget.skin == PaperSkin.customCraft
+                                              ? Color(save.customSkinPrimaryHex)
+                                              : Color(widget.skin.baseColorHex),
                                           borderRadius:
                                               BorderRadius.circular(14),
                                           border: Border.all(
@@ -1021,7 +1024,9 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
                         Container(
                           height: 64,
                           decoration: BoxDecoration(
-                            color: Color(widget.skin.baseColorHex),
+                            color: widget.skin == PaperSkin.customCraft
+                                ? Color(save.customSkinPrimaryHex)
+                                : Color(widget.skin.baseColorHex),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                                 color: Colors.black.withOpacity(0.08)),
@@ -1065,6 +1070,26 @@ class _SkinShowcaseStageState extends ConsumerState<_SkinShowcaseStage>
                                 ),
                               ),
                             )).toList(),
+                          ),
+                          const SizedBox(height: 8),
+                          if (save.customSkinPatternName.isNotEmpty)
+                            Text(
+                              'IMPORTED: ${save.customSkinPatternName}',
+                              style: AppTypography.caption.copyWith(
+                                color: AppColors.paperInkSoft,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          const SizedBox(height: 8),
+                          PaperButton(
+                            label: 'OPEN WORKSHOP',
+                            compact: true,
+                            color: AppColors.accent,
+                            textColor: Colors.white,
+                            onPressed: () {
+                              showCustomSkinWorkshopDialog(context);
+                            },
                           ),
                           const SizedBox(height: 8),
                         ],

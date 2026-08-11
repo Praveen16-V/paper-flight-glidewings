@@ -86,6 +86,7 @@ lib/
 │
 ├── services/
 │   ├── persistence_service.dart  # Hive read/write wrapper
+│   ├── custom_skin_manager.dart  # Base64 import + pluggable community sync
 │   ├── ad_service.dart           # AdMob rewarded + interstitial
 │   ├── iap_service.dart          # in_app_purchase wrapper
 │   ├── analytics_service.dart    # Firebase Analytics + Crashlytics
@@ -107,6 +108,7 @@ lib/
 │   │   │   └── thermal_column_component.dart # Visible local updrafts + orbit surfing
 │   │   ├── skins/
 │   │   │   ├── animated_paper_skin.dart # 8-frame SpriteAnimation skin overlays
+│   │   │   ├── custom_pattern_skin_overlay.dart # Imported Custom Craft image overlay
 │   │   │   ├── reactive_paper_skin_painter.dart # Event-driven skin reactions
 │   │   │   └── weathered_paper_skin_painter.dart # Pristine → veteran texture blend
 │   │   └── powerups/
@@ -191,6 +193,7 @@ Key knobs to adjust during playtesting:
 - `skinWearDistanceForVeteran` / `skinWearCrashImpact` — cosmetic patina pace and crash marks
 - `GameConfig.synergyBonus(...)` — exact plane + skin combo bonuses and visual trail effects
 - `PaperSkin.seasonalAvailability` — limited-shop rotation windows and countdowns
+- `CustomSkinManager.maxPatternBytes` — workshop image-import size guard
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts

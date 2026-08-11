@@ -17,6 +17,7 @@ import '../paper_flight_game.dart';
 import '../systems/input_manager.dart';
 import 'effects/thermal_column_component.dart';
 import 'skins/animated_paper_skin.dart';
+import 'skins/custom_pattern_skin_overlay.dart';
 import 'skins/reactive_paper_skin_painter.dart';
 import 'skins/weathered_paper_skin_painter.dart';
 import 'plane_trail_component.dart';
@@ -59,6 +60,10 @@ class PlaneComponent extends PositionComponent
     PaperSkin paperSkin = PaperSkin.plain,
     this.planeLevel = 1,
     this.skinWearLevel = 0.0,
+    this.customSkinPrimaryHex = 0xFF4FC3F7,
+    this.customSkinAccentHex = 0xFFFFD54F,
+    this.customSkinStamp = 0,
+    this.customSkinPatternBase64 = '',
   })  : paperSkin = paperSkin,
         _skinPainter = ReactivePaperSkinPainter(paperSkin),
         _skinSynergy = GameConfig.synergyBonus(planeType, paperSkin),
@@ -79,6 +84,12 @@ class PlaneComponent extends PositionComponent
   double skinWearLevel;
   static const WeatheredPaperSkinPainter _weatheredSkinPainter =
       WeatheredPaperSkinPainter();
+
+  /// Player-authored Custom Craft palette and optional imported image pattern.
+  int customSkinPrimaryHex;
+  int customSkinAccentHex;
+  int customSkinStamp;
+  String customSkinPatternBase64;
 
   // ── Physics State ──────────────────────────────────────────────────────────
 
@@ -195,6 +206,7 @@ class PlaneComponent extends PositionComponent
   late final PlaneTrailComponent _trail;
   late final RectangleHitbox _hitbox;
   AnimatedPaperSkin? _animatedSkinOverlay;
+  CustomPatternSkinOverlay? _customPatternOverlay;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -215,6 +227,7 @@ class PlaneComponent extends PositionComponent
     );
     add(_hitbox);
     _syncAnimatedSkinOverlay();
+    _syncCustomPatternOverlay();
 
     await super.onLoad();
   }
@@ -232,6 +245,7 @@ class PlaneComponent extends PositionComponent
     _refreshSkinSynergy();
     _syncHitboxGeometry();
     _syncAnimatedSkinOverlay();
+    _syncCustomPatternOverlay();
   }
 
   /// Receives gameplay signals from coin, near-miss, and shield systems, then
@@ -242,6 +256,20 @@ class PlaneComponent extends PositionComponent
 
   void syncSkinWear(double newWearLevel) {
     skinWearLevel = newWearLevel.clamp(0.0, 1.0).toDouble();
+  }
+
+  void syncCustomSkinCraft({
+    required int primaryHex,
+    required int accentHex,
+    required int stamp,
+    required String patternBase64,
+  }) {
+    final patternChanged = customSkinPatternBase64 != patternBase64;
+    customSkinPrimaryHex = primaryHex;
+    customSkinAccentHex = accentHex;
+    customSkinStamp = stamp;
+    customSkinPatternBase64 = patternBase64;
+    if (patternChanged) _syncCustomPatternOverlay();
   }
 
   void _refreshSkinSynergy() {
@@ -288,6 +316,24 @@ class PlaneComponent extends PositionComponent
     add(overlay);
   }
 
+  void _syncCustomPatternOverlay() {
+    final existing = _customPatternOverlay;
+    if (existing != null) {
+      existing.removeFromParent();
+      _customPatternOverlay = null;
+    }
+    if (paperSkin != PaperSkin.customCraft ||
+        customSkinPatternBase64.isEmpty) {
+      return;
+    }
+    final overlay = CustomPatternSkinOverlay(
+      patternBase64: customSkinPatternBase64,
+      planeSize: size.clone(),
+    );
+    _customPatternOverlay = overlay;
+    add(overlay);
+  }
+
   void syncLevel(int newLevel) {
     planeLevel = newLevel;
     syncHitboxForPlaneType(planeType);
@@ -297,7 +343,9 @@ class PlaneComponent extends PositionComponent
 
   @override
   void render(Canvas canvas) {
-    final baseColor = Color(paperSkin.baseColorHex);
+    final baseColor = paperSkin == PaperSkin.customCraft
+        ? Color(customSkinPrimaryHex)
+        : Color(paperSkin.baseColorHex);
     final Color planeColor = paperSkin == PaperSkin.plain
         ? const Color(0xFFF5A623)
         : baseColor;
@@ -1169,9 +1217,93 @@ class PlaneComponent extends PositionComponent
       case PaperSkin.flipbook:
         break;
       case PaperSkin.customCraft:
-        canvas.drawCircle(Offset(w * 0.4, h * 0.4), 4, Paint()..color = Colors.white.withOpacity(0.35)..style = PaintingStyle.stroke..strokeWidth = 0.9);
-        canvas.drawCircle(Offset(w * 0.6, h * 0.6), 4, Paint()..color = Colors.white.withOpacity(0.35)..style = PaintingStyle.stroke..strokeWidth = 0.9);
+        final accent = Color(customSkinAccentHex);
+        final accentPaint = Paint()
+          ..color = accent.withOpacity(.58)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.15;
+        canvas.drawLine(
+          Offset(w * .18, h * .24),
+          Offset(w * .82, h * .76),
+          accentPaint,
+        );
+        canvas.drawLine(
+          Offset(w * .18, h * .76),
+          Offset(w * .82, h * .24),
+          accentPaint,
+        );
+        _drawCustomCraftStamp(
+          canvas,
+          Offset(w * .62, h * .42),
+          accentPaint,
+        );
         break;
+    }
+  }
+
+  void _drawCustomCraftStamp(Canvas canvas, Offset center, Paint paint) {
+    final stamp = customSkinStamp % 4;
+    switch (stamp) {
+      case 0: // star
+        final star = Path();
+        for (var i = 0; i < 10; i++) {
+          final radius = i.isEven ? 5.0 : 2.3;
+          final angle = -math.pi / 2 + i * math.pi / 5;
+          final point = Offset(
+            center.dx + math.cos(angle) * radius,
+            center.dy + math.sin(angle) * radius,
+          );
+          if (i == 0) {
+            star.moveTo(point.dx, point.dy);
+          } else {
+            star.lineTo(point.dx, point.dy);
+          }
+        }
+        star.close();
+        canvas.drawPath(star, paint);
+        break;
+      case 1: // diamond
+        canvas.drawPath(
+          Path()
+            ..moveTo(center.dx, center.dy - 5)
+            ..lineTo(center.dx + 4, center.dy)
+            ..lineTo(center.dx, center.dy + 5)
+            ..lineTo(center.dx - 4, center.dy)
+            ..close(),
+          paint,
+        );
+        break;
+      case 2: // heart
+        final heart = Path()
+          ..moveTo(center.dx, center.dy + 4)
+          ..cubicTo(
+            center.dx - 10,
+            center.dy - 2,
+            center.dx - 4,
+            center.dy - 8,
+            center.dx,
+            center.dy - 3,
+          )
+          ..cubicTo(
+            center.dx + 4,
+            center.dy - 8,
+            center.dx + 10,
+            center.dy - 2,
+            center.dx,
+            center.dy + 4,
+          );
+        canvas.drawPath(heart, paint);
+        break;
+      default: // lightning
+        final bolt = Path()
+          ..moveTo(center.dx + 1, center.dy - 6)
+          ..lineTo(center.dx - 4, center.dy)
+          ..lineTo(center.dx, center.dy)
+          ..lineTo(center.dx - 1, center.dy + 6)
+          ..lineTo(center.dx + 5, center.dy - 2)
+          ..lineTo(center.dx + 1, center.dy - 2)
+          ..close();
+        canvas.drawPath(bolt, paint);
     }
   }
 

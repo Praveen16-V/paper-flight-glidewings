@@ -55,13 +55,15 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
       skinWearLevels: ((fields[34] as List?) ?? const <dynamic>[])
           .map<double>((value) => (value as num).toDouble())
           .toList(),
+      customSkinPatternBase64: fields[35] as String? ?? '',
+      customSkinPatternName: fields[36] as String? ?? '',
     );
   }
 
   @override
   void write(BinaryWriter writer, SaveData obj) {
     writer
-      ..writeByte(35)
+      ..writeByte(37)
       ..writeByte(0)
       ..write(obj.coins)
       ..writeByte(1)
@@ -131,7 +133,11 @@ class SaveDataAdapter extends TypeAdapter<SaveData> {
       ..writeByte(33)
       ..write(obj.customSkinStamp)
       ..writeByte(34)
-      ..write(obj.skinWearLevels);
+      ..write(obj.skinWearLevels)
+      ..writeByte(35)
+      ..write(obj.customSkinPatternBase64)
+      ..writeByte(36)
+      ..write(obj.customSkinPatternName);
   }
 
   @override

@@ -149,6 +149,15 @@ class SaveData extends HiveObject {
   @HiveField(34)
   List<double> skinWearLevels;
 
+  /// User-imported Custom Craft pattern image, normalized as base64 (no data
+  /// URI prefix). Empty means the procedural stamp pattern is used instead.
+  @HiveField(35)
+  String customSkinPatternBase64;
+
+  /// Player-facing name for the imported Custom Craft pattern.
+  @HiveField(36)
+  String customSkinPatternName;
+
   SaveData({
     this.coins = 0,
     this.gems = 0,
@@ -185,6 +194,8 @@ class SaveData extends HiveObject {
     this.customSkinAccentHex = 0xFFFFD54F,
     this.customSkinStamp = 0,
     List<double>? skinWearLevels,
+    this.customSkinPatternBase64 = '',
+    this.customSkinPatternName = '',
   })  : unlockedPlaneIndices = unlockedPlaneIndices ?? [0],
         unlockedSkinIndices = unlockedSkinIndices ?? [0],
         dailyChallengeIds = dailyChallengeIds ?? [],
@@ -252,6 +263,8 @@ class SaveData extends HiveObject {
       customSkinAccentHex: customSkinAccentHex,
       customSkinStamp: customSkinStamp,
       skinWearLevels: List<double>.from(skinWearLevels),
+      customSkinPatternBase64: customSkinPatternBase64,
+      customSkinPatternName: customSkinPatternName,
     );
   }
 }

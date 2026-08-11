@@ -304,11 +304,15 @@ class SaveDataNotifier extends Notifier<SaveData> {
     int? primaryHex,
     int? accentHex,
     int? stampIndex,
+    String? patternBase64,
+    String? patternName,
   }) async {
     state = await PersistenceService.instance.updateSave((s) {
       if (primaryHex != null) s.customSkinPrimaryHex = primaryHex;
       if (accentHex != null) s.customSkinAccentHex = accentHex;
       if (stampIndex != null) s.customSkinStamp = stampIndex;
+      if (patternBase64 != null) s.customSkinPatternBase64 = patternBase64;
+      if (patternName != null) s.customSkinPatternName = patternName;
       return s;
     });
   }
