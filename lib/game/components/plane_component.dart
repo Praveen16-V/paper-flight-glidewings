@@ -137,6 +137,10 @@ class PlaneComponent extends PositionComponent
   /// Wing-fold amount [0 = fully spread (gliding), 1 = folded up (holding)].
   double _wingFold = 0.0;
 
+  /// Elapsed time since the finger was released; drives the damped paper
+  /// flutter that plays as the wings spring back open. -1 = not fluttering.
+  double _wingFlutterTime = -1.0;
+
   /// Total elapsed time in seconds.
   double _animTime = 0.0;
 
@@ -409,8 +413,11 @@ class PlaneComponent extends PositionComponent
     final butterflyFlap = planeType == PlaneType.butterfly
         ? math.sin(_animTime * 10.0) * 0.35 * (1.0 - _wingFold * 0.5)
         : 0.0;
-    final effectiveFold =
-        (_wingFold + wingFlexWobble + butterflyFlap).clamp(0.0, 1.0);
+    final effectiveFold = (_wingFold +
+            _wingFlutterOffset +
+            wingFlexWobble +
+            butterflyFlap)
+        .clamp(-GameConfig.wingFoldOpenOvershoot, 1.0);
 
     // ── Night Lighting: Forward Projector Headlamp Beam ──────────────────────
     if (game.biomeManager.currentBiome == Biome.night) {
@@ -563,9 +570,10 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawDartSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final spreadY = h * 0.08;
-    final topWingY = (h * 0.14) * (1.0 - wingFold) - spreadY * (1.0 - wingFold);
-    final botWingY = h - (h * 0.14) * (1.0 - wingFold) + spreadY * (1.0 - wingFold);
+    // Wings sweep from fully spread toward the keel as the fold deepens —
+    // like pinching a real dart's wings between finger and thumb.
+    final topWingY = MathUtils.lerp(h * 0.06, h * 0.42, wingFold);
+    final botWingY = h - topWingY;
     const noseX = 2.0;
 
     final upperWing = Path()..moveTo(w + noseX, h / 2)..lineTo(w * 0.32, h / 2)..lineTo(0, topWingY)..close();
@@ -613,8 +621,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawStuntFoldSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topWingY = (h * 0.05) * (1.0 - wingFold);
-    final botWingY = h - (h * 0.05) * (1.0 - wingFold);
+    final topWingY = MathUtils.lerp(h * 0.05, h * 0.40, wingFold);
+    final botWingY = h - topWingY;
     final noseX = w + 3.0;
 
     final upperWing = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.55, h / 2)..lineTo(w * 0.12, topWingY)..lineTo(0, topWingY + 4)..lineTo(w * 0.28, h / 2)..close();
@@ -636,8 +644,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawCraneSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topWingY = (h * 0.02) * (1.0 - wingFold) - 4 * (1.0 - wingFold);
-    final botWingY = h - (h * 0.02) * (1.0 - wingFold) + 4 * (1.0 - wingFold);
+    final topWingY = MathUtils.lerp(h * 0.02 - 4, h * 0.40, wingFold);
+    final botWingY = h - topWingY;
     final headX = w + 14.0;
 
     final neckPath = Path()..moveTo(w * 0.65, h / 2)..lineTo(w * 0.95, h / 2 - 2)..lineTo(headX, h / 2 - 1)..lineTo(w * 0.92, h / 2 + 2)..lineTo(w * 0.65, h / 2)..close();
@@ -661,8 +669,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawStealthJetSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topWingY = (h * 0.10) * (1.0 - wingFold);
-    final botWingY = h - (h * 0.10) * (1.0 - wingFold);
+    final topWingY = MathUtils.lerp(h * 0.10, h * 0.44, wingFold);
+    final botWingY = h - topWingY;
     final noseX = w + 5.0;
 
     final upperWing = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.70, h * 0.32)..lineTo(w * 0.05, topWingY)..lineTo(w * 0.15, h / 2)..close();
@@ -710,8 +718,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawBomberSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topWingY = (h * 0.04) * (1.0 - wingFold);
-    final botWingY = h - (h * 0.04) * (1.0 - wingFold);
+    final topWingY = MathUtils.lerp(h * 0.04, h * 0.36, wingFold);
+    final botWingY = h - topWingY;
 
     final upperWing = Path()..moveTo(w * 0.88, h / 2)..lineTo(w * 0.50, topWingY)..lineTo(w * 0.08, topWingY + 3)..lineTo(w * 0.20, h / 2)..close();
     final lowerWing = Path()..moveTo(w * 0.88, h / 2)..lineTo(w * 0.50, botWingY)..lineTo(w * 0.08, botWingY - 3)..lineTo(w * 0.20, h / 2)..close();
@@ -733,8 +741,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawInterceptorSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topWingY = (h * 0.12) * (1.0 - wingFold);
-    final botWingY = h - (h * 0.12) * (1.0 - wingFold);
+    final topWingY = MathUtils.lerp(h * 0.12, h * 0.42, wingFold);
+    final botWingY = h - topWingY;
     final noseX = w + 7.0;
 
     final upperWing = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.65, h * 0.36)..lineTo(0, topWingY)..lineTo(w * 0.18, h / 2)..close();
@@ -781,8 +789,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawBiplaneSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topWingY = (h * 0.08) * (1.0 - wingFold);
-    final botWingY = h - (h * 0.08) * (1.0 - wingFold);
+    final topWingY = MathUtils.lerp(h * 0.08, h * 0.34, wingFold);
+    final botWingY = h - topWingY;
     final upperWing = Path()..moveTo(w * 0.85, h / 2)..lineTo(w * 0.65, topWingY)..lineTo(w * 0.15, topWingY)..lineTo(w * 0.25, h / 2)..close();
     final lowerWing = Path()..moveTo(w * 0.85, h / 2)..lineTo(w * 0.65, botWingY)..lineTo(w * 0.15, botWingY)..lineTo(w * 0.25, h / 2)..close();
     final cowl = Path()..moveTo(w + 2, h / 2)..lineTo(w * 0.80, h / 2 - 4)..lineTo(0, h / 2 - 2)..lineTo(0, h / 2 + 2)..lineTo(w * 0.80, h / 2 + 4)..close();
@@ -802,7 +810,7 @@ class PlaneComponent extends PositionComponent
   void _drawNinjaStarSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
     final cx = w / 2;
     final cy = h / 2;
-    final r = w * 0.45;
+    final r = w * 0.45 * (1.0 - wingFold.clamp(0.0, 1.0) * 0.12);
     final b1 = Path()..moveTo(cx, cy)..lineTo(cx + r, cy)..lineTo(cx + r * 0.4, cy - r * 0.5)..close();
     final b2 = Path()..moveTo(cx, cy)..lineTo(cx, cy - r)..lineTo(cx - r * 0.5, cy - r * 0.4)..close();
     final b3 = Path()..moveTo(cx, cy)..lineTo(cx - r, cy)..lineTo(cx - r * 0.4, cy + r * 0.5)..close();
@@ -819,8 +827,8 @@ class PlaneComponent extends PositionComponent
   }
 
   void _drawRocketSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
-    final topFinY = (h * 0.08) * (1.0 - wingFold);
-    final botFinY = h - (h * 0.08) * (1.0 - wingFold);
+    final topFinY = MathUtils.lerp(h * 0.08, h * 0.34, wingFold);
+    final botFinY = h - topFinY;
     final noseX = w + 6.0;
 
     final fuselage = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.65, h / 2 - 5)..lineTo(w * 0.12, h / 2 - 5)..lineTo(w * 0.05, h / 2)..lineTo(w * 0.12, h / 2 + 5)..lineTo(w * 0.65, h / 2 + 5)..close();
@@ -2266,8 +2274,48 @@ class PlaneComponent extends PositionComponent
     }
 
     _updateRotation(dt);
-    _wingFold = MathUtils.lerp(_wingFold, isHolding ? 1.0 : 0.0, 0.10);
+    _updateWingFold(dt, isHolding, releaseEdge);
     _wasHolding = isHolding;
+  }
+
+  // ── Paper-Wing Fold (finger tap & release) ────────────────────────────────
+
+  /// Wings pinch in quickly while the pilot's finger is held and spring back
+  /// open on release with a short damped flutter — the squeeze-and-let-go
+  /// feel of a real paper dart.
+  void _updateWingFold(double dt, bool isHolding, bool releaseEdge) {
+    if (releaseEdge) {
+      _wingFlutterTime = 0.0;
+    }
+    final target = isHolding ? 1.0 : 0.0;
+    final rate = isHolding
+        ? GameConfig.wingFoldPressRate
+        : GameConfig.wingFoldReleaseRate;
+    final blend = (rate * dt).clamp(0.0, 1.0).toDouble();
+    _wingFold = MathUtils.lerp(_wingFold, target, blend);
+    _tickWingFlutter(dt);
+  }
+
+  /// Ages the release flutter and expires it when the paper has settled.
+  void _tickWingFlutter(double dt) {
+    if (_wingFlutterTime < 0.0) return;
+    _wingFlutterTime += dt;
+    if (_wingFlutterTime >= GameConfig.wingReleaseFlutterDuration) {
+      _wingFlutterTime = -1.0;
+    }
+  }
+
+  /// Damped sinusoid added to the fold while the released paper settles:
+  /// the wings bow slightly past flat, then beat a couple of times.
+  double get _wingFlutterOffset {
+    if (_wingFlutterTime < 0.0) return 0.0;
+    final t = _wingFlutterTime;
+    final progress =
+        (t / GameConfig.wingReleaseFlutterDuration).clamp(0.0, 1.0);
+    final decay = (1.0 - progress) * (1.0 - progress);
+    return -math.sin(t * GameConfig.wingReleaseFlutterFrequency * 2 * math.pi) *
+        GameConfig.wingReleaseFlutterAmplitude *
+        decay;
   }
 
   // ── Stall / Spin Simulation ───────────────────────────────────────────────
@@ -2413,6 +2461,7 @@ class PlaneComponent extends PositionComponent
       .18,
       (5.0 * dt).clamp(0.0, 1.0).toDouble(),
     );
+    _tickWingFlutter(dt);
 
     if (position.y > GameConfig.designHeight + size.y) {
       game.onPlaneCrash();
@@ -2584,6 +2633,7 @@ class PlaneComponent extends PositionComponent
     _velocityX = 0;
     _velocityY = 0;
     _wingFold = 0;
+    _wingFlutterTime = -1.0;
     _wasHolding = false;
     _glideArcActive = false;
     _oscillationPhase = 0;
@@ -2643,6 +2693,7 @@ class PlaneComponent extends PositionComponent
     _velocityY = 0;
     _velocityX = 0;
     _wingFold = 0;
+    _wingFlutterTime = -1.0;
     _wasHolding = false;
     _glideArcActive = false;
     _oscillationPhase = 0;

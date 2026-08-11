@@ -374,6 +374,23 @@ abstract class GameConfig {
           .clamp(0.0, 1.0)
           .toDouble();
 
+  // ── Paper-Wing Fold on Finger Tap / Hold / Release ───────────────────────
+  /// Fold-in speed while the finger is held (per-second lerp rate). Fast, so
+  /// the wings visibly pinch in the moment the screen is touched.
+  static const double wingFoldPressRate = 16.0;
+
+  /// Spring-back speed when the finger is released (per-second lerp rate).
+  static const double wingFoldReleaseRate = 9.0;
+
+  /// Damped flutter the wings do after springing open on release, so the
+  /// paper settles like a real dart instead of snapping rigid.
+  static const double wingReleaseFlutterDuration = 0.55;
+  static const double wingReleaseFlutterFrequency = 7.0; // Hz
+  static const double wingReleaseFlutterAmplitude = 0.10;
+
+  /// How far past flat the wings may bow during the release flutter.
+  static const double wingFoldOpenOvershoot = 0.12;
+
   // ── Micro-biome Turbulence Pockets ───────────────────────────────────────
   /// Natural pockets persist long enough to be read and corrected for, rather
   /// than behaving like a single-frame random gust.
