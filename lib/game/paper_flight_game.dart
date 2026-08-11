@@ -21,6 +21,7 @@ import '../providers/settings_provider.dart';
 import '../services/analytics_service.dart';
 import '../services/daily_leaderboard_service.dart';
 import '../services/daily_seed_service.dart';
+import 'events/gameplay_event_bus.dart';
 import 'components/background/parallax_background.dart';
 import 'components/effects/coin_feedback.dart';
 import 'components/effects/atmosphere_component.dart';
@@ -64,6 +65,11 @@ class PaperFlightGame extends FlameGame
   /// Riverpod ref — lets game systems push state to providers without
   /// needing a BuildContext.
   final WidgetRef ref;
+
+  /// Typed, per-game coordination channel. It is deliberately owned by the
+  /// game instead of being global so a torn-down GameWidget cannot leave stale
+  /// listeners attached to the next run.
+  final GameplayEventBus gameplayEvents = GameplayEventBus();
 
   // ── Game Mode (Task 8) ────────────────────────────────────────────────────
 
@@ -359,6 +365,7 @@ class PaperFlightGame extends FlameGame
 
     // Deterministically release the resources that hold native handles —
     // the accelerometer stream and the continuous audio players.
+    gameplayEvents.dispose();
     try {
       gameFeelSystem.dispose();
     } catch (_) {}
@@ -869,7 +876,10 @@ class PaperFlightGame extends FlameGame
       plane.playGhostPhaseAnimation();
       gameFeelSystem.onShieldBreak();
       scoringSystem.onObstacleHit();
-      dynamicDifficultySystem.registerSafetyIntervention(severity: .65);
+      gameplayEvents.emit(const DefensiveSaveGameplayEvent(
+        source: DefensiveSaveSource.decoyClone,
+        severity: .65,
+      ));
       if (_decoyCloneCharges <= 0) {
         ref.read(gameSessionProvider.notifier).deactivatePowerUp(PowerUpType.decoyClone);
       }
@@ -889,7 +899,10 @@ class PaperFlightGame extends FlameGame
       // Simplest: let it continue but add brief ghost immunity via shield hit?
       // We give a tiny scale pulse and keep flying.
       scoringSystem.onObstacleHit(); // slight combo penalty but not crash
-      dynamicDifficultySystem.registerSafetyIntervention(severity: .50);
+      gameplayEvents.emit(const DefensiveSaveGameplayEvent(
+        source: DefensiveSaveSource.craneBrushOff,
+        severity: .50,
+      ));
       return;
     }
 
@@ -901,7 +914,10 @@ class PaperFlightGame extends FlameGame
         obstacle.deflectByShield();
         plane.playShieldHitAnimation();
         gameFeelSystem.onShieldBreak();
-        dynamicDifficultySystem.registerSafetyIntervention(severity: .30);
+        gameplayEvents.emit(const DefensiveSaveGameplayEvent(
+          source: DefensiveSaveSource.shieldReflection,
+          severity: .30,
+        ));
         world.add(ColoredBurst(
           position: plane.position.clone(),
           color: const Color(0xFFFFD740),
@@ -913,7 +929,10 @@ class PaperFlightGame extends FlameGame
         plane.playShieldHitAnimation();
         gameFeelSystem.onShieldBreak();
         scoringSystem.onObstacleHit();
-        dynamicDifficultySystem.registerSafetyIntervention(severity: .65);
+        gameplayEvents.emit(const DefensiveSaveGameplayEvent(
+          source: DefensiveSaveSource.shieldCharge,
+          severity: .65,
+        ));
         return;
       } else {
         _shieldChargesRemaining = 0;
@@ -921,7 +940,10 @@ class PaperFlightGame extends FlameGame
         scoringSystem.onObstacleHit();
         plane.playShieldHitAnimation();
         gameFeelSystem.onShieldBreak();
-        dynamicDifficultySystem.registerSafetyIntervention(severity: .85);
+        gameplayEvents.emit(const DefensiveSaveGameplayEvent(
+          source: DefensiveSaveSource.shieldCharge,
+          severity: .85,
+        ));
         return;
       }
     }
@@ -992,7 +1014,10 @@ class PaperFlightGame extends FlameGame
     );
     gameFeelSystem.onShieldBreak(); // soft haptic + chime, no penalty
     scoringSystem.onObstacleHit(); // tiny combo penalty, nothing else
-    dynamicDifficultySystem.registerSafetyIntervention(severity: .45);
+    gameplayEvents.emit(const DefensiveSaveGameplayEvent(
+      source: DefensiveSaveSource.zenBounce,
+      severity: .45,
+    ));
   }
 
   /// Ends a Zen flight from the pause menu: records the personal best

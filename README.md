@@ -95,6 +95,8 @@ lib/
 │
 ├── game/
 │   ├── paper_flight_game.dart    # FlameGame root — scroll engine, crash, revive
+│   ├── events/
+│   │   └── gameplay_event_bus.dart # Per-game typed coordination signals
 │   ├── components/
 │   │   ├── plane_component.dart  # 2-axis physics, stall/spin recovery, hitbox, shield/revive anims
 │   │   ├── wingman_component.dart # Friendly formation follower
@@ -172,6 +174,7 @@ swap it for a Firestore/REST implementation without touching game code.
 | Riverpod outside game loop | Currency/unlocks/settings need to survive screen transitions; Flame's component system is enough inside the loop |
 | Hand-written Hive adapter | Avoids build_runner complexity for CI; safe to replace with generated adapter later |
 | ValueNoise FBM for wind | No external package dependency; deterministic with a seed; cheap enough to sample 4 lanes per frame |
+| Typed gameplay event bus | Decouples confirmed near-miss and defensive-save signals from pacing, feedback, and future telemetry consumers without a global singleton |
 | Test AdMob IDs | Always safe to commit; real IDs belong in a build-flavour env file, not source |
 
 ---

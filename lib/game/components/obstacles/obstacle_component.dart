@@ -11,6 +11,7 @@ import '../../../core/constants/game_config.dart';
 import '../../../core/enums/game_enums.dart';
 import '../../../core/utils/math_utils.dart';
 import '../../../providers/game_session_provider.dart';
+import '../../events/gameplay_event_bus.dart';
 import '../../paper_flight_game.dart';
 import '../effects/coin_feedback.dart';
 import '../plane_component.dart';
@@ -232,6 +233,7 @@ abstract class ObstacleComponent extends PositionComponent
       ),
     );
     game.gameFeelSystem.onCoinCollected(game.scoringSystem.comboCount);
+    game.gameplayEvents.emit(ObstacleDestroyedGameplayEvent(type));
     recycleAfterInteraction();
     return true;
   }

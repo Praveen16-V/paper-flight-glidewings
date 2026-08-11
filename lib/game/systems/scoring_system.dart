@@ -4,6 +4,7 @@ import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../providers/game_session_provider.dart';
 import '../components/effects/coin_feedback.dart';
+import '../events/gameplay_event_bus.dart';
 import '../paper_flight_game.dart';
 
 /// Owns all score calculation and pushes updates to [gameSessionProvider].
@@ -185,7 +186,7 @@ class ScoringSystem extends Component {
   }) {
     _nearMissesThisRun++;
     game.ref.read(gameSessionProvider.notifier).addNearMiss();
-    game.dynamicDifficultySystem.registerNearMiss(tier);
+    game.gameplayEvents.emit(NearMissGameplayEvent(tier));
     var points = tier.points;
     // Stunt Fold: +50%..+100% near-miss score
     try {

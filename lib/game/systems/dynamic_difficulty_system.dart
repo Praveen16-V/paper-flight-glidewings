@@ -3,6 +3,7 @@ import 'package:flame/components.dart';
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../core/utils/math_utils.dart';
+import '../events/gameplay_event_bus.dart';
 import '../paper_flight_game.dart';
 
 /// Adapts obstacle pacing to how confidently the current flight is going.
@@ -13,9 +14,19 @@ import '../paper_flight_game.dart';
 /// saves produce temporary relief, while normal distance progression still
 /// ensures a long successful flight earns a livelier sky.
 class DynamicDifficultySystem extends Component {
-  DynamicDifficultySystem({required this.game});
+  DynamicDifficultySystem({required this.game}) {
+    _nearMissSubscription = game.gameplayEvents.on<NearMissGameplayEvent>(
+      (event) => registerNearMiss(event.tier),
+    );
+    _defensiveSaveSubscription =
+        game.gameplayEvents.on<DefensiveSaveGameplayEvent>(
+      (event) => registerSafetyIntervention(severity: event.severity),
+    );
+  }
 
   final PaperFlightGame game;
+  late final GameplayEventSubscription _nearMissSubscription;
+  late final GameplayEventSubscription _defensiveSaveSubscription;
 
   double _intensity = GameConfig.dynamicDifficultyBaseIntensity;
   double _nearMissMomentum = 0.0;
@@ -92,6 +103,13 @@ class DynamicDifficultySystem extends Component {
     _intensity = GameConfig.dynamicDifficultyBaseIntensity;
     _nearMissMomentum = 0.0;
     _safetyRelief = 0.0;
+  }
+
+  @override
+  void onRemove() {
+    _nearMissSubscription.cancel();
+    _defensiveSaveSubscription.cancel();
+    super.onRemove();
   }
 
   @override
