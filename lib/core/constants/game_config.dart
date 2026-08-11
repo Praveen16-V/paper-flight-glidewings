@@ -375,18 +375,22 @@ abstract class GameConfig {
           .toDouble();
 
   // ── Paper-Wing Fold on Finger Tap / Hold / Release ───────────────────────
-  /// Fold-in speed while the finger is held (per-second lerp rate). Fast, so
-  /// the wings visibly pinch in the moment the screen is touched.
-  static const double wingFoldPressRate = 16.0;
+  /// Spring stiffness while the finger is held (px/s² per unit fold). The
+  /// fold is driven by a critically-damped spring so the wings pinch in
+  /// smoothly the moment the screen is touched, without a hard snap.
+  static const double wingFoldPressStiffness = 700.0;
+  static const double wingFoldPressDamping = 50.0;
 
-  /// Spring-back speed when the finger is released (per-second lerp rate).
-  static const double wingFoldReleaseRate = 9.0;
+  /// Spring stiffness when the finger is released — a touch gentler so the
+  /// wings spring back open with a soft, paper-like settle.
+  static const double wingFoldReleaseStiffness = 260.0;
+  static const double wingFoldReleaseDamping = 20.0;
 
   /// Damped flutter the wings do after springing open on release, so the
   /// paper settles like a real dart instead of snapping rigid.
-  static const double wingReleaseFlutterDuration = 0.55;
-  static const double wingReleaseFlutterFrequency = 7.0; // Hz
-  static const double wingReleaseFlutterAmplitude = 0.10;
+  static const double wingReleaseFlutterDuration = 0.45;
+  static const double wingReleaseFlutterFrequency = 5.0; // Hz
+  static const double wingReleaseFlutterAmplitude = 0.06;
 
   /// How far past flat the wings may bow during the release flutter.
   static const double wingFoldOpenOvershoot = 0.12;

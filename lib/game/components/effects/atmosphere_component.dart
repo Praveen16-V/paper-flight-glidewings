@@ -200,20 +200,49 @@ class AtmosphereComponent extends PositionComponent with HasGameRef<PaperFlightG
     }
   }
 
+  /// Renders the world's background particulates as soft, glowing dust motes.
+  ///
+  /// Instead of hard little dots drifting straight down, each mote is a gentle
+  /// radial-glow "light fleck" that bobs and drifts lazily with the breeze and
+  /// twinkles in and out. It reads as clean atmospheric depth rather than
+  /// clutter, and each biome tints it to match the scene.
   void _drawBiomeMotes(Canvas canvas, Biome biome) {
     if (biome == Biome.storm || biome == Biome.atmosphere) return;
-    final color = biome == Biome.night ? const Color(0xFFB8FF9B) : const Color(0xFFF9F3D0);
-    final paint = Paint()..color = color;
+    final color = biome == Biome.night
+        ? const Color(0xFFB8FF9B)
+        : biome == Biome.mountain
+            ? const Color(0xFFE8F5E9)
+            : biome == Biome.ocean
+                ? const Color(0xFFB3E5FC)
+                : const Color(0xFFFFF8E1);
+
     for (final mote in _motes) {
-      final alpha = biome == Biome.night ? .55 + sin(_time * 4 + mote.phase) * .35 : .24;
-      paint.color = color.withOpacity(alpha.clamp(.08, .9).toDouble());
-      if (biome == Biome.backyard) {
-        // Dandelion seed: a soft seed head and trailing stem.
-        canvas.drawCircle(Offset(mote.x, mote.y), mote.radius, paint);
-        canvas.drawLine(Offset(mote.x, mote.y), Offset(mote.x - mote.direction * 7, mote.y + 5), paint..strokeWidth = .7);
-      } else {
-        canvas.drawCircle(Offset(mote.x, mote.y), mote.radius, paint);
-      }
+      // Gentle horizontal bob so the particles feel airy, not mechanical.
+      final x = mote.x + cos(_time * 0.7 + mote.phase) * 8.0;
+      final y = mote.y + sin(_time * 1.1 + mote.phase * 1.7) * mote.radius * 1.6;
+      // Slow twinkle so the motes breathe rather than sit flat.
+      final twinkle = 0.5 + 0.5 * sin(_time * 2.2 + mote.phase * 2.0);
+      final alpha = (0.10 + 0.16 * twinkle).clamp(0.0, 1.0);
+      final r = mote.radius * (0.85 + 0.3 * twinkle);
+
+      // Soft outer glow (radial falloff) — the body of the mote.
+      final glow = Paint()
+        ..shader = RadialGradient(
+          colors: [
+            color.withOpacity(alpha),
+            color.withOpacity(alpha * 0.30),
+            color.withOpacity(0),
+          ],
+          stops: const [0.0, 0.55, 1.0],
+        ).createShader(
+          Rect.fromCircle(center: Offset(x, y), radius: r * 3.2),
+        );
+      canvas.drawCircle(Offset(x, y), r * 3.2, glow);
+
+      // Bright core adds a crisp little sparkle at the centre.
+      final core = Paint()
+        ..color = color.withOpacity((alpha * 0.85).clamp(0.0, 1.0));
+      canvas.drawCircle(Offset(x, y), r * 0.55, core);
     }
   }
 

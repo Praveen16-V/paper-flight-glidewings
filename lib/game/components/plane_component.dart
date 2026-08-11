@@ -137,6 +137,10 @@ class PlaneComponent extends PositionComponent
   /// Wing-fold amount [0 = fully spread (gliding), 1 = folded up (holding)].
   double _wingFold = 0.0;
 
+  /// Spring velocity of the wing fold, so pinch-in and spring-back both ease
+  /// smoothly instead of snapping between poses.
+  double _wingFoldVelocity = 0.0;
+
   /// Elapsed time since the finger was released; drives the damped paper
   /// flutter that plays as the wings spring back open. -1 = not fluttering.
   double _wingFlutterTime = -1.0;
@@ -464,17 +468,14 @@ class PlaneComponent extends PositionComponent
     // 3. Procedural Paper Grain & Texture Multiply Layer
     _drawPaperGrainTexture(canvas, w, h, planeColor, effectiveFold);
 
-    // 4. Directional Top-Left Highlight & Dual Crease Lines
-    _drawLightingAndCreases(canvas, w, h, planeColor, effectiveFold);
-
-    // 5. Crosswind bends the paper along its wing creases. The overlay follows
+    // 4. Crosswind bends the paper along its wing creases. The overlay follows
     // the same local transform as the silhouette, so it reads as flex rather
     // than a world-space wind effect sliding over the plane.
     if (_wingFlexStrength > 0.01) {
       _drawCrosswindWingFlex(canvas, w, h, effectiveFold);
     }
 
-    // 6. Edge Curl & Crumple Damage Overlay
+    // 5. Edge Curl & Crumple Damage Overlay
     if (_crumpleAmount > 0.01) {
       _drawCrumpleDamage(canvas, w, h, _crumpleAmount);
     }
@@ -494,9 +495,6 @@ class PlaneComponent extends PositionComponent
       height: h,
     );
     _drawSeasonalSkinParticles(canvas, w, h);
-
-    // ── Aviation Wing Navigation Lights ──────────────────────────────────────
-    _drawWingNavLights(canvas, w, h);
 
     // ── Active In-Flight Power-Up Visuals ────────────────────────────────────
     _drawPowerUpOverlays(canvas, w, h);
@@ -863,19 +861,6 @@ class PlaneComponent extends PositionComponent
     }
   }
 
-  // ── Directional Top-Left Lighting & Dual Crease Lines ──────────────────────
-
-  void _drawLightingAndCreases(Canvas canvas, double w, double h, Color baseColor, double wingFold) {
-    final specularPaint = Paint()..color = Colors.white.withOpacity(0.38)..strokeWidth = 1.0..style = PaintingStyle.stroke;
-    canvas.drawLine(Offset(w * 0.95, h / 2), Offset(w * 0.15, h * 0.18), specularPaint);
-
-    final creaseLit = Paint()..color = Colors.white.withOpacity(0.40)..strokeWidth = 0.8..style = PaintingStyle.stroke;
-    canvas.drawLine(Offset(w * 0.25, h / 2 - 0.5), Offset(w, h / 2 - 0.5), creaseLit);
-
-    final creaseShadow = Paint()..color = Colors.black.withOpacity(0.45)..strokeWidth = 0.9..style = PaintingStyle.stroke;
-    canvas.drawLine(Offset(w * 0.25, h / 2 + 0.5), Offset(w, h / 2 + 0.5), creaseShadow);
-  }
-
   /// Draws subtle, asymmetric crease arcs that bow with the live crosswind.
   /// The base silhouette already receives the amplified noise fold; these lines
   /// make the direction and magnitude legible on every paper archetype.
@@ -994,29 +979,6 @@ class PlaneComponent extends PositionComponent
       final mx = w / 2 + math.sin(_animTime * 3.0 + i * 1.5) * 35;
       final my = h / 2 - 40 - (i * 25);
       canvas.drawCircle(Offset(mx, my), 1.2, motePaint);
-    }
-  }
-
-  // ── Aviation Wing Navigation Lights ────────────────────────────────────────
-
-  void _drawWingNavLights(Canvas canvas, double w, double h) {
-    final isNight = game.biomeManager.currentBiome == Biome.night;
-    final baseAlpha = isNight ? 1.0 : 0.45;
-
-    final redPos = Offset(w * 0.15, h / 2);
-    canvas.drawCircle(redPos, 4.5, Paint()..color = Color.fromRGBO(255, 23, 68, 0.40 * baseAlpha)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
-    canvas.drawCircle(redPos, 1.6, Paint()..color = Color.fromRGBO(255, 82, 82, 0.90 * baseAlpha)..style = PaintingStyle.fill);
-
-    final greenPos = Offset(w * 0.85, h / 2);
-    canvas.drawCircle(greenPos, 4.5, Paint()..color = Color.fromRGBO(0, 230, 118, 0.40 * baseAlpha)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
-    canvas.drawCircle(greenPos, 1.6, Paint()..color = Color.fromRGBO(105, 240, 174, 0.90 * baseAlpha)..style = PaintingStyle.fill);
-
-    final strobeCycle = _animTime % 1.2;
-    final isFlashing = strobeCycle < 0.08 || (strobeCycle > 0.16 && strobeCycle < 0.24);
-    if (isFlashing) {
-      final strobePos = Offset(w / 2, h / 2 + 10);
-      canvas.drawCircle(strobePos, 6.0, Paint()..color = Color.fromRGBO(255, 255, 255, 0.85 * baseAlpha)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6));
-      canvas.drawCircle(strobePos, 2.0, Paint()..color = Colors.white..style = PaintingStyle.fill);
     }
   }
 
@@ -2280,19 +2242,43 @@ class PlaneComponent extends PositionComponent
 
   // ── Paper-Wing Fold (finger tap & release) ────────────────────────────────
 
-  /// Wings pinch in quickly while the pilot's finger is held and spring back
-  /// open on release with a short damped flutter — the squeeze-and-let-go
-  /// feel of a real paper dart.
+  /// Wings pinch in smoothly while the pilot's finger is held and spring back
+  /// open on release with a soft damped flutter — the squeeze-and-let-go feel
+  /// of a real paper dart.
+  ///
+  /// The fold is driven by a critically-damped spring rather than a fixed
+  /// per-frame lerp, so both the pinch-in and the spring-back accelerate
+  /// organically and never snap between poses.
   void _updateWingFold(double dt, bool isHolding, bool releaseEdge) {
     if (releaseEdge) {
       _wingFlutterTime = 0.0;
     }
     final target = isHolding ? 1.0 : 0.0;
-    final rate = isHolding
-        ? GameConfig.wingFoldPressRate
-        : GameConfig.wingFoldReleaseRate;
-    final blend = (rate * dt).clamp(0.0, 1.0).toDouble();
-    _wingFold = MathUtils.lerp(_wingFold, target, blend);
+    final stiffness = isHolding
+        ? GameConfig.wingFoldPressStiffness
+        : GameConfig.wingFoldReleaseStiffness;
+    final damping = isHolding
+        ? GameConfig.wingFoldPressDamping
+        : GameConfig.wingFoldReleaseDamping;
+
+    // Semi-implicit Euler integration of a damped spring (mass = 1).
+    final accel =
+        stiffness * (target - _wingFold) - damping * _wingFoldVelocity;
+    _wingFoldVelocity += accel * dt;
+    _wingFold += _wingFoldVelocity * dt;
+
+    // Let the release spring bow slightly past flat (the paper bounce handled
+    // by the fold + flutter), but stop any fold that would creep past a state
+    // the pose can't represent. Hard clamps would snap the wing, so these only
+    // fire when the spring would carry it beyond the fully-folded extremes.
+    if (!isHolding && _wingFold < 0.0 && _wingFoldVelocity < 0.0) {
+      _wingFold = 0.0;
+      _wingFoldVelocity = 0.0;
+    } else if (isHolding && _wingFold > 1.0) {
+      _wingFold = 1.0;
+      _wingFoldVelocity = 0.0;
+    }
+
     _tickWingFlutter(dt);
   }
 
@@ -2633,6 +2619,7 @@ class PlaneComponent extends PositionComponent
     _velocityX = 0;
     _velocityY = 0;
     _wingFold = 0;
+    _wingFoldVelocity = 0;
     _wingFlutterTime = -1.0;
     _wasHolding = false;
     _glideArcActive = false;
@@ -2693,6 +2680,7 @@ class PlaneComponent extends PositionComponent
     _velocityY = 0;
     _velocityX = 0;
     _wingFold = 0;
+    _wingFoldVelocity = 0;
     _wingFlutterTime = -1.0;
     _wasHolding = false;
     _glideArcActive = false;
