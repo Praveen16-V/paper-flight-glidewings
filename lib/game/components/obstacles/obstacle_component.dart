@@ -32,6 +32,12 @@ abstract class ObstacleComponent extends PositionComponent
 
   double? safeCorridorX;
   ObstacleScript? script;
+
+  /// Non-null while this obstacle belongs to a curated two-part encounter.
+  /// The spawner uses it to reserve the screen until the full pattern clears.
+  String? combinationId;
+  bool get isCombinationMember => combinationId != null;
+
   late math.Random _rng;
 
   double rngRange(double min, double max) =>
@@ -65,6 +71,7 @@ abstract class ObstacleComponent extends PositionComponent
     double? safeCorridorX,
     void Function(ObstacleComponent)? recycleCallback,
     ObstacleScript? script,
+    String? combinationId,
     math.Random? rng,
   }) {
     final earlyWarning = type == ObstacleType.drone ||
@@ -90,6 +97,7 @@ abstract class ObstacleComponent extends PositionComponent
     onRecycle = recycleCallback;
     this.safeCorridorX = safeCorridorX;
     this.script = script;
+    this.combinationId = combinationId;
     _rng = rng ?? math.Random();
     onActivate(scrollSpeed);
     _playThreatCue();
@@ -100,6 +108,7 @@ abstract class ObstacleComponent extends PositionComponent
     onRecycle = null;
     safeCorridorX = null;
     script = null;
+    combinationId = null;
     _nearMissAwarded = false;
     _minNearMissClearance = double.infinity;
     if (!retainsHitboxesWhenInactive) {
@@ -323,6 +332,22 @@ abstract class ObstacleComponent extends PositionComponent
     canvas.translate(localX, localY);
 
     canvas.drawCircle(Offset.zero, 14, glowPaint);
+
+    // Linked beacons distinguish a planned pair from a lone hazard while it
+    // is still off-screen. The actual corridor remains intentionally clean.
+    if (isCombinationMember) {
+      final linkPaint = Paint()
+        ..color = const Color(0xFFB2EBF2).withOpacity(alpha)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4;
+      canvas.drawCircle(const Offset(-4.2, -16.5), 3.4, linkPaint);
+      canvas.drawCircle(const Offset(4.2, -16.5), 3.4, linkPaint);
+      canvas.drawLine(
+        const Offset(-0.8, -16.5),
+        const Offset(0.8, -16.5),
+        linkPaint,
+      );
+    }
 
     final badgePath = Path()
       ..moveTo(0, -12)

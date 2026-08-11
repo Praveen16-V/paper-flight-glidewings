@@ -293,6 +293,45 @@ extension ObstacleLabel on ObstacleType {
       this == ObstacleType.hotAirBalloon;
 }
 
+/// A hand-authored, readable two-obstacle encounter. These are not random
+/// overlap: the spawner reserves a planned safe corridor and staggers the
+/// pair so pilots can learn the pattern before it reaches the plane row.
+enum ObstacleCombination {
+  cityTrafficStack,
+  stormCrossfire,
+  rotorRun,
+  kiteRelay,
+}
+
+extension ObstacleCombinationLabel on ObstacleCombination {
+  String get displayName {
+    switch (this) {
+      case ObstacleCombination.cityTrafficStack:
+        return 'City Traffic Stack';
+      case ObstacleCombination.stormCrossfire:
+        return 'Storm Crossfire';
+      case ObstacleCombination.rotorRun:
+        return 'Rotor Run';
+      case ObstacleCombination.kiteRelay:
+        return 'Kite Relay';
+    }
+  }
+
+  /// The lead and trailing members, in their authored encounter order.
+  List<ObstacleType> get members {
+    switch (this) {
+      case ObstacleCombination.cityTrafficStack:
+        return const [ObstacleType.drone, ObstacleType.trafficPlane];
+      case ObstacleCombination.stormCrossfire:
+        return const [ObstacleType.stormCloud, ObstacleType.lightningStrike];
+      case ObstacleCombination.rotorRun:
+        return const [ObstacleType.windTurbine, ObstacleType.bird];
+      case ObstacleCombination.kiteRelay:
+        return const [ObstacleType.windsock, ObstacleType.kite];
+    }
+  }
+}
+
 // ── Power-ups ─────────────────────────────────────────────────────────────────
 
 enum PowerUpType {

@@ -49,6 +49,7 @@ class ObstacleSpawner extends Component {
   double _safeCorridorX = GameConfig.designWidth * 0.5;
 
   ObstacleType? _pendingChosen;
+  double _combinationCooldown = 0.0;
 
   static const double _reactionWindowSeconds = 1.15;
   static const double _corridorHalfWidth = 54.0;
@@ -83,6 +84,12 @@ class ObstacleSpawner extends Component {
   @override
   void update(double dt) {
     if (game.phase != GamePhase.playing) return;
+
+    if (_combinationCooldown > 0) {
+      _combinationCooldown = (_combinationCooldown - dt)
+          .clamp(0.0, GameConfig.obstacleCombinationCooldown)
+          .toDouble();
+    }
     if (!spawnEnabled) return;
 
     _spawnTimer += dt;
@@ -98,6 +105,7 @@ class ObstacleSpawner extends Component {
     _lastSpawnX = GameConfig.designWidth * 0.5;
     _safeCorridorX = GameConfig.designWidth * 0.5;
     _pendingChosen = null;
+    _combinationCooldown = 0.0;
     for (final obs in List.of(_active)) {
       _recycleObstacle(obs);
     }
@@ -149,12 +157,19 @@ class ObstacleSpawner extends Component {
   }
 
   bool _spawnObstacle() {
+    // Curated pairs only begin on a naturally clear sky. They never pre-empt a
+    // deferred normal hazard or turn a busy run into an artificial spawn pause.
+    if (_pendingChosen == null && _canStartCombination()) {
+      final combination = _pickObstacleCombination();
+      if (combination != null) return _spawnCombination(combination);
+    }
+
     final types = ObstacleType.values;
     final weights = types
-        .map((t) => game.biomeManager.obstacleWeight(t))
+        .map((type) => game.biomeManager.obstacleWeight(type))
         .toList();
 
-    final totalWeight = weights.fold<double>(0, (sum, w) => sum + w);
+    final totalWeight = weights.fold<double>(0, (sum, weight) => sum + weight);
     final ObstacleType chosen;
     final pending = _pendingChosen;
     if (pending != null) {
@@ -174,17 +189,11 @@ class ObstacleSpawner extends Component {
     final spawnX = _pickSpawnX(chosen);
     _lastSpawnX = spawnX;
 
-    final obs = _acquireObstacle(chosen);
-    obs.activate(
+    _activateObstacle(
+      chosen,
       spawnX: spawnX,
-      scrollSpeed: game.scrollSpeed,
       safeCorridorX: _safeCorridorX,
-      recycleCallback: _recycleObstacle,
-      rng: random,
     );
-
-    game.world.add(obs);
-    _active.add(obs);
 
     // Local weather is seeded by a real obstacle event rather than a detached
     // global timer. Gate obstacles use their planned corridor as the anchor so
@@ -204,23 +213,113 @@ class ObstacleSpawner extends Component {
     return true;
   }
 
+  ObstacleCombination? _pickObstacleCombination() {
+    if (game.mode == GameMode.trial || game.mode == GameMode.zen) return null;
+    if (game.distanceMeters < GameConfig.obstacleCombinationStartMeters ||
+        _combinationCooldown > 0) {
+      return null;
+    }
+    if (random.nextDouble() > GameConfig.obstacleCombinationSpawnChance) {
+      return null;
+    }
+
+    final combinations = ObstacleCombination.values;
+    final weights = combinations
+        .map(game.biomeManager.obstacleCombinationWeight)
+        .toList();
+    final totalWeight = weights.fold<double>(0, (sum, weight) => sum + weight);
+    return totalWeight > 0
+        ? _weightedPick(combinations, weights)
+        : null;
+  }
+
+  bool _canStartCombination() => _active.isEmpty;
+
+  bool _spawnCombination(ObstacleCombination combination) {
+    if (!_canStartCombination()) return false;
+
+    _planSafeCorridor();
+    final members = combination.members;
+    final side = _combinationSide();
+    final leadX = _combinationLaneX(
+      _safeCorridorX + side * GameConfig.obstacleCombinationLeadLaneOffset,
+    );
+    final followX = _combinationLaneX(
+      _safeCorridorX + side * GameConfig.obstacleCombinationFollowLaneOffset,
+    );
+    final combinationId = combination.name;
+
+    _activateObstacle(
+      members.first,
+      spawnX: leadX,
+      safeCorridorX: _safeCorridorX,
+      combinationId: combinationId,
+    );
+    _activateObstacle(
+      members.last,
+      spawnX: followX,
+      safeCorridorX: _safeCorridorX,
+      combinationId: combinationId,
+      spawnYOffset: GameConfig.obstacleCombinationFollowSpawnYOffset,
+    );
+
+    _lastSpawnX = followX;
+    _combinationCooldown = GameConfig.obstacleCombinationCooldown;
+    return true;
+  }
+
+  double _combinationSide() {
+    final leftRoom = _safeCorridorX - GameConfig.horizontalEdgeMargin;
+    final rightRoom =
+        GameConfig.designWidth - GameConfig.horizontalEdgeMargin - _safeCorridorX;
+    if ((leftRoom - rightRoom).abs() < 24) {
+      return random.nextBool() ? 1.0 : -1.0;
+    }
+    return rightRoom > leftRoom ? 1.0 : -1.0;
+  }
+
+  double _combinationLaneX(double desiredX) => desiredX
+      .clamp(
+        GameConfig.obstacleCombinationLaneEdgeMargin,
+        GameConfig.designWidth - GameConfig.obstacleCombinationLaneEdgeMargin,
+      )
+      .toDouble();
+
+  ObstacleComponent _activateObstacle(
+    ObstacleType type, {
+    required double spawnX,
+    double? safeCorridorX,
+    ObstacleScript? script,
+    String? combinationId,
+    double spawnYOffset = 0.0,
+  }) {
+    final obstacle = _acquireObstacle(type);
+    obstacle.activate(
+      spawnX: spawnX,
+      scrollSpeed: game.scrollSpeed,
+      safeCorridorX: safeCorridorX,
+      script: script,
+      combinationId: combinationId,
+      recycleCallback: _recycleObstacle,
+      rng: random,
+    );
+    if (spawnYOffset != 0.0) {
+      obstacle.position.y += spawnYOffset;
+    }
+    game.world.add(obstacle);
+    _active.add(obstacle);
+    return obstacle;
+  }
+
   ObstacleComponent spawnScripted(
     ObstacleType type, {
     required double x,
     ObstacleScript? script,
-  }) {
-    final obs = _acquireObstacle(type);
-    obs.activate(
-      spawnX: x,
-      scrollSpeed: game.scrollSpeed,
-      script: script,
-      recycleCallback: _recycleObstacle,
-      rng: random,
-    );
-    game.world.add(obs);
-    _active.add(obs);
-    return obs;
-  }
+  }) => _activateObstacle(
+        type,
+        spawnX: x,
+        script: script,
+      );
 
   T _weightedPick<T>(List<T> items, List<double> weights) {
     final total = weights.fold(0.0, (a, b) => a + b);
@@ -237,6 +336,7 @@ class ObstacleSpawner extends Component {
     // obstacle into its S-curve, and only start the encounter after the sky is
     // clear so the long warning remains a fair decision point.
     if (_active.any((obstacle) => obstacle.type.isBoss)) return false;
+    if (_active.any((obstacle) => obstacle.isCombinationMember)) return false;
     if (proposed.isBoss) return _active.isEmpty;
 
     final isGate = proposed == ObstacleType.powerLine ||

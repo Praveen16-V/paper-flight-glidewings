@@ -208,4 +208,39 @@ class BiomeManager extends Component {
         }[type] ?? 0.0;
     }
   }
+
+  /// Returns the authored-combination weight for this biome. Normal obstacle
+  /// weights still drive all other spawns; a nonzero result only authorizes a
+  /// curated pair once the spawner's cadence and safety gates approve it.
+  double obstacleCombinationWeight(ObstacleCombination combination) {
+    switch (_currentBiome) {
+      case Biome.backyard:
+        return 0.0;
+      case Biome.city:
+        return combination == ObstacleCombination.cityTrafficStack ? .72 : 0.0;
+      case Biome.storm:
+        return combination == ObstacleCombination.stormCrossfire ? .90 : 0.0;
+      case Biome.mountain:
+        return switch (combination) {
+          ObstacleCombination.rotorRun => .88,
+          ObstacleCombination.kiteRelay => .34,
+          _ => 0.0,
+        };
+      case Biome.night:
+        return switch (combination) {
+          ObstacleCombination.cityTrafficStack => .44,
+          ObstacleCombination.stormCrossfire => .30,
+          _ => 0.0,
+        };
+      case Biome.ocean:
+        return combination == ObstacleCombination.kiteRelay ? .56 : 0.0;
+      case Biome.atmosphere:
+        return switch (combination) {
+          ObstacleCombination.stormCrossfire => .62,
+          ObstacleCombination.cityTrafficStack => .32,
+          ObstacleCombination.rotorRun => .24,
+          _ => 0.0,
+        };
+    }
+  }
 }

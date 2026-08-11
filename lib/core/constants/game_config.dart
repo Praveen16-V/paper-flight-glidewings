@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-obstacles-5';
+  static const String balanceVersion = '2026.08-obstacles-6';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -406,6 +406,21 @@ abstract class GameConfig {
 
   /// Minimum spawn interval floor.
   static const double obstacleMinSpawnInterval = 0.55;
+
+  // ── Curated Obstacle Combinations ─────────────────────────────────────────
+  /// Linked pairs begin after the opening lesson and always reserve the sky
+  /// until both members have cleared. This keeps a combination a readable
+  /// pattern rather than an accidental pile-up from independent timers.
+  static const double obstacleCombinationStartMeters = 450.0;
+  static const double obstacleCombinationSpawnChance = 0.24;
+  static const double obstacleCombinationCooldown = 6.5;
+
+  /// Both members sit on the spacious side of the planned corridor. The lead
+  /// is farther out; its partner trails from a slightly nearer, delayed lane.
+  static const double obstacleCombinationLeadLaneOffset = 118.0;
+  static const double obstacleCombinationFollowLaneOffset = 82.0;
+  static const double obstacleCombinationLaneEdgeMargin = 92.0;
+  static const double obstacleCombinationFollowSpawnYOffset = -132.0;
 
   // ── Paper Dragon Boss ────────────────────────────────────────────────────
   /// The dragon is a single, deliberately readable boss pass instead of a
