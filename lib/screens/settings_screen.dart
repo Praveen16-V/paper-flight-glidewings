@@ -316,8 +316,15 @@ class _ControlPreviewState extends State<_ControlPreview> with SingleTickerProvi
                   decoration: BoxDecoration(color: AppColors.accent.withOpacity(0.16), borderRadius: BorderRadius.circular(6)),
                   child: Text('PREVIEW', style: AppTypography.overline.copyWith(color: AppColors.accentDeep, fontSize: 8, letterSpacing: 1.0))),
               const SizedBox(width: 8),
-              Text(_labelFor(widget.scheme), style: AppTypography.caption.copyWith(color: AppColors.paperInkSoft, fontSize: 11, fontWeight: FontWeight.w700)),
-              const Spacer(),
+              Expanded(
+                child: Text(
+                  _labelFor(widget.scheme),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.caption.copyWith(color: AppColors.paperInkSoft, fontSize: 11, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 8),
               Icon(_iconFor(widget.scheme), size: 14, color: AppColors.paperInkSoft.withOpacity(0.55)),
             ],
           ),
@@ -341,7 +348,7 @@ class _ControlPreviewState extends State<_ControlPreview> with SingleTickerProvi
                     const SizedBox(width: 12),
                     // legend / arrow
                     SizedBox(
-                      width: 86,
+                      width: 96,
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -420,11 +427,24 @@ class _PreviewLegendDot extends StatelessWidget {
   final String label;
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
-      Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-      const SizedBox(width: 6),
-      Text(label, style: AppTypography.caption.copyWith(color: AppColors.paperInkSoft, fontSize: 10)),
-    ]);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 3),
+          child: Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        ),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            label,
+            style: AppTypography.caption.copyWith(color: AppColors.paperInkSoft, fontSize: 10, height: 1.3),
+            softWrap: true,
+          ),
+        ),
+      ],
+    );
   }
 }
 
