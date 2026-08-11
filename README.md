@@ -206,6 +206,7 @@ Key knobs to adjust during playtesting:
 - `AudioSynth.shieldHum` / `ghostWhisper` / `turboSpool` — synthesized power-up audio cues
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - Environmental hazards: Lightning Strike, Meteor Shower, and Tornado are biome-weighted in Storm/Atmosphere
+- Flock Migration adds 10–20 dynamically hitboxed birds in a cross-screen V formation
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts
 - `comboDrainDuration` / `comboHitRetentionFraction` — combo decay gauge pace & shield-hit penalty

@@ -94,6 +94,7 @@ class BiomeManager extends Component {
           ObstacleType.stormCloud: 0.0,
           ObstacleType.fireworks: 0.0,
           ObstacleType.weatherBalloon: 0.0,
+          ObstacleType.flockMigration: 0.32,
         }[type] ?? 0.0;
       case Biome.city:
         return const {
@@ -111,6 +112,7 @@ class BiomeManager extends Component {
           ObstacleType.stormCloud: 0.0,
           ObstacleType.fireworks: 0.0,
           ObstacleType.weatherBalloon: 0.0,
+          ObstacleType.flockMigration: 0.18,
         }[type] ?? 0.0;
       case Biome.storm:
         return const {
@@ -148,6 +150,7 @@ class BiomeManager extends Component {
           ObstacleType.drone: 0.1,
           ObstacleType.clothesline: 0.0,
           ObstacleType.fireworks: 0.0,
+          ObstacleType.flockMigration: 0.78,
         }[type] ?? 0.0;
       case Biome.night:
         return const {

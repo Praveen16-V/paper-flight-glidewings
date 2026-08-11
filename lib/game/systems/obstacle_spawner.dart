@@ -37,6 +37,7 @@ class ObstacleSpawner extends Component {
   late final ObjectPool<LightningStrikeObstacle> _lightningPool;
   late final ObjectPool<MeteorShowerObstacle> _meteorShowerPool;
   late final ObjectPool<TornadoObstacle> _tornadoPool;
+  late final ObjectPool<FlockMigrationObstacle> _flockMigrationPool;
 
   final List<ObstacleComponent> _active = [];
   List<ObstacleComponent> get activeObstacles => _active;
@@ -69,6 +70,8 @@ class ObstacleSpawner extends Component {
     _lightningPool = ObjectPool(create: LightningStrikeObstacle.new, initialSize: 2);
     _meteorShowerPool = ObjectPool(create: MeteorShowerObstacle.new, initialSize: 2);
     _tornadoPool = ObjectPool(create: TornadoObstacle.new, initialSize: 2);
+    _flockMigrationPool =
+        ObjectPool(create: FlockMigrationObstacle.new, initialSize: 2);
 
     await super.onLoad();
   }
@@ -288,6 +291,8 @@ class ObstacleSpawner extends Component {
         return _meteorShowerPool.acquire();
       case ObstacleType.tornado:
         return _tornadoPool.acquire();
+      case ObstacleType.flockMigration:
+        return _flockMigrationPool.acquire();
     }
   }
 
@@ -331,6 +336,8 @@ class ObstacleSpawner extends Component {
         _meteorShowerPool.release(obs as MeteorShowerObstacle);
       case ObstacleType.tornado:
         _tornadoPool.release(obs as TornadoObstacle);
+      case ObstacleType.flockMigration:
+        _flockMigrationPool.release(obs as FlockMigrationObstacle);
     }
   }
 }

@@ -63,7 +63,8 @@ abstract class ObstacleComponent extends PositionComponent
         type == ObstacleType.fireworks ||
         type == ObstacleType.lightningStrike ||
         type == ObstacleType.meteorShower ||
-        type == ObstacleType.tornado;
+        type == ObstacleType.tornado ||
+        type == ObstacleType.flockMigration;
     position = Vector2(spawnX, earlyWarning ? -260 : GameConfig.obstacleSpawnY);
     _active = true;
     _nearMissAwarded = false;
@@ -102,7 +103,7 @@ abstract class ObstacleComponent extends PositionComponent
   void _playThreatCue() {
     final cue = switch (type) {
       ObstacleType.drone => 'drone_warning.wav',
-      ObstacleType.bird => 'bird_warning.wav',
+      ObstacleType.bird || ObstacleType.flockMigration => 'bird_warning.wav',
       ObstacleType.stormCloud || ObstacleType.lightningStrike =>
         'thunder_warning.wav',
       ObstacleType.tornado => 'wind_loop.wav',
@@ -1961,4 +1962,111 @@ class TornadoObstacle extends ObstacleComponent {
     canvas.drawOval(Rect.fromCenter(center: Offset(centerX, 104), width: 58, height: 142), core);
     renderTelegraph(canvas);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 18. FlockMigrationObstacle — Large V Formation Crossing the Sky
+// ─────────────────────────────────────────────────────────────────────────────
+
+class FlockMigrationObstacle extends ObstacleComponent {
+  FlockMigrationObstacle() : super(type: ObstacleType.flockMigration);
+
+  final List<_FlockBird> _birds = [];
+  final List<CircleHitbox> _hitboxes = [];
+  double _leaderX = 0;
+  double _direction = 1;
+
+  @override
+  Color get telegraphColor => const Color(0xFFFFF9C4);
+
+  @override
+  void onActivate(double scrollSpeed) {
+    size = Vector2(GameConfig.designWidth, 190);
+    position.x = GameConfig.designWidth * .5;
+    _direction = rngBool() ? 1.0 : -1.0;
+    _leaderX = _direction > 0 ? -42.0 : GameConfig.designWidth + 42.0;
+    _birds.clear();
+    _hitboxes.clear();
+    removeAll(children.whereType<ShapeHitbox>().toList());
+
+    final count = rngInt(10, 20);
+    for (var i = 0; i < count; i++) {
+      final rank = (i + 1) ~/ 2;
+      final side = i.isEven ? -1.0 : 1.0;
+      final bird = _FlockBird(
+        behind: rank * 20.0,
+        side: side,
+        rise: rank * 11.0 + rngRange(-3, 3),
+        size: rngRange(5.5, 8.5),
+        phase: rngRange(0, math.pi * 2),
+      );
+      _birds.add(bird);
+      final hitbox = CircleHitbox(radius: bird.size * .72);
+      _hitboxes.add(hitbox);
+      add(hitbox);
+    }
+    _syncBirdHitboxes();
+  }
+
+  @override
+  void updateObstacle(double dt) {
+    _leaderX += _direction * (130 + game.scrollSpeed * .22) * dt;
+    _syncBirdHitboxes();
+    if ((_direction > 0 && _leaderX > GameConfig.designWidth + 180) ||
+        (_direction < 0 && _leaderX < -180)) {
+      _active = false;
+      onRecycle?.call(this);
+    }
+  }
+
+  void _syncBirdHitboxes() {
+    for (var i = 0; i < _birds.length; i++) {
+      final bird = _birds[i];
+      final pos = _birdPosition(bird);
+      final hitbox = _hitboxes[i];
+      hitbox.position = pos - Vector2.all(bird.size * .72);
+    }
+  }
+
+  Vector2 _birdPosition(_FlockBird bird) {
+    // The V opens behind the leader, opposite the direction of travel.
+    final x = _leaderX - _direction * bird.behind + bird.side * bird.behind * .35;
+    final y = 58 + bird.rise;
+    return Vector2(x, y);
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final birdPaint = Paint()..style = PaintingStyle.fill;
+    for (final bird in _birds) {
+      final pos = _birdPosition(bird);
+      final flap = math.sin(animTime * 12 + bird.phase) * bird.size * .55;
+      birdPaint.color = const Color(0xFF37474F);
+      final shape = Path()
+        ..moveTo(pos.x, pos.y)
+        ..quadraticBezierTo(pos.x - bird.size, pos.y - flap, pos.x - bird.size * 1.8, pos.y)
+        ..quadraticBezierTo(pos.x - bird.size, pos.y + flap * .4, pos.x, pos.y)
+        ..quadraticBezierTo(pos.x + bird.size, pos.y - flap, pos.x + bird.size * 1.8, pos.y)
+        ..quadraticBezierTo(pos.x + bird.size, pos.y + flap * .4, pos.x, pos.y)
+        ..close();
+      canvas.drawPath(shape, birdPaint);
+    }
+    renderTelegraph(canvas);
+  }
+}
+
+class _FlockBird {
+  const _FlockBird({
+    required this.behind,
+    required this.side,
+    required this.rise,
+    required this.size,
+    required this.phase,
+  });
+
+  final double behind;
+  final double side;
+  final double rise;
+  final double size;
+  final double phase;
 }

@@ -166,6 +166,7 @@ enum ObstacleType {
   lightningStrike,// telegraphed vertical lightning bolt
   meteorShower,   // atmosphere cluster with warning shadows
   tornado,        // rotating wind column that pulls the plane
+  flockMigration, // 10–20 birds crossing in a V formation
 }
 
 extension ObstacleLabel on ObstacleType {
@@ -205,6 +206,8 @@ extension ObstacleLabel on ObstacleType {
         return 'Meteor Shower';
       case ObstacleType.tornado:
         return 'Tornado';
+      case ObstacleType.flockMigration:
+        return 'Flock Migration';
     }
   }
 
@@ -244,6 +247,8 @@ extension ObstacleLabel on ObstacleType {
         return 'meteor_shower';
       case ObstacleType.tornado:
         return 'tornado';
+      case ObstacleType.flockMigration:
+        return 'flock_migration';
     }
   }
 
