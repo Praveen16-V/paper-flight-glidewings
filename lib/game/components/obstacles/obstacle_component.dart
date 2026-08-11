@@ -3227,7 +3227,7 @@ class WindSockObstacle extends ObstacleComponent {
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
           colors: [Color(0xFFB0BEC5), Color(0xFF607D8B), Color(0xFF37474F)],
-        ).createShader(const Rect.fromLTWH(cx - 1.2, 0, 2.4, 54)));
+        ).createShader(Rect.fromLTWH(cx - 1.2, 0, 2.4, 54)));
     canvas.drawRect(Rect.fromLTWH(cx - 1, 0, 1, 54),
         Paint()..color = const Color(0x55FFFFFF));
 
