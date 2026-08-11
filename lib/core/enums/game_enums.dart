@@ -447,6 +447,26 @@ extension ObstacleTelegraphProfile on ObstacleType {
   }
 }
 
+/// Behaviour and reward profile for an origami tunnel ring gate.
+enum TunnelRingVariant {
+  standard,
+  precision,
+  drifting,
+}
+
+extension TunnelRingVariantLabel on TunnelRingVariant {
+  String get displayName {
+    switch (this) {
+      case TunnelRingVariant.standard:
+        return 'Ring Gate';
+      case TunnelRingVariant.precision:
+        return 'Precision Ring';
+      case TunnelRingVariant.drifting:
+        return 'Drift Ring';
+    }
+  }
+}
+
 // ── Power-ups ─────────────────────────────────────────────────────────────────
 
 enum PowerUpType {

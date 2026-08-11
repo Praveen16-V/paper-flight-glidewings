@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-obstacles-10';
+  static const String balanceVersion = '2026.08-obstacles-11';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -406,6 +406,30 @@ abstract class GameConfig {
 
   /// Minimum spawn interval floor.
   static const double obstacleMinSpawnInterval = 0.55;
+
+  // ── Tunnel Ring Runs ────────────────────────────────────────────────────
+  /// Tunnel rings arrive as occasional single gates or short linked runs. A
+  /// full perfect run is a precision reward, not a random coin shower.
+  static const double tunnelRingSpawnInterval = 9.5;
+  static const double tunnelRingChainSpawnChance = 0.42;
+  static const int tunnelRingChainMinLength = 2;
+  static const int tunnelRingChainMaxLength = 3;
+  static const double tunnelRingChainVerticalSpacing = 118.0;
+  static const double tunnelRingChainHorizontalStep = 42.0;
+  static const double tunnelRingApertureWidthFraction = 0.55;
+  static const double tunnelRingApertureHeightFraction = 0.72;
+  static const double tunnelRingStandardPerfectHalfWidth = 26.0;
+  static const double tunnelRingPrecisionPerfectHalfWidth = 16.0;
+  static const double tunnelRingPrecisionScale = 0.80;
+  static const double tunnelRingDriftingScale = 0.92;
+  static const double tunnelRingDriftAmplitude = 42.0;
+  static const double tunnelRingDriftAngularSpeed = 1.8;
+  static const double tunnelRingClearComboNotches = 2.0;
+  static const double tunnelRingPerfectComboNotches = 5.0;
+  static const double tunnelRingPrecisionComboNotches = 7.0;
+  static const double tunnelRingChainCompletionComboNotches = 6.0;
+  static const int tunnelRingChainCompletionSnapRefund = 1;
+  static const int tunnelRingChainCompletionCoinCount = 5;
 
   // ── Obstacle Synergies ──────────────────────────────────────────────────
   /// Complementary hazards can enter a linked state when their planned routes
