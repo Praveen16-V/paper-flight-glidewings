@@ -124,6 +124,7 @@ enum Biome {
   storm,       // rain, lightning, strong gusts
   mountain,    // thermals, birds of prey, canyon
   night,       // drones, spotlights, firefly coins
+  ocean,       // moonlit open water, whale breaches and sea spray
   atmosphere,  // endgame — meteors, thin air
 }
 
@@ -140,6 +141,8 @@ extension BiomeLabel on Biome {
         return 'Mountain Pass';
       case Biome.night:
         return 'Night Sky';
+      case Biome.ocean:
+        return 'Moonlit Ocean';
       case Biome.atmosphere:
         return 'Edge of Atmosphere';
     }
@@ -167,6 +170,7 @@ enum ObstacleType {
   meteorShower,   // atmosphere cluster with warning shadows
   tornado,        // rotating wind column that pulls the plane
   flockMigration, // 10–20 birds crossing in a V formation
+  whaleBreach,    // massive slow ocean hazard with splash particles
 }
 
 extension ObstacleLabel on ObstacleType {
@@ -208,6 +212,8 @@ extension ObstacleLabel on ObstacleType {
         return 'Tornado';
       case ObstacleType.flockMigration:
         return 'Flock Migration';
+      case ObstacleType.whaleBreach:
+        return 'Whale Breach';
     }
   }
 
@@ -249,6 +255,8 @@ extension ObstacleLabel on ObstacleType {
         return 'tornado';
       case ObstacleType.flockMigration:
         return 'flock_migration';
+      case ObstacleType.whaleBreach:
+        return 'whale_breach';
     }
   }
 

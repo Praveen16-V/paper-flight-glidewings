@@ -459,6 +459,8 @@ class WindSystem extends Component with HasGameRef<PaperFlightGame> {
         return const AirProfile(wind: 1.15, thermal: 1.7, gravity: .94, control: .9);
       case Biome.night:
         return const AirProfile(wind: .78, thermal: .85, gravity: 1, control: 1);
+      case Biome.ocean:
+        return const AirProfile(wind: 1.05, thermal: .72, gravity: .96, control: .92);
       case Biome.atmosphere:
         return const AirProfile(wind: .72, thermal: .5, gravity: .58, control: 1.04);
     }

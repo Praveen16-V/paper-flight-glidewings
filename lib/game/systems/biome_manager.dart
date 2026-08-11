@@ -64,6 +64,7 @@ class BiomeManager extends Component {
     if (meters < GameConfig.biomeStormEnd) return Biome.storm;
     if (meters < GameConfig.biomeMountainEnd) return Biome.mountain;
     if (meters < GameConfig.biomeNightEnd) return Biome.night;
+    if (meters < GameConfig.biomeOceanEnd) return Biome.ocean;
     return Biome.atmosphere;
   }
 
@@ -171,6 +172,16 @@ class BiomeManager extends Component {
           ObstacleType.lightningStrike: 0.25,
           ObstacleType.meteorShower: 0.0,
           ObstacleType.tornado: 0.15,
+        }[type] ?? 0.0;
+      case Biome.ocean:
+        return const {
+          ObstacleType.whaleBreach: 1.45,
+          ObstacleType.weatherBalloon: 0.35,
+          ObstacleType.kite: 0.30,
+          ObstacleType.bird: 0.28,
+          ObstacleType.trafficPlane: 0.18,
+          ObstacleType.tornado: 0.10,
+          ObstacleType.flockMigration: 0.08,
         }[type] ?? 0.0;
       case Biome.atmosphere:
         return const {

@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-obstacles-2';
+  static const String balanceVersion = '2026.08-obstacles-3';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -568,7 +568,8 @@ abstract class GameConfig {
   static const double biomeStormEnd = 1500.0;
   static const double biomeMountainEnd = 2500.0;
   static const double biomeNightEnd = 4000.0;
-  // Edge of Atmosphere = beyond 4000 m, endgame loop
+  static const double biomeOceanEnd = 5200.0;
+  // Edge of Atmosphere = beyond 5200 m, endgame loop
 
   // ── Virtual Joystick Steering ────────────────────────────────────────────
   /// Radius (px) of the floating joystick base. The knob travels within this

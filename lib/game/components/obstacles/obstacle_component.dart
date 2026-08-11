@@ -64,7 +64,8 @@ abstract class ObstacleComponent extends PositionComponent
         type == ObstacleType.lightningStrike ||
         type == ObstacleType.meteorShower ||
         type == ObstacleType.tornado ||
-        type == ObstacleType.flockMigration;
+        type == ObstacleType.flockMigration ||
+        type == ObstacleType.whaleBreach;
     position = Vector2(spawnX, earlyWarning ? -260 : GameConfig.obstacleSpawnY);
     _active = true;
     _nearMissAwarded = false;
@@ -2069,4 +2070,79 @@ class _FlockBird {
   final double rise;
   final double size;
   final double phase;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 19. WhaleBreachObstacle — Massive Slow Ocean Breach with Splash
+// ─────────────────────────────────────────────────────────────────────────────
+
+class WhaleBreachObstacle extends ObstacleComponent {
+  WhaleBreachObstacle() : super(type: ObstacleType.whaleBreach);
+
+  @override
+  Color get telegraphColor => const Color(0xFF80D8FF);
+
+  @override
+  void onActivate(double scrollSpeed) {
+    size = Vector2(270, 190);
+    position.x = GameConfig.designWidth * .5;
+    removeAll(children.whereType<ShapeHitbox>().toList());
+    add(RectangleHitbox(size: Vector2(206, 88), position: Vector2(30, 54)));
+    add(CircleHitbox(radius: 36, position: Vector2(194, 38)));
+  }
+
+  @override
+  void updateObstacle(double dt) {
+    // Base update scrolls with the world. Subtracting here gives the enormous
+    // animal a slower, dramatic breach across the player row.
+    position.y -= game.scrollSpeed * dt * .55;
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final body = Path()
+      ..moveTo(20, 120)
+      ..quadraticBezierTo(72, 42, 194, 60)
+      ..quadraticBezierTo(246, 70, 250, 106)
+      ..quadraticBezierTo(222, 150, 120, 150)
+      ..quadraticBezierTo(48, 150, 20, 120)
+      ..close();
+    final belly = Path()
+      ..moveTo(54, 124)
+      ..quadraticBezierTo(130, 112, 230, 108)
+      ..quadraticBezierTo(208, 142, 118, 144)
+      ..quadraticBezierTo(72, 141, 54, 124)
+      ..close();
+    canvas.drawPath(body, Paint()..color = const Color(0xFF1565C0));
+    canvas.drawPath(belly, Paint()..color = const Color(0xFFB3E5FC));
+
+    // Dorsal fin and tail read clearly as a giant living silhouette.
+    final fin = Path()
+      ..moveTo(104, 72)
+      ..lineTo(124, 24)
+      ..lineTo(144, 78)
+      ..close();
+    canvas.drawPath(fin, Paint()..color = const Color(0xFF0D47A1));
+    final tail = Path()
+      ..moveTo(28, 112)
+      ..quadraticBezierTo(2, 85, 0, 112)
+      ..quadraticBezierTo(10, 137, 30, 122)
+      ..quadraticBezierTo(6, 151, 2, 170)
+      ..quadraticBezierTo(34, 154, 42, 125)
+      ..close();
+    canvas.drawPath(tail, Paint()..color = const Color(0xFF0D47A1));
+
+    canvas.drawCircle(const Offset(220, 78), 3.2, Paint()..color = Colors.white);
+    canvas.drawCircle(const Offset(221, 78), 1.3, Paint()..color = const Color(0xFF102027));
+
+    final spray = Paint()..color = const Color(0x99E1F5FE);
+    for (var i = 0; i < 14; i++) {
+      final a = i * math.pi / 13 + animTime * .8;
+      final radius = 50 + (i % 4) * 10 + math.sin(animTime * 4 + i) * 5;
+      final x = 92 + math.cos(a) * radius;
+      final y = 142 + math.sin(a) * radius * .55;
+      canvas.drawCircle(Offset(x, y), 1.5 + (i % 3) * .45, spray);
+    }
+    renderTelegraph(canvas);
+  }
 }

@@ -63,6 +63,7 @@ class AtmosphereComponent extends PositionComponent with HasGameRef<PaperFlightG
     _drawTurbulence(canvas);
     _drawBiomeMotes(canvas, biome);
     if (biome == Biome.storm) _drawStorm(canvas);
+    if (biome == Biome.ocean) _drawOceanSpray(canvas);
     if (biome == Biome.night) _drawNightVignette(canvas);
     if (biome == Biome.atmosphere) _drawMeteors(canvas);
   }
@@ -213,6 +214,27 @@ class AtmosphereComponent extends PositionComponent with HasGameRef<PaperFlightG
       } else {
         canvas.drawCircle(Offset(mote.x, mote.y), mote.radius, paint);
       }
+    }
+  }
+
+  void _drawOceanSpray(Canvas canvas) {
+    final wave = Paint()
+      ..color = const Color(0x66B3E5FC)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    for (var i = 0; i < 7; i++) {
+      final y = (i * 126.0 + _time * 34.0) % size.y;
+      final path = Path()
+        ..moveTo(0, y)
+        ..quadraticBezierTo(size.x * .25, y - 7, size.x * .5, y)
+        ..quadraticBezierTo(size.x * .75, y + 7, size.x, y);
+      canvas.drawPath(path, wave);
+    }
+    final foam = Paint()..color = const Color(0x99E1F5FE);
+    for (var i = 0; i < 14; i++) {
+      final x = (i * 53.0 + _time * 28.0) % size.x;
+      final y = (i * 89.0 + _time * 46.0) % size.y;
+      canvas.drawCircle(Offset(x, y), 1.2 + (i % 3) * .35, foam);
     }
   }
 

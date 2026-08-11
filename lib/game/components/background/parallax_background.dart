@@ -61,6 +61,9 @@ class ParallaxBackground extends Component with HasGameRef {
       case Biome.night:
         _skyTop = const Color(0xFF0D0D1A);
         _skyBottom = const Color(0xFF1A1F3A);
+      case Biome.ocean:
+        _skyTop = const Color(0xFF0B3954);
+        _skyBottom = const Color(0xFF126782);
       case Biome.atmosphere:
         _skyTop = const Color(0xFF1A0033);
         _skyBottom = const Color(0xFF0D001A);
