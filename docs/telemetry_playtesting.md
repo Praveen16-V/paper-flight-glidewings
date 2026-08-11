@@ -15,6 +15,7 @@ changed.
 | Where do runs end? | `run_completed.crash_cause`, `run_abandoned.reason`, grouped by `mode` |
 | Is difficulty fair? | `distance_meters`, `duration_seconds`, `final_biome`, `max_combo`, `near_misses` |
 | Are trials readable? | `trial_selected` → `trial_completed`, including `completed`, `failure_reason`, `stars`, and course coins |
+| Can a seeded layout be reconstructed? | `run_started.run_seed` plus `rng_algorithm_version` and `balance_version` |
 | Are rewards paced well? | `economy_transaction`, grouped by `currency`, `direction`, and `reason` |
 | Are ads healthy? | `ad_requested` → `ad_impression` → `ad_outcome` / `ad_reward_earned` |
 | Do low-end devices hold frame budget? | `game_frame_performance`: average/p95 build, raster and total frame time, slow/frozen frames |

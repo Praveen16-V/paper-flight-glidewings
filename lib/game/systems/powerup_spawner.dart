@@ -97,6 +97,7 @@ class PowerUpSpawner extends Component {
     pu.activate(
       spawnPosition: spawnPos,
       corruptedType: corrupted,
+      animationSeed: game.runRandom.nextEntitySeed('powerup.${type.name}'),
       recycleCallback: _recycle,
     );
     game.world.add(pu);

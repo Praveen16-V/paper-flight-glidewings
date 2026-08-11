@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/game_config.dart';
 import '../../../core/enums/game_enums.dart';
-import '../../../core/utils/math_utils.dart';
 import '../../paper_flight_game.dart';
 import '../effects/coin_feedback.dart';
 import '../plane_component.dart';
@@ -68,6 +67,7 @@ class TunnelRingComponent extends PositionComponent
     int chainIndex = 0,
     int chainLength = 1,
     TunnelRingResolutionCallback? resolutionCallback,
+    int? randomSeed,
   }) {
     this.variant = variant;
     this.chainId = chainId;
@@ -83,8 +83,9 @@ class TunnelRingComponent extends PositionComponent
     size = Vector2(120 * scaleFactor, 36 * scaleFactor);
     position = spawnPosition;
     _spawnX = spawnPosition.x;
-    _animTime = MathUtils.randomRange(0, math.pi * 2);
-    _driftPhase = MathUtils.randomRange(0, math.pi * 2);
+    final random = randomSeed == null ? math.Random() : math.Random(randomSeed);
+    _animTime = random.nextDouble() * math.pi * 2;
+    _driftPhase = random.nextDouble() * math.pi * 2;
     _ringPulse = 0.0;
     _active = true;
     _collected = false;

@@ -170,6 +170,7 @@ class CollectibleSpawner extends Component {
       chainId: chainId,
       chainIndex: chainIndex,
       chainLength: chainLength,
+      randomSeed: game.runRandom.nextEntitySeed('tunnel_ring.${variant.name}'),
       resolutionCallback: chainId == null ? null : _onTunnelRingResolved,
       recycleCallback: _recycleRing,
     );
@@ -295,6 +296,7 @@ class CollectibleSpawner extends Component {
       spawnPosition: pos,
       variant: variant,
       letter: letter,
+      animationSeed: game.runRandom.nextEntitySeed('coin.${variant.name}'),
       recycleCallback: _recycleCoin,
     );
     game.world.add(coin);

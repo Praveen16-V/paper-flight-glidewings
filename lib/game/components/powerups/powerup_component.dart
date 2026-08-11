@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/game_config.dart';
 import '../../../core/enums/game_enums.dart';
-import '../../../core/utils/math_utils.dart';
 import '../../paper_flight_game.dart';
 import '../effects/coin_feedback.dart';
 import '../plane_component.dart';
@@ -40,12 +39,14 @@ class PowerUpComponent extends PositionComponent
     required Vector2 spawnPosition,
     CorruptedPowerUpType? corruptedType,
     void Function(PowerUpComponent)? recycleCallback,
+    int? animationSeed,
   }) {
     position = spawnPosition;
     this.corruptedType = corruptedType;
-    _bobPhase = MathUtils.randomRange(0, math.pi * 2);
+    final random = animationSeed == null ? math.Random() : math.Random(animationSeed);
+    _bobPhase = random.nextDouble() * math.pi * 2;
     _glowPulse = 0;
-    _rotationAngle = MathUtils.randomRange(0, math.pi * 2);
+    _rotationAngle = random.nextDouble() * math.pi * 2;
     _pickupAnimationElapsed = 0;
     _active = true;
     _collected = false;

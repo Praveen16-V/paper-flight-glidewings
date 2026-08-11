@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
+import '../core/utils/run_random.dart';
 import '../models/run_result.dart';
 import '../models/settings_model.dart';
 import '../models/trial_definition.dart';
@@ -89,8 +90,15 @@ class PaperFlightGame extends FlameGame
   /// Seed-aware RNG shared by the spawners. The Daily Seeded Flight derives
   /// per-system generators from [dailySeed] so every player gets the exact
   /// same obstacle, coin and power-up layout regardless of frame timing.
-  late math.Random _spawnRng;
-  math.Random get spawnRng => _spawnRng;
+  late RunRandomStream _spawnRng;
+  RunRandomStream get spawnRng => _spawnRng;
+
+  late RunRandom _runRandom;
+  RunRandom get runRandom => _runRandom;
+  late RunReplayDescriptor _replayDescriptor;
+  RunReplayDescriptor get replayDescriptor => _replayDescriptor;
+  int _runSeed = 0;
+  int get runSeed => _runSeed;
 
   /// Trial director — active only in [GameMode.trial].
   TrialDirector? trialDirector;
@@ -692,11 +700,22 @@ class PaperFlightGame extends FlameGame
     // Seed-aware RNG per system (daily → deterministic identical run; each
     // system gets its own derived generator so frame timing can't reorder
     // the shared draw sequence across devices).
-    final seed = mode == GameMode.daily ? dailySeed : DateTime.now().millisecondsSinceEpoch;
-    _spawnRng = math.Random(seed);
-    obstacleSpawner.random = math.Random(seed + 101);
-    collectibleSpawner.random = math.Random(seed + 202);
-    powerUpSpawner.random = math.Random(seed + 303);
+    final seed = mode == GameMode.daily
+        ? dailySeed
+        : DateTime.now().millisecondsSinceEpoch;
+    _runSeed = seed;
+    _runRandom = RunRandom(seed);
+    _replayDescriptor = RunReplayDescriptor(
+      seed: seed,
+      algorithmVersion: GameConfig.runRandomAlgorithmVersion,
+    );
+    _spawnRng = _runRandom.stream('root');
+    obstacleSpawner.random =
+        math.Random(_runRandom.nextEntitySeed('spawner.obstacles'));
+    collectibleSpawner.random =
+        math.Random(_runRandom.nextEntitySeed('spawner.collectibles'));
+    powerUpSpawner.random =
+        math.Random(_runRandom.nextEntitySeed('spawner.powerups'));
 
     // Spawner activity per mode: trials are fully scripted; zen keeps
     // obstacles + coins but no power-ups; classic/daily run everything.
@@ -797,6 +816,8 @@ class PaperFlightGame extends FlameGame
         mode: mode,
         controlScheme: inputManager.currentScheme,
         lifetimeRunNumber: saveAtStart.totalRuns + 1,
+        runSeed: replayDescriptor.seed,
+        rngAlgorithmVersion: replayDescriptor.algorithmVersion,
         trialId: trialId,
       ),
     );

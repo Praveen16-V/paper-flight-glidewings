@@ -830,15 +830,14 @@ class PowerLineObstacle extends ObstacleComponent {
   void updateObstacle(double dt) {
     _sparkTimer -= dt;
     if (_sparkTimer <= 0) {
-      _sparkTimer = MathUtils.randomRange(1.8, 3.5);
+      _sparkTimer = rngRange(1.8, 3.5);
       _sparkAlpha = 1.0;
-      _sparkOnLeft = math.Random().nextBool();
+      _sparkOnLeft = rngBool();
       if (_sparkOnLeft) {
-        _sparkX = MathUtils.randomRange(25, math.max(30, _gapX - 15));
+        _sparkX = rngRange(25, math.max(30, _gapX - 15));
       } else {
         final rightStart = _gapX + _gapWidth;
-        _sparkX = MathUtils.randomRange(
-            rightStart + 15, GameConfig.designWidth - 25);
+        _sparkX = rngRange(rightStart + 15, GameConfig.designWidth - 25);
       }
     }
     if (_sparkAlpha > 0) {
@@ -1349,17 +1348,17 @@ class TreeBranchObstacle extends ObstacleComponent {
   void updateObstacle(double dt) {
     _swayPhase += dt * 3.0;
 
-    if (math.Random().nextDouble() < dt * 1.8) {
+    if (rngRange(0, 1) < dt * 1.8) {
       final startX = _fromLeft
-          ? MathUtils.randomRange(size.x * 0.4, size.x)
-          : MathUtils.randomRange(0, size.x * 0.6);
+          ? rngRange(size.x * 0.4, size.x)
+          : rngRange(0, size.x * 0.6);
       _fallingLeaves.add(_LeafParticle(
         x: startX,
         y: size.y * 0.5,
-        vx: MathUtils.randomRange(-15, 15),
-        vy: MathUtils.randomRange(30, 60),
+        vx: rngRange(-15, 15),
+        vy: rngRange(30, 60),
         color: const Color(0xFF81C784),
-        angle: MathUtils.randomRange(0, math.pi * 2),
+        angle: rngRange(0, math.pi * 2),
       ));
     }
 
@@ -1976,7 +1975,7 @@ class StormCloudObstacle extends ObstacleComponent {
   void updateObstacle(double dt) {
     _chargeTimer -= dt;
     if (_chargeTimer <= 0) {
-      _chargeTimer = MathUtils.randomRange(2.0, 3.8);
+      _chargeTimer = rngRange(2.0, 3.8);
       _lightningAlpha = 1.0;
     }
     if (_lightningAlpha > 0) _lightningAlpha = (_lightningAlpha - dt * 4.0).clamp(0.0, 1.0);

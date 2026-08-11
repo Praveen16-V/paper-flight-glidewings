@@ -70,6 +70,7 @@ lib/
 │   └── utils/
 │       ├── math_utils.dart     # lerp, remap, weighted pick, low-pass filter
 │       ├── noise.dart          # ValueNoise + FBM (wind system)
+│       ├── run_random.dart     # Versioned named streams for replay-safe runs
 │       └── object_pool.dart    # Generic pool for obstacle/coin components
 │
 ├── models/
@@ -175,6 +176,7 @@ swap it for a Firestore/REST implementation without touching game code.
 | Hand-written Hive adapter | Avoids build_runner complexity for CI; safe to replace with generated adapter later |
 | ValueNoise FBM for wind | No external package dependency; deterministic with a seed; cheap enough to sample 4 lanes per frame |
 | Typed gameplay event bus | Decouples confirmed near-miss and defensive-save signals from pacing, feedback, and future telemetry consumers without a global singleton |
+| Versioned named run RNG | Isolates layout, entity-animation, and cosmetic draws so Daily/replay seeds remain stable as systems evolve |
 | Test AdMob IDs | Always safe to commit; real IDs belong in a build-flavour env file, not source |
 
 ---

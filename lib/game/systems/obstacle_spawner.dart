@@ -311,7 +311,9 @@ class ObstacleSpawner extends Component {
       script: script,
       combinationId: combinationId,
       recycleCallback: _recycleObstacle,
-      rng: random,
+      rng: math.Random(
+        game.runRandom.nextEntitySeed('obstacle.${type.name}'),
+      ),
     );
     if (spawnYOffset != 0.0) {
       obstacle.position.y += spawnYOffset;

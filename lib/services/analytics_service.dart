@@ -106,12 +106,16 @@ class AnalyticsService {
     required GameMode mode,
     required ControlScheme controlScheme,
     required int lifetimeRunNumber,
+    required int runSeed,
+    required int rngAlgorithmVersion,
     int? trialId,
   }) {
     return _safeEvent('run_started', {
       'mode': mode.name,
       'control_scheme': controlScheme.name,
       'lifetime_run_number': lifetimeRunNumber,
+      'run_seed': runSeed,
+      'rng_algorithm_version': rngAlgorithmVersion,
       if (trialId != null) 'trial_id': trialId,
       // Balance exposure values make dashboards useful even if a build label
       // is accidentally reused.

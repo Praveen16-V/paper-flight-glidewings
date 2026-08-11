@@ -46,12 +46,14 @@ class CoinComponent extends CircleComponent
     CollectibleVariant variant = CollectibleVariant.standardCoin,
     String letter = 'P',
     void Function(CoinComponent)? recycleCallback,
+    int? animationSeed,
   }) {
     position = spawnPosition;
     this.variant = variant;
     this.letter = letter;
-    _bobPhase = MathUtils.randomRange(0, math.pi * 2);
-    _rotationAngle = MathUtils.randomRange(0, math.pi * 2);
+    final random = animationSeed == null ? math.Random() : math.Random(animationSeed);
+    _bobPhase = random.nextDouble() * math.pi * 2;
+    _rotationAngle = random.nextDouble() * math.pi * 2;
     _active = true;
     _collected = false;
     onRecycle = recycleCallback;
