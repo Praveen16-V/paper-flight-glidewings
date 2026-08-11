@@ -2262,20 +2262,65 @@ class WindTurbineObstacle extends ObstacleComponent {
     final cx = size.x * 0.5;
     final cy = _bladeRadius;
 
+    final mastRect = Rect.fromLTWH(cx - 12, cy, 24, size.y - cy);
     final mast = Path()..moveTo(cx - 7, cy)..lineTo(cx - 12, size.y)..lineTo(cx + 12, size.y)..lineTo(cx + 7, cy)..close();
-    canvas.drawPath(mast, Paint()..color = const Color(0xFFECEFF1)..style = PaintingStyle.fill);
+    // Tapered concrete/steel tower: a sunlit left edge sinking into shadow.
+    canvas.drawPath(
+      mast,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0xFFFAFAFA), Color(0xFFCFD8DC), Color(0xFF90A4AE)],
+          stops: [0.0, .6, 1.0],
+        ).createShader(mastRect),
+    );
+    // Interior shadow band along the tower.
+    canvas.drawPath(mast, Paint()..color = const Color(0x22FFFFFF)..style = PaintingStyle.stroke..strokeWidth = 1.0);
 
     for (int i = 0; i < 3; i++) {
       final angle = _bladeAngle + i * (math.pi * 2 / 3);
       canvas.save();
       canvas.translate(cx, cy);
       canvas.rotate(angle);
+      final bladeRect = Rect.fromLTWH(-6, 0, 12, _bladeRadius + 3);
       final blade = Path()..moveTo(-3, 0)..quadraticBezierTo(-6, _bladeRadius * 0.6, -2, _bladeRadius)..lineTo(0, _bladeRadius + 3)..lineTo(2, _bladeRadius)..quadraticBezierTo(4, _bladeRadius * 0.6, 3, 0)..close();
-      canvas.drawPath(blade, Paint()..color = Colors.white..style = PaintingStyle.fill);
+      // Blade gradient: lit leading edge fading to a shadowed trailing edge.
+      canvas.drawPath(
+        blade,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFFAFAFA), Color(0xFFE0E0E0), Color(0xFF90A4AE)],
+            stops: [0.0, .55, 1.0],
+          ).createShader(bladeRect),
+      );
+      // Aerodynamic crease down the blade centre.
+      canvas.drawPath(
+        blade,
+        Paint()
+          ..color = const Color(0x44000000)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0,
+      );
       canvas.restore();
     }
 
-    canvas.drawCircle(Offset(cx, cy), 8.0, Paint()..color = const Color(0xFFFAFAFA));
+    // Spinning hub with a radial metallic sheen and a centre bolt.
+    canvas.drawCircle(
+      Offset(cx, cy),
+      8.0,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.3, -0.3),
+          radius: 1.0,
+          colors: const [Color(0xFFFFFFFF), Color(0xFFB0BEC5)],
+        ).createShader(Rect.fromCircle(center: Offset(cx, cy), radius: 8.0)),
+    );
+    canvas.drawCircle(Offset(cx, cy), 8.0,
+        Paint()..color = const Color(0xFF90A4AE)..style = PaintingStyle.stroke..strokeWidth = 1.2);
+    canvas.drawCircle(Offset(cx, cy), 2.0, Paint()..color = const Color(0xFF455A64));
     if (_rotorWakeActive) {
       final wakePaint = Paint()
         ..color = ObstacleSynergy.rotorWake.color.withOpacity(.54)
@@ -2335,22 +2380,66 @@ class HotAirBalloonObstacle extends ObstacleComponent {
     final cx = size.x * 0.5;
     final cy = 34.0;
 
+    final envelopeRect = Rect.fromLTWH(cx - 36, cy - 28, 72, 54);
     final envelopePath = Path()
       ..moveTo(cx - 14, cy + 24)
       ..cubicTo(cx - 36, cy + 10, cx - 36, cy - 26, cx, cy - 28)
       ..cubicTo(cx + 36, cy - 26, cx + 36, cy + 10, cx + 14, cy + 24)
       ..close();
-    canvas.drawPath(envelopePath, Paint()..color = const Color(0xFFE53935));
-
+    // Envelope base fill with a rich radial sheen (lit top-left).
+    canvas.drawPath(
+      envelopePath,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.35, -0.4),
+          radius: 1.05,
+          colors: const [Color(0xFFFFAB91), Color(0xFFD32F2F), Color(0xFF7F0000)],
+          stops: const [0.0, .6, 1.0],
+        ).createShader(envelopeRect),
+    );
+    // Panel seams.
     final gore = Path()
       ..moveTo(cx - 7, cy + 24)
       ..cubicTo(cx - 16, cy + 8, cx - 16, cy - 25, cx, cy - 28)
       ..cubicTo(cx + 16, cy - 25, cx + 16, cy + 8, cx + 7, cy + 24)
       ..close();
-    canvas.drawPath(gore, Paint()..color = const Color(0xFFFFD54F));
+    canvas.drawPath(
+      gore,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFFFE082), Color(0xFFF57F17), Color(0xFFFF8F00)],
+          stops: const [0.0, .5, 1.0],
+        ).createShader(envelopeRect),
+    );
+    // Sunlit specular arc across the crown.
+    final specular = Path()
+      ..moveTo(cx - 26, cy - 16)
+      ..cubicTo(cx - 30, cy - 26, cx - 10, cy - 28, cx, cy - 27)
+      ..cubicTo(cx + 12, cy - 26, cx + 30, cy - 24, cx + 26, cy - 14)
+      ..close();
+    canvas.drawPath(specular, Paint()..color = const Color(0x2EFFFFFF));
 
-    // Wicker basket
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(cx, 82), width: 20, height: 14), const Radius.circular(2)), Paint()..color = const Color(0xFF8D6E63));
+    // Burner + wicker basket with cylindrical shading.
+    canvas.drawRect(Rect.fromCenter(center: Offset(cx, cy + 26), width: 4, height: 8),
+        Paint()..color = const Color(0xFF37474F));
+    final basketRect = Rect.fromCenter(center: Offset(cx, 82), width: 20, height: 14);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(basketRect, const Radius.circular(3)),
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0xFFBCAAA4), Color(0xFF8D6E63), Color(0xFF4E342E)],
+          stops: const [0.0, .5, 1.0],
+        ).createShader(basketRect),
+    );
+    // Wicker weave + lit top rim.
+    canvas.drawLine(Offset(cx - 9, 82), Offset(cx + 9, 82),
+        Paint()..color = const Color(0xFF5D4037)..strokeWidth = 1.0);
+    canvas.drawRect(Rect.fromLTWH(cx - 10, 75, 20, 1.5),
+        Paint()..color = const Color(0x55FFFFFF));
     renderDestructibleIntegrity(canvas, centerX: cx, topY: 0);
     renderTelegraph(canvas);
   }
@@ -2402,9 +2491,47 @@ class StormCloudObstacle extends ObstacleComponent {
   void render(Canvas canvas) {
     final cx = size.x * 0.5;
     final cy = size.y * 0.5;
-    canvas.drawCircle(Offset(cx - 26, cy + 4), 22, Paint()..color = const Color(0xFF263238));
-    canvas.drawCircle(Offset(cx + 26, cy + 4), 20, Paint()..color = const Color(0xFF263238));
-    canvas.drawCircle(Offset(cx, cy), 28, Paint()..color = const Color(0xFF37474F));
+
+    // Deep under-shadow grounds the storm cell.
+    final underShadow = Paint()
+      ..color = const Color(0x66000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.drawOval(Rect.fromCenter(center: Offset(cx, cy + 10), width: 92, height: 26), underShadow);
+
+    // Volumetric puffs: each reads as a lit-capped billow sinking into shadow.
+    final puffs = <Offset>[
+      Offset(cx - 26, cy + 4),
+      Offset(cx + 26, cy + 4),
+      Offset(cx, cy),
+    ];
+    for (final p in puffs) {
+      final r = (p == puffs.last) ? 28.0 : (p == puffs.first ? 22.0 : 20.0);
+      final puffRect = Rect.fromCircle(center: p, radius: r);
+      canvas.drawCircle(
+        p,
+        r,
+        Paint()
+          ..shader = RadialGradient(
+            center: const Alignment(-0.3, -0.35),
+            radius: 1.0,
+            colors: const [Color(0xFF78909C), Color(0xFF37474F), Color(0xFF102027)],
+            stops: const [0.0, .6, 1.0],
+          ).createShader(puffRect),
+      );
+    }
+    // Sunlit crests across the whole cloud top.
+    final crest = Paint()..color = const Color(0x33FFFFFF);
+    for (final p in puffs) {
+      final cr = (p == puffs.last) ? 28.0 : (p == puffs.first ? 22.0 : 20.0);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(p.dx - 3, p.dy - cr * .6),
+          width: cr * 1.1,
+          height: cr * .45,
+        ),
+        crest,
+      );
+    }
     if (_stormCharged) {
       canvas.drawCircle(
         Offset(cx, cy),
@@ -2587,30 +2714,78 @@ class KiteObstacle extends ObstacleComponent {
     canvas.translate(cx, kiteY);
     canvas.rotate(tilt);
 
+    final kiteRect = Rect.fromLTWH(-16, -20, 32, 40);
     final topF = Path()
       ..moveTo(0, -18)
       ..lineTo(-14, 0)
       ..lineTo(0, 0)
       ..close();
-    canvas.drawPath(topF, Paint()..color = const Color(0xFFFF5252));
+    canvas.drawPath(
+      topF,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFFF8A80), Color(0xFFD32F2F)],
+        ).createShader(kiteRect),
+    );
     final rightF = Path()
       ..moveTo(0, -18)
       ..lineTo(14, 0)
       ..lineTo(0, 0)
       ..close();
-    canvas.drawPath(rightF, Paint()..color = const Color(0xFF00E5FF));
+    canvas.drawPath(
+      rightF,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF80DEEA), Color(0xFF0097A7)],
+        ).createShader(kiteRect),
+    );
     final botLeftF = Path()
       ..moveTo(-14, 0)
       ..lineTo(0, 18)
       ..lineTo(0, 0)
       ..close();
-    canvas.drawPath(botLeftF, Paint()..color = const Color(0xFFFFEB3B));
+    canvas.drawPath(
+      botLeftF,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [Color(0xFFFFEE58), Color(0xFFF9A825)],
+        ).createShader(kiteRect),
+    );
     final botRightF = Path()
       ..moveTo(14, 0)
       ..lineTo(0, 18)
       ..lineTo(0, 0)
       ..close();
-    canvas.drawPath(botRightF, Paint()..color = const Color(0xFF7C4DFF));
+    canvas.drawPath(
+      botRightF,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [Color(0xFFB388FF), Color(0xFF651FFF)],
+        ).createShader(kiteRect),
+    );
+    // Sunlit top-left sheen over the whole sail.
+    final sheen = Path()
+      ..moveTo(0, -18)
+      ..lineTo(-14, 0)
+      ..lineTo(0, 0)
+      ..lineTo(14, 0)
+      ..close();
+    canvas.drawPath(sheen, Paint()..color = const Color(0x1FFFFFFF));
+    // Fibreglass cross-frame.
+    final frame = Paint()
+      ..color = const Color(0xFF8D6E63)
+      ..strokeWidth = 1.3
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(const Offset(0, -18), const Offset(0, 18), frame);
+    canvas.drawLine(const Offset(-14, 0), const Offset(14, 0), frame);
 
     canvas.restore();
     _drawSnapHint(canvas, cx, kiteY);
@@ -2714,14 +2889,33 @@ class TrafficPlaneObstacle extends ObstacleComponent {
     final cx = size.x * 0.5;
     final cy = size.y * 0.5;
 
-    // Upward-facing oncoming paper dart
+    // Upward-facing oncoming paper dart with a folded, lit-sheet look.
     final dart = Path()
       ..moveTo(cx, cy + 14)
       ..lineTo(cx + 14, cy - 12)
       ..lineTo(cx, cy - 6)
       ..lineTo(cx - 14, cy - 12)
       ..close();
-    canvas.drawPath(dart, Paint()..color = const Color(0xFFFF7043));
+    canvas.drawPath(
+      dart,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: const [Color(0xFFFFE0B2), Color(0xFFFF7043), Color(0xFFC53F17)],
+          stops: const [0.0, .55, 1.0],
+        ).createShader(Rect.fromLTWH(cx - 14, cy - 12, 28, 26)),
+    );
+    // Centre fold crease + edge highlight for the folded-sheet silhouette.
+    canvas.drawLine(Offset(cx, cy + 14), Offset(cx, cy - 8),
+        Paint()..color = const Color(0x44FFFFFF)..strokeWidth = 1.2);
+    canvas.drawPath(
+      dart,
+      Paint()
+        ..color = const Color(0xFF8D3A12)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
 
     // Wingtip smoke contrails
     final contrail = Paint()
@@ -2784,9 +2978,26 @@ class FireworksObstacle extends ObstacleComponent {
     final cy = size.y * 0.5;
 
     if (!_burst) {
-      // Ascending rocket with sparks
-      canvas.drawRect(Rect.fromCenter(center: Offset(cx, cy), width: 6, height: 14), Paint()..color = const Color(0xFFFF1744));
-      canvas.drawCircle(Offset(cx, cy + 10), 3, Paint()..color = const Color(0xFFFFD54F));
+      // Ascending rocket: cylindrical metal body with a lit nose cone.
+      final bodyRect = Rect.fromCenter(center: Offset(cx, cy + 1), width: 6, height: 14);
+      canvas.drawRect(
+        bodyRect,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [Color(0xFFFF8A80), Color(0xFFD32F2F), Color(0xFF7F0000)],
+            stops: const [0.0, .55, 1.0],
+          ).createShader(bodyRect),
+      );
+      canvas.drawRect(Rect.fromLTWH(cx - 3, cy + 1, 6, 1.4),
+          Paint()..color = const Color(0x55FFFFFF));
+      // Nose cone.
+      final nose = Path()..moveTo(cx - 3, cy - 6)..lineTo(cx, cy - 11)..lineTo(cx + 3, cy - 6)..close();
+      canvas.drawPath(nose, Paint()..color = const Color(0xFFFF5252));
+      // Flame exhaust with layered glow.
+      canvas.drawCircle(Offset(cx, cy + 10), 3, Paint()..color = const Color(0x88FFD54F));
+      canvas.drawCircle(Offset(cx, cy + 11), 1.8, Paint()..color = const Color(0xFFFFF9C4));
     } else {
       // Popping multi-point starburst
       final burstPaint = Paint()..color = const Color(0xFFFF4081)..strokeWidth = 2.0;
@@ -2823,15 +3034,47 @@ class WeatherBalloonObstacle extends ObstacleComponent {
   @override
   void render(Canvas canvas) {
     final cx = size.x * 0.5;
-    // Weather balloon dome
-    canvas.drawCircle(Offset(cx, 24), 24, Paint()..color = const Color(0xFFE0F7FA));
-    canvas.drawCircle(Offset(cx, 24), 24, Paint()..color = const Color(0xFF80DEEA)..style = PaintingStyle.stroke..strokeWidth = 1.4);
+    // Weather balloon dome: translucent latex with a lit top-left sheen.
+    final domeRect = Rect.fromCircle(center: Offset(cx, 24), radius: 24);
+    canvas.drawCircle(
+      Offset(cx, 24),
+      24,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.35, -0.4),
+          radius: 1.0,
+          colors: const [Color(0xFFE1F5FE), Color(0xFF4DD0E1), Color(0xFF00838F)],
+          stops: const [0.0, .55, 1.0],
+        ).createShader(domeRect),
+    );
+    canvas.drawCircle(Offset(cx - 8, 15), 6, Paint()..color = const Color(0x40FFFFFF));
+    canvas.drawCircle(Offset(cx, 24), 24,
+        Paint()..color = const Color(0xFF00695C)..style = PaintingStyle.stroke..strokeWidth = 1.2);
+    // Vertical seam stripe.
+    canvas.drawPath(
+      Path()
+        ..moveTo(cx - 2, 2)
+        ..cubicTo(cx + 1, 12, cx + 1, 36, cx - 3, 46),
+      Paint()..color = const Color(0x33000000)..strokeWidth = 1.0,
+    );
 
-    // Tether cables & satellite sensor box
+    // Tether cables & satellite sensor box with a metallic gradient.
     canvas.drawLine(Offset(cx - 10, 48), Offset(cx - 8, 54), Paint()..color = const Color(0xFF78909C));
     canvas.drawLine(Offset(cx + 10, 48), Offset(cx + 8, 54), Paint()..color = const Color(0xFF78909C));
-    canvas.drawRect(Rect.fromLTWH(cx - 14, 54, 28, 16), Paint()..color = const Color(0xFF455A64));
-    canvas.drawCircle(Offset(cx, 62), 3, Paint()..color = const Color(0xFF00E5FF));
+    final boxRect = Rect.fromLTWH(cx - 14, 54, 28, 16);
+    canvas.drawRect(
+      boxRect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF90A4AE), Color(0xFF455A64), Color(0xFF1C2529)],
+        ).createShader(boxRect),
+    );
+    canvas.drawRect(Rect.fromLTWH(cx - 14, 54, 28, 1.6),
+        Paint()..color = const Color(0x55FFFFFF));
+    canvas.drawCircle(Offset(cx, 62), 3,
+        Paint()..color = const Color(0xFF00E5FF)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2));
 
     renderDestructibleIntegrity(canvas, centerX: cx, topY: 0);
     renderTelegraph(canvas);
@@ -2868,9 +3111,25 @@ class ClotheslineObstacle extends ObstacleComponent {
     final w = size.x;
     final rStart = _gapX + _gapWidth;
 
-    final line = Paint()..color = const Color(0xFF8D6E63)..strokeWidth = 1.8;
-    canvas.drawLine(Offset(0, 10), Offset(_gapX, 12), line);
-    canvas.drawLine(Offset(rStart, 12), Offset(w, 10), line);
+    // Rounded, sunlit rope.
+    canvas.drawLine(Offset(0, 11), Offset(_gapX, 13),
+        Paint()..color = const Color(0xFF4E342E)..strokeWidth = 2.4..strokeCap = StrokeCap.round);
+    canvas.drawLine(Offset(rStart, 13), Offset(w, 11),
+        Paint()..color = const Color(0xFF4E342E)..strokeWidth = 2.4..strokeCap = StrokeCap.round);
+    canvas.drawLine(Offset(0, 10), Offset(_gapX, 12),
+        Paint()..color = const Color(0xFFA1887F)..strokeWidth = 1.0);
+    canvas.drawLine(Offset(rStart, 12), Offset(w, 10),
+        Paint()..color = const Color(0xFFA1887F)..strokeWidth = 1.0);
+
+    // Wooden support poles.
+    final pole = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [Color(0xFFA1887F), Color(0xFF5D4037)],
+      ).createShader(const Rect.fromLTWH(0, 0, 5, 40));
+    canvas.drawRect(const Rect.fromLTWH(0, 0, 5, 40), pole);
+    canvas.drawRect(Rect.fromLTWH(w - 5, 0, 5, 40), pole);
 
     // Paper dolls hanging with clothespins
     _drawPaperDolls(canvas, 0, _gapX);
@@ -2898,13 +3157,38 @@ class ClotheslineObstacle extends ObstacleComponent {
   }
 
   void _drawPaperDolls(Canvas canvas, double startX, double endX) {
-    final dollPaint = Paint()..color = const Color(0xFFFFD54F)..style = PaintingStyle.fill;
-    final pinPaint = Paint()..color = const Color(0xFF5D4037)..style = PaintingStyle.fill;
+    final pinPaint = Paint()..color = const Color(0xFF4E342E)..style = PaintingStyle.fill;
 
     for (double x = startX + 15; x < endX - 15; x += 28) {
+      // Wooden clothespin.
       canvas.drawRect(Rect.fromLTWH(x - 2, 8, 4, 4), pinPaint);
+      // Doll with a soft gradient (lit top, shadowed base) + drop shadow.
+      final dollRect = Rect.fromLTWH(x - 8, 12, 16, 22);
       final doll = Path()..moveTo(x, 12)..lineTo(x + 8, 22)..lineTo(x + 5, 34)..lineTo(x - 5, 34)..lineTo(x - 8, 22)..close();
-      canvas.drawPath(doll, dollPaint);
+      canvas.drawPath(
+        doll,
+        Paint()
+          ..color = const Color(0x22000000)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5)
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawPath(
+        doll,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFFFECB3), Color(0xFFFFC107), Color(0xFFB8860B)],
+            stops: const [0.0, .55, 1.0],
+          ).createShader(dollRect),
+      );
+      canvas.drawPath(
+        doll,
+        Paint()
+          ..color = const Color(0x66855C00)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = .7,
+      );
     }
   }
 }
@@ -2937,21 +3221,45 @@ class WindSockObstacle extends ObstacleComponent {
   @override
   void render(Canvas canvas) {
     final cx = size.x * 0.5;
-    // Mast
-    canvas.drawLine(Offset(cx, 0), Offset(cx, 54), Paint()..color = const Color(0xFF90A4AE)..strokeWidth = 2.4);
+    // Steel mast with a specular edge.
+    canvas.drawRect(Rect.fromLTWH(cx - 1.2, 0, 2.4, 54),
+        Paint()..shader = const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0xFFB0BEC5), Color(0xFF607D8B), Color(0xFF37474F)],
+        ).createShader(const Rect.fromLTWH(cx - 1.2, 0, 2.4, 54)));
+    canvas.drawRect(Rect.fromLTWH(cx - 1, 0, 1, 54),
+        Paint()..color = const Color(0x55FFFFFF));
 
-    // Striped windsock cone pointing in wind direction
+    // Striped windsock cone with a lit upper surface and shaded underside.
     final sock = Path()
       ..moveTo(cx, 8)
       ..lineTo(cx + 24, 14)
       ..lineTo(cx + 22, 28)
       ..lineTo(cx, 24)
       ..close();
-    canvas.drawPath(sock, Paint()..color = const Color(0xFFFF5722));
+    canvas.drawPath(
+      sock,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: const [Color(0xFFFF8A65), Color(0xFFD84315), Color(0xFF6D1200)],
+          stops: const [0.0, .55, 1.0],
+        ).createShader(sock.getBounds()),
+    );
 
-    // White stripes
-    canvas.drawRect(Rect.fromLTWH(cx + 6, 9.5, 6, 15), Paint()..color = Colors.white);
-    canvas.drawRect(Rect.fromLTWH(cx + 15, 12, 5, 13), Paint()..color = Colors.white);
+    // White stripes clipped to the cone (darker at the shaded base).
+    final whiteStripes = Paint()..color = const Color(0xFFFBE9E7);
+    canvas.drawRect(Rect.fromLTWH(cx + 6, 9.5, 6, 15), whiteStripes);
+    canvas.drawRect(Rect.fromLTWH(cx + 15, 12, 5, 13), whiteStripes);
+    canvas.drawRect(Rect.fromLTWH(cx + 3, 10, 3, 13),
+        Paint()..color = const Color(0xFFFFCCBC));
+    // Top highlight along the cone.
+    canvas.drawPath(
+      Path()..moveTo(cx, 8)..lineTo(cx + 24, 14)..lineTo(cx + 22, 15)..lineTo(cx, 10)..close(),
+      Paint()..color = const Color(0x33FFFFFF),
+    );
     if (_kiteLinked) {
       final windPaint = Paint()
         ..color = ObstacleSynergy.windTether.color.withOpacity(.70)
@@ -3111,15 +3419,38 @@ class MeteorShowerObstacle extends ObstacleComponent {
         Offset(meteor.x, meteor.y),
         trail,
       );
+      // White-hot luminous tail core.
+      canvas.drawLine(
+        Offset(meteor.x - meteor.radius * 1.4, meteor.y - meteor.radius * 1.6),
+        Offset(meteor.x, meteor.y),
+        Paint()
+          ..color = const Color(0x99FFE0B2)
+          ..strokeWidth = meteor.radius * .3
+          ..strokeCap = StrokeCap.round,
+      );
+      // Rock body with a lit top-left and a scorched dark underside.
+      final rockRect = Rect.fromCircle(center: Offset(meteor.x, meteor.y), radius: meteor.radius);
       canvas.drawCircle(
         Offset(meteor.x, meteor.y),
         meteor.radius,
-        Paint()..color = const Color(0xFF5D4037),
+        Paint()
+          ..shader = RadialGradient(
+            center: const Alignment(-0.35, -0.35),
+            radius: 1.0,
+            colors: const [Color(0xFFBCAAA4), Color(0xFF5D4037), Color(0xFF21120B)],
+            stops: const [0.0, .55, 1.0],
+          ).createShader(rockRect),
       );
+      // Molten glow cracks on the surface.
       canvas.drawCircle(
         Offset(meteor.x - meteor.radius * .22, meteor.y - meteor.radius * .25),
         meteor.radius * .35,
         Paint()..color = const Color(0xFFFFAB91),
+      );
+      canvas.drawCircle(
+        Offset(meteor.x + meteor.radius * .2, meteor.y + meteor.radius * .15),
+        meteor.radius * .18,
+        Paint()..color = const Color(0x99FFD54F),
       );
     }
     renderTelegraph(canvas);
@@ -3194,10 +3525,29 @@ class TornadoObstacle extends ObstacleComponent {
         swirl,
       );
     }
-    final core = Paint()
-      ..color = const Color(0x2264B5F6)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
-    canvas.drawOval(Rect.fromCenter(center: Offset(centerX, 104), width: 58, height: 142), core);
+    // Condensed funnel core with a soft grey gradient and debris.
+    final funnelRect = Rect.fromCenter(center: Offset(centerX, 104), width: 58, height: 142);
+    canvas.drawOval(
+      funnelRect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x99B3E5FC), Color(0xCC78909C), Color(0xCC455A64)],
+          stops: const [0.0, .55, 1.0],
+        ).createShader(funnelRect)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+    );
+    // Rising debris specks inside the funnel.
+    final debris = Paint()..color = const Color(0x88FFFFFF);
+    for (var i = 0; i < 5; i++) {
+      final dy = math.sin(animTime * 9 + i * 2.1) * 6;
+      canvas.drawCircle(
+        Offset(centerX - 14 + (i % 3) * 14, 84 + i * 20 + dy),
+        1.1 + (i % 2),
+        debris,
+      );
+    }
     renderTelegraph(canvas);
   }
 }
@@ -3275,11 +3625,9 @@ class FlockMigrationObstacle extends ObstacleComponent {
 
   @override
   void render(Canvas canvas) {
-    final birdPaint = Paint()..style = PaintingStyle.fill;
     for (final bird in _birds) {
       final pos = _birdPosition(bird);
       final flap = math.sin(animTime * 12 + bird.phase) * bird.size * .55;
-      birdPaint.color = const Color(0xFF37474F);
       final shape = Path()
         ..moveTo(pos.x, pos.y)
         ..quadraticBezierTo(pos.x - bird.size, pos.y - flap, pos.x - bird.size * 1.8, pos.y)
@@ -3287,7 +3635,20 @@ class FlockMigrationObstacle extends ObstacleComponent {
         ..quadraticBezierTo(pos.x + bird.size, pos.y - flap, pos.x + bird.size * 1.8, pos.y)
         ..quadraticBezierTo(pos.x + bird.size, pos.y + flap * .4, pos.x, pos.y)
         ..close();
-      canvas.drawPath(shape, birdPaint);
+      // Gradient body: darker wingtip sinking toward the body center.
+      final shapeRect = shape.getBounds();
+      canvas.drawPath(
+        shape,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: const [Color(0xFF546E7A), Color(0xFF263238), Color(0xFF0F1417)],
+            stops: const [0.0, .55, 1.0],
+          ).createShader(shapeRect),
+      );
+      // Specular ridge across the back.
+      canvas.drawPath(shape, Paint()..color = const Color(0x22FFFFFF)..style = PaintingStyle.stroke..strokeWidth = .8);
     }
     renderTelegraph(canvas);
   }
@@ -3350,8 +3711,35 @@ class WhaleBreachObstacle extends ObstacleComponent {
       ..quadraticBezierTo(208, 142, 118, 144)
       ..quadraticBezierTo(72, 141, 54, 124)
       ..close();
-    canvas.drawPath(body, Paint()..color = const Color(0xFF1565C0));
-    canvas.drawPath(belly, Paint()..color = const Color(0xFFB3E5FC));
+    // Body with a radial sheen: wet, sky-lit top blending into deep ocean blue.
+    final bodyRect = body.getBounds();
+    canvas.drawPath(
+      body,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.3, -0.45),
+          radius: 1.05,
+          colors: const [Color(0xFF64B5F6), Color(0xFF1565C0), Color(0xFF0D47A1)],
+          stops: const [0.0, .55, 1.0],
+        ).createShader(bodyRect),
+    );
+    // Glossy highlight sweeping along the back.
+    final gloss = Path()
+      ..moveTo(56, 88)
+      ..quadraticBezierTo(120, 56, 210, 72)
+      ..quadraticBezierTo(150, 90, 90, 96)
+      ..quadraticBezierTo(70, 96, 56, 88)
+      ..close();
+    canvas.drawPath(gloss, Paint()..color = const Color(0x2EFFFFFF));
+    canvas.drawPath(
+      belly,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFE1F5FE), Color(0xFFB3E5FC), Color(0xFF81D4FA)],
+        ).createShader(belly.getBounds()),
+    );
 
     // Dorsal fin and tail read clearly as a giant living silhouette.
     final fin = Path()
@@ -3359,7 +3747,15 @@ class WhaleBreachObstacle extends ObstacleComponent {
       ..lineTo(124, 24)
       ..lineTo(144, 78)
       ..close();
-    canvas.drawPath(fin, Paint()..color = const Color(0xFF0D47A1));
+    canvas.drawPath(
+      fin,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF1E88E5), Color(0xFF0D47A1)],
+        ).createShader(fin.getBounds()),
+    );
     final tail = Path()
       ..moveTo(28, 112)
       ..quadraticBezierTo(2, 85, 0, 112)
@@ -3367,10 +3763,20 @@ class WhaleBreachObstacle extends ObstacleComponent {
       ..quadraticBezierTo(6, 151, 2, 170)
       ..quadraticBezierTo(34, 154, 42, 125)
       ..close();
-    canvas.drawPath(tail, Paint()..color = const Color(0xFF0D47A1));
+    canvas.drawPath(
+      tail,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF1E88E5), Color(0xFF0D47A1)],
+        ).createShader(tail.getBounds()),
+    );
 
     canvas.drawCircle(const Offset(220, 78), 3.2, Paint()..color = Colors.white);
     canvas.drawCircle(const Offset(221, 78), 1.3, Paint()..color = const Color(0xFF102027));
+    // Eye specular catch.
+    canvas.drawCircle(const Offset(218.8, 77), 1.0, Paint()..color = const Color(0x55FFFFFF));
 
     final spray = Paint()..color = const Color(0x99E1F5FE);
     for (var i = 0; i < 14; i++) {
