@@ -49,6 +49,8 @@ class GameSessionState {
     this.currentBiome = Biome.city,
     this.activePowerUps = const {},
     this.powerUpCharges = const {},
+    this.empoweredPowerUpCharges = const {},
+    this.activeEmpoweredPowerUps = const {},
     this.activeCorruptedPowerUps = const {},
     this.corruptedPowerUpRemaining = const {},
     this.shieldActive = false,
@@ -81,6 +83,10 @@ class GameSessionState {
 
   /// Banked charges for manually activated timed power-ups.
   final Map<PowerUpType, int> powerUpCharges;
+
+  /// Crafted three-charge bursts and currently active empowered effects.
+  final Map<PowerUpType, int> empoweredPowerUpCharges;
+  final Set<PowerUpType> activeEmpoweredPowerUps;
 
   /// Immediate risk/reward effects from corrupted world pickups.
   final Set<CorruptedPowerUpType> activeCorruptedPowerUps;
@@ -119,6 +125,8 @@ class GameSessionState {
     Biome? currentBiome,
     Set<PowerUpType>? activePowerUps,
     Map<PowerUpType, int>? powerUpCharges,
+    Map<PowerUpType, int>? empoweredPowerUpCharges,
+    Set<PowerUpType>? activeEmpoweredPowerUps,
     Set<CorruptedPowerUpType>? activeCorruptedPowerUps,
     Map<CorruptedPowerUpType, double>? corruptedPowerUpRemaining,
     bool? shieldActive,
@@ -143,6 +151,10 @@ class GameSessionState {
       currentBiome: currentBiome ?? this.currentBiome,
       activePowerUps: activePowerUps ?? this.activePowerUps,
       powerUpCharges: powerUpCharges ?? this.powerUpCharges,
+      empoweredPowerUpCharges:
+          empoweredPowerUpCharges ?? this.empoweredPowerUpCharges,
+      activeEmpoweredPowerUps:
+          activeEmpoweredPowerUps ?? this.activeEmpoweredPowerUps,
       activeCorruptedPowerUps:
           activeCorruptedPowerUps ?? this.activeCorruptedPowerUps,
       corruptedPowerUpRemaining:
@@ -224,19 +236,44 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
     state = state.copyWith(powerUpRemaining: timers);
   }
 
-  void activatePowerUp(PowerUpType type) {
+  void activatePowerUp(PowerUpType type, {bool empowered = false}) {
     final updated = Set<PowerUpType>.from(state.activePowerUps)..add(type);
+    final activeEmpowered =
+        Set<PowerUpType>.from(state.activeEmpoweredPowerUps);
+    if (empowered) {
+      activeEmpowered.add(type);
+    } else {
+      activeEmpowered.remove(type);
+    }
     state = state.copyWith(
       activePowerUps: updated,
+      activeEmpoweredPowerUps: activeEmpowered,
       shieldActive: type == PowerUpType.shield ? true : state.shieldActive,
     );
   }
 
-  void addPowerUpCharge(PowerUpType type, {int maxCharges = 3}) {
+  /// Adds a normal charge. Returns true when the third matching pickup is
+  /// crafted into an Empowered charge instead of remaining in the normal bank.
+  bool addPowerUpCharge(PowerUpType type, {int maxCharges = 3}) {
     final charges = Map<PowerUpType, int>.from(state.powerUpCharges);
-    charges[type] =
-        ((charges[type] ?? 0) + 1).clamp(0, maxCharges).toInt();
-    state = state.copyWith(powerUpCharges: charges);
+    final empowered =
+        Map<PowerUpType, int>.from(state.empoweredPowerUpCharges);
+    final next = (charges[type] ?? 0) + 1;
+    var crafted = false;
+    if (next >= maxCharges) {
+      charges.remove(type);
+      empowered[type] = ((empowered[type] ?? 0) + 1)
+          .clamp(0, GameConfig.empoweredPowerUpMaxCharges)
+          .toInt();
+      crafted = true;
+    } else {
+      charges[type] = next;
+    }
+    state = state.copyWith(
+      powerUpCharges: charges,
+      empoweredPowerUpCharges: empowered,
+    );
+    return crafted;
   }
 
   bool consumePowerUpCharge(PowerUpType type) {
@@ -249,6 +286,20 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
       charges[type] = current - 1;
     }
     state = state.copyWith(powerUpCharges: charges);
+    return true;
+  }
+
+  bool consumeEmpoweredPowerUpCharge(PowerUpType type) {
+    final current = state.empoweredPowerUpCharges[type] ?? 0;
+    if (current <= 0) return false;
+    final charges =
+        Map<PowerUpType, int>.from(state.empoweredPowerUpCharges);
+    if (current == 1) {
+      charges.remove(type);
+    } else {
+      charges[type] = current - 1;
+    }
+    state = state.copyWith(empoweredPowerUpCharges: charges);
     return true;
   }
 
@@ -285,8 +336,11 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
 
   void deactivatePowerUp(PowerUpType type) {
     final updated = Set<PowerUpType>.from(state.activePowerUps)..remove(type);
+    final activeEmpowered =
+        Set<PowerUpType>.from(state.activeEmpoweredPowerUps)..remove(type);
     state = state.copyWith(
       activePowerUps: updated,
+      activeEmpoweredPowerUps: activeEmpowered,
       shieldActive: type == PowerUpType.shield ? false : state.shieldActive,
       powerUpRemaining: Map<PowerUpType, double>.from(state.powerUpRemaining)..remove(type),
     );

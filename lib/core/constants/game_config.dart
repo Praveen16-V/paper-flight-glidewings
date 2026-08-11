@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-powerups-5';
+  static const String balanceVersion = '2026.08-powerups-6';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -500,6 +500,17 @@ abstract class GameConfig {
   // their countdown at an inconvenient moment.
   static const int chargePowerUpMaxCharges = 3;
   static const double chargePowerUpBurstDuration = 3.0;
+
+  // Three matching banked charges craft into one Empowered burst.
+  static const int empoweredPowerUpMaxCharges = 2;
+  static const double empoweredPowerUpBurstDuration = 5.0;
+  static const double empoweredMagnetRadius = 300.0;
+  static const double empoweredMagnetPullSpeed = 500.0;
+  static const double empoweredSlowMoMultiplier = 0.25;
+  static const double empoweredCoinRushValueMultiplier = 3.0;
+  static const double empoweredGoldVortexCoinValueMultiplier = 4.0;
+  static const double empoweredShrinkHitboxScale = 0.27;
+  static const double empoweredShrinkVisualScale = 0.56;
 
   // ── Corrupted Power-Ups ───────────────────────────────────────────────────
   static const double corruptedPowerUpSpawnChance = 0.12;

@@ -132,8 +132,11 @@ class HudOverlay extends ConsumerWidget {
               activeCombos: session.activePowerUpCombos,
               activeCorrupted: session.activeCorruptedPowerUps,
               charges: session.powerUpCharges,
+              empoweredCharges: session.empoweredPowerUpCharges,
               remaining: session.powerUpRemaining,
               onActivateCharge: game.triggerPowerUpCharge,
+              onActivateEmpowered: (type) =>
+                  game.triggerPowerUpCharge(type, empowered: true),
             ),
           ),
 
@@ -539,19 +542,26 @@ class _PowerUpBar extends StatelessWidget {
     required this.activeCombos,
     required this.activeCorrupted,
     required this.charges,
+    required this.empoweredCharges,
     required this.remaining,
     required this.onActivateCharge,
+    required this.onActivateEmpowered,
   });
   final Set<PowerUpType> activePowerUps;
   final Set<PowerUpCombo> activeCombos;
   final Set<CorruptedPowerUpType> activeCorrupted;
   final Map<PowerUpType, int> charges;
+  final Map<PowerUpType, int> empoweredCharges;
   final Map<PowerUpType, double> remaining;
   final bool Function(PowerUpType type) onActivateCharge;
+  final bool Function(PowerUpType type) onActivateEmpowered;
 
   @override
   Widget build(BuildContext context) {
-    if (activePowerUps.isEmpty && charges.isEmpty && activeCorrupted.isEmpty) {
+    if (activePowerUps.isEmpty &&
+        charges.isEmpty &&
+        empoweredCharges.isEmpty &&
+        activeCorrupted.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -568,6 +578,16 @@ class _PowerUpBar extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: _CorruptedPowerUpPill(type: corrupted),
+          ),
+        for (final entry in empoweredCharges.entries)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _PowerUpChargeIcon(
+              type: entry.key,
+              charges: entry.value,
+              empowered: true,
+              onTap: () => onActivateEmpowered(entry.key),
+            ),
           ),
         for (final entry in charges.entries)
           Padding(
@@ -650,18 +670,22 @@ class _PowerUpChargeIcon extends StatelessWidget {
     required this.type,
     required this.charges,
     required this.onTap,
+    this.empowered = false,
   });
 
   final PowerUpType type;
   final int charges;
   final VoidCallback onTap;
+  final bool empowered;
 
   @override
   Widget build(BuildContext context) {
-    final color = _PowerUpIcon.colorForType(type);
+    final color = empowered
+        ? const Color(0xFFFFD740)
+        : _PowerUpIcon.colorForType(type);
     return Semantics(
       button: true,
-      label: 'Activate ${type.displayName}, $charges charges',
+      label: 'Activate ${empowered ? 'empowered ' : ''}${type.displayName}, $charges charges',
       child: GestureDetector(
         onTap: onTap,
         child: Container(
@@ -684,6 +708,13 @@ class _PowerUpChargeIcon extends StatelessWidget {
                   size: 20,
                 ),
               ),
+              if (empowered)
+                const Positioned(
+                  left: 2,
+                  top: 1,
+                  child: Icon(Icons.star_rounded,
+                      color: Color(0xFFFFF59D), size: 15),
+                ),
               Positioned(
                 right: 2,
                 bottom: 2,

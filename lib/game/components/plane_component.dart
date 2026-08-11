@@ -182,6 +182,7 @@ class PlaneComponent extends PositionComponent
   bool _slowMoActive = false;
   bool _doubleScoreActive = false;
   bool _shrinkActive = false;
+  bool _empoweredShrinkActive = false;
   bool _windCallerActive = false;
   bool _decoyCloneActive = false;
   bool _blackHoleActive = false;
@@ -295,8 +296,12 @@ class PlaneComponent extends PositionComponent
   }
 
   double get _activeHitboxScale => _shrinkActive
-      ? math.min(GameConfig.shrinkHitboxScale, _effectiveBaseHitboxScale)
-          .toDouble()
+      ? math.min(
+          _empoweredShrinkActive
+              ? GameConfig.empoweredShrinkHitboxScale
+              : GameConfig.shrinkHitboxScale,
+          _effectiveBaseHitboxScale,
+        ).toDouble()
       : _effectiveBaseHitboxScale;
 
   void _syncHitboxGeometry() {
@@ -370,7 +375,11 @@ class PlaneComponent extends PositionComponent
     // ── Thermal Breathing Scale ──────────────────────────────────────────────
     final breathSin = math.sin(_animTime * 5.0);
     var breathScale = 1.0 + 0.042 * breathSin * _thermalBreathFactor;
-    if (_shrinkActive) breathScale *= GameConfig.shrinkVisualScale;
+    if (_shrinkActive) {
+      breathScale *= _empoweredShrinkActive
+          ? GameConfig.empoweredShrinkVisualScale
+          : GameConfig.shrinkVisualScale;
+    }
 
     // ── Crosswind-amplified wing flex on top of hold/release fold ───────────
     // Calm air keeps a small paper flutter; a real local gust amplifies the
@@ -2151,6 +2160,8 @@ class PlaneComponent extends PositionComponent
     _slowMoActive = session.activePowerUps.contains(PowerUpType.slowMo);
     _doubleScoreActive = session.activePowerUps.contains(PowerUpType.doubleScore);
     _shrinkActive = session.activePowerUps.contains(PowerUpType.shrink);
+    _empoweredShrinkActive = session.activeEmpoweredPowerUps
+        .contains(PowerUpType.shrink);
     _windCallerActive = session.activePowerUps.contains(PowerUpType.windCaller);
     _decoyCloneActive = session.activePowerUps.contains(PowerUpType.decoyClone) || game.decoyCloneCharges > 0;
     _blackHoleActive = session.activePowerUps.contains(PowerUpType.blackHole);
@@ -2797,6 +2808,7 @@ class PlaneComponent extends PositionComponent
     _slowMoActive = false;
     _doubleScoreActive = false;
     _shrinkActive = false;
+    _empoweredShrinkActive = false;
     _windCallerActive = false;
     _decoyCloneActive = false;
     _blackHoleActive = false;

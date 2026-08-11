@@ -136,10 +136,16 @@ class ScoringSystem extends Component {
     // Coin Rush: every coin is worth 2× for the duration of the power-up.
     final session = game.ref.read(gameSessionProvider);
     if (session.activePowerUps.contains(PowerUpType.coinRush)) {
+      final empowered = session.activeEmpoweredPowerUps
+          .contains(PowerUpType.coinRush);
       final coinMultiplier =
           session.activePowerUpCombos.contains(PowerUpCombo.goldVortex)
-              ? GameConfig.goldVortexCoinValueMultiplier
-              : GameConfig.coinRushValueMultiplier;
+              ? (empowered
+                  ? GameConfig.empoweredGoldVortexCoinValueMultiplier
+                  : GameConfig.goldVortexCoinValueMultiplier)
+              : (empowered
+                  ? GameConfig.empoweredCoinRushValueMultiplier
+                  : GameConfig.coinRushValueMultiplier);
       points = (points * coinMultiplier).toInt();
     }
     // Zen/Daily wingmen reward disciplined proximity with richer coin value.

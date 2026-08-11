@@ -199,6 +199,7 @@ Key knobs to adjust during playtesting:
 - `chargePowerUpMaxCharges` / `chargePowerUpBurstDuration` — banked timed-power-up bursts
 - `magnetLevel2Radius` / `shieldEvolutionLevel2Cost` — Hangar power-up evolution tuning
 - `corruptedPowerUpSpawnChance` / `unstableGhostTeleportInterval` — risk/reward pickup tuning
+- `empoweredPowerUpBurstDuration` / `empoweredMagnetRadius` — three-charge crafting reward strength
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts
