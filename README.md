@@ -203,6 +203,7 @@ Key knobs to adjust during playtesting:
 - `empoweredPowerUpBurstDuration` / `empoweredMagnetRadius` — three-charge crafting reward strength
 - `PowerUpScreenEffectComponent` — Ghost, Slow-Mo, and Black Hole screen-space visual treatment
 - `powerUpStatusRingRadius` / `powerUpStatusRingStrokeWidth` — in-flight radial effect readability
+- `AudioSynth.shieldHum` / `ghostWhisper` / `turboSpool` — synthesized power-up audio cues
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts

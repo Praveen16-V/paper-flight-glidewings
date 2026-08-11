@@ -70,6 +70,7 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
 
   // ── Throttles ─────────────────────────────────────────────────────────────
   double _thermalHapticsTimer = 0.0;
+  double _shieldHumTimer = 0.0;
 
   @override
   Future<void> onLoad() async {
@@ -135,6 +136,7 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
   /// Resets transient per-run state.
   void reset() {
     _thermalHapticsTimer = 0;
+    _shieldHumTimer = 0;
     _shakeTimer = 0;
     _shakeIntensity = 0;
     _chromaticTimer = 0;
@@ -159,6 +161,7 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     _updateCamera(dt, playing);
     _updateStreakOverlay(dt, playing);
     _updateThermalHaptics(dt, playing);
+    _updateShieldHum(dt, playing);
 
     if (_chromaticTimer > 0) {
       _chromaticTimer = (_chromaticTimer - dt).clamp(0.0, 1.0);
@@ -359,6 +362,20 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     }
   }
 
+  void _updateShieldHum(double dt, bool playing) {
+    final shieldActive = playing &&
+        gameRef.ref.read(gameSessionProvider).shieldActive;
+    if (!shieldActive) {
+      _shieldHumTimer = 0;
+      return;
+    }
+    _shieldHumTimer -= dt;
+    if (_shieldHumTimer <= 0) {
+      _shieldHumTimer = .56;
+      _playSynth(AudioSynth.shieldHum(volume: .36));
+    }
+  }
+
   // ── Public event hooks ───────────────────────────────────────────────────
 
   void onCoinCollected(int comboCount) {
@@ -386,7 +403,41 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     _chromaticTimer = 0.60;
   }
 
+  /// Distinct synthesized activation cue for each power-up family. The sounds
+  /// are plane-focused (and volume-gated by player settings) so they remain
+  /// readable over the continuous wind bed on small mobile speakers.
+  void onPowerUpActivated(PowerUpType type, {bool empowered = false}) {
+    if (!_settings().sfxEnabled) return;
+    final volume = _settings().sfxVolume * (empowered ? .95 : .72);
+    switch (type) {
+      case PowerUpType.shield:
+        _playSynth(AudioSynth.shieldHum(volume: .55), volume: volume);
+      case PowerUpType.magnet:
+        _playSynth(AudioSynth.magnetPulse(volume: .50), volume: volume);
+      case PowerUpType.ghost:
+        _playSynth(AudioSynth.ghostWhisper(volume: .48), volume: volume);
+      case PowerUpType.slowMo:
+      case PowerUpType.windCaller:
+        _playSynth(AudioSynth.timeRipple(volume: .46), volume: volume);
+      case PowerUpType.coinRush:
+      case PowerUpType.doubleScore:
+        _playSynth(AudioSynth.chime(660, volume: .42), volume: volume);
+      case PowerUpType.shrink:
+        _playSynth(AudioSynth.paperCrease(volume: .55), volume: volume);
+      case PowerUpType.decoyClone:
+        _playSynth(AudioSynth.ghostWhisper(volume: .32), volume: volume);
+      case PowerUpType.blackHole:
+        _playSynth(AudioSynth.voidPulse(volume: .52), volume: volume);
+      case PowerUpType.turboDash:
+        _playSynth(AudioSynth.turboSpool(volume: .62), volume: volume);
+    }
+  }
+
   // ── Audio one-shots ───────────────────────────────────────────────────────
+
+  void _playSynth(Uint8List bytes, {double volume = 0.6}) {
+    _playBytes(bytes, volume: volume);
+  }
 
   void _playChimeForCombo(int combo) {
     if (!_settings().sfxEnabled) return;

@@ -1222,6 +1222,7 @@ class PaperFlightGame extends FlameGame
     final burstDuration = empowered
         ? GameConfig.empoweredPowerUpBurstDuration
         : GameConfig.chargePowerUpBurstDuration;
+    gameFeelSystem.onPowerUpActivated(type, empowered: empowered);
     switch (type) {
       case PowerUpType.shield:
         // Absorbs hits — no timer; consumed on impact.

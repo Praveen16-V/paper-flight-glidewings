@@ -113,6 +113,74 @@ class AudioSynth {
     return _encode(out);
   }
 
+  /// Low protective shield hum — two detuned low partials with a slow pulse.
+  static Uint8List shieldHum({double volume = 0.45}) {
+    const duration = 0.62;
+    final count = (duration * sampleRate).round();
+    final samples = Float64List(count);
+    for (var i = 0; i < count; i++) {
+      final t = i / sampleRate;
+      final envelope = (1.0 - math.exp(-t * 18)) * math.exp(-t * 2.8);
+      final pulse = .72 + math.sin(t * math.pi * 2 * 2.1) * .18;
+      samples[i] = (math.sin(t * math.pi * 2 * 82) +
+              .42 * math.sin(t * math.pi * 2 * 123.5)) *
+          envelope *
+          pulse *
+          volume;
+    }
+    return _encode(samples);
+  }
+
+  /// Airy, unstable whisper for ghost phasing. A deterministic noise bed keeps
+  /// the effect reproducible without requiring a bundled voice asset.
+  static Uint8List ghostWhisper({double volume = 0.38}) {
+    const duration = 0.48;
+    final count = (duration * sampleRate).round();
+    final samples = Float64List(count);
+    final random = math.Random(19);
+    double filtered = 0;
+    for (var i = 0; i < count; i++) {
+      final t = i / sampleRate;
+      final noise = random.nextDouble() * 2 - 1;
+      filtered = filtered * .91 + noise * .09;
+      final envelope = math.sin(math.pi * (t / duration)).clamp(0.0, 1.0);
+      final tone = math.sin(t * math.pi * 2 * (280 + t * 160)) * .16;
+      samples[i] = (filtered * .72 + tone) * envelope * volume;
+    }
+    return _encode(samples);
+  }
+
+  /// Rising jet spool used by Turbo Dash and Time Dash activation.
+  static Uint8List turboSpool({double volume = 0.52}) {
+    const duration = 0.54;
+    final count = (duration * sampleRate).round();
+    final samples = Float64List(count);
+    double phase = 0;
+    for (var i = 0; i < count; i++) {
+      final t = i / sampleRate;
+      final progress = t / duration;
+      final frequency = 95 + progress * progress * 760;
+      phase += math.pi * 2 * frequency / sampleRate;
+      final envelope = math.sin(math.pi * progress);
+      samples[i] = (math.sin(phase) + .26 * math.sin(phase * 2)) *
+          envelope *
+          volume;
+    }
+    return _encode(samples);
+  }
+
+  /// Magnetic pulse for Magnet activation.
+  static Uint8List magnetPulse({double volume = 0.42}) =>
+      chime(220, harmonicLevel: .45, volume: volume);
+
+  /// Brief time ripple for Slow-Mo activation.
+  static Uint8List timeRipple({double volume = 0.40}) =>
+      chime(330, harmonicLevel: .30, volume: volume, echo: true);
+
+  /// Deep void pulse for Black Hole activation.
+  static Uint8List voidPulse({double volume = 0.46}) =>
+      chime(92, harmonicLevel: .20, volume: volume, echo: true);
+
   /// A slow, warm ambient pad for Zen Flight — a soft major-9 chord with a
   /// barely-there airy noise bed and a very gentle amplitude LFO, faded in and
   /// out at both ends so it loops seamlessly. ~10 s, generated once per Zen
