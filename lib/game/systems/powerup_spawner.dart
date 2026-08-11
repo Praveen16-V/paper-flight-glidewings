@@ -27,6 +27,7 @@ class PowerUpSpawner extends Component {
 
   final Map<PowerUpType, ObjectPool<PowerUpComponent>> _pools = {};
   final List<PowerUpComponent> _active = [];
+  int get activeCount => _active.length;
 
   List<ObjectPoolDiagnostics> get poolDiagnostics =>
       _pools.values.map((pool) => pool.diagnostics).toList(growable: false);

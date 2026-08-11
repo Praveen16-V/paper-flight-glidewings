@@ -25,6 +25,8 @@ class CollectibleSpawner extends Component {
   late final ObjectPool<TunnelRingComponent> _ringPool;
   final List<CoinComponent> _activeCoins = [];
   final List<TunnelRingComponent> _activeRings = [];
+  int get activeCoinCount => _activeCoins.length;
+  int get activeRingCount => _activeRings.length;
 
   List<ObjectPoolDiagnostics> get poolDiagnostics => [
         _coinPool.diagnostics,

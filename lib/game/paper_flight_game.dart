@@ -23,6 +23,7 @@ import '../providers/settings_provider.dart';
 import '../services/analytics_service.dart';
 import '../services/daily_leaderboard_service.dart';
 import '../services/daily_seed_service.dart';
+import 'diagnostics/runtime_diagnostics.dart';
 import 'events/gameplay_event_bus.dart';
 import 'replay/run_replay_trace.dart';
 import 'components/background/parallax_background.dart';
@@ -157,6 +158,18 @@ class PaperFlightGame extends FlameGame
         ...collectibleSpawner.poolDiagnostics,
         ...powerUpSpawner.poolDiagnostics,
       ];
+
+  RuntimeDiagnosticsSnapshot get runtimeDiagnostics =>
+      RuntimeDiagnosticsSnapshot(
+        runSeed: _runSeed,
+        replay: replayTrace.snapshot(),
+        pools: List<ObjectPoolDiagnostics>.unmodifiable(poolDiagnostics),
+        activeObstacles: obstacleSpawner.activeCount,
+        activeCoins: collectibleSpawner.activeCoinCount,
+        activeRings: collectibleSpawner.activeRingCount,
+        activePowerUps: powerUpSpawner.activeCount,
+        dynamicDifficulty: dynamicDifficultySystem.intensity,
+      );
 
   /// Juice layer — adaptive audio, dynamic camera, streaks, chimes & haptics.
   late final GameFeelSystem gameFeelSystem;

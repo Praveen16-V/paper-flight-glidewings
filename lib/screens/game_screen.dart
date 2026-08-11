@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flame/game.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -53,6 +56,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
   bool _started = false;
   bool _startScheduled = false;
   bool _showModeIntro = false;
+  bool _diagnosticsReported = false;
 
   /// A game-over session can continue publishing HUD timer updates while the
   /// results route is being pushed (for example, when a timed power-up is
@@ -93,9 +97,10 @@ class _GameScreenState extends ConsumerState<GameScreen>
             _game.phase == GamePhase.paused)) {
       _game.abandonRun(reason: 'game_screen_disposed');
     }
-    _performanceMonitor.stop(
-      outcome: _resultsNavigationStarted ? 'completed' : 'abandoned',
-    );
+    final diagnosticsOutcome =
+        _resultsNavigationStarted ? 'completed' : 'abandoned';
+    _performanceMonitor.stop(outcome: diagnosticsOutcome);
+    _reportRuntimeDiagnostics(diagnosticsOutcome);
 
     // Do NOT manually call _game.dispose() here.
     //
@@ -143,7 +148,9 @@ class _GameScreenState extends ConsumerState<GameScreen>
       }
 
       _resultsNavigationStarted = true;
-      _performanceMonitor.stop(outcome: _performanceOutcome(next));
+      final diagnosticsOutcome = _performanceOutcome(next);
+      _performanceMonitor.stop(outcome: diagnosticsOutcome);
+      _reportRuntimeDiagnostics(diagnosticsOutcome);
       if (next.mode == GameMode.trial && next.trialOutcome != null) {
         _navigateToTrialResults(next.trialOutcome!);
         return;
@@ -225,6 +232,18 @@ class _GameScreenState extends ConsumerState<GameScreen>
     if (!mounted) return;
     setState(() => _showModeIntro = false);
     _scheduleRunStart();
+  }
+
+  void _reportRuntimeDiagnostics(String outcome) {
+    if (!_started || _diagnosticsReported || _game.isDisposed) return;
+    _diagnosticsReported = true;
+    unawaited(
+      AnalyticsService.instance.logRuntimeDiagnostics(
+        mode: widget.args.mode,
+        outcome: outcome,
+        snapshot: _game.runtimeDiagnostics,
+      ),
+    );
   }
 
   String _performanceOutcome(GameSessionState session) {
@@ -358,6 +377,10 @@ class _PauseOverlay extends ConsumerWidget {
                         letterSpacing: 3,
                       ),
                     ),
+                    if (kDebugMode) ...[
+                      const SizedBox(height: 14),
+                      _RuntimeDiagnosticsPanel(game: game),
+                    ],
                     const SizedBox(height: 26),
                     PaperButton(
                       label: 'Resume',
@@ -417,6 +440,63 @@ class _PauseOverlay extends ConsumerWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Debug-only pause-card view for replay/pool health during a live soak run.
+class _RuntimeDiagnosticsPanel extends StatelessWidget {
+  const _RuntimeDiagnosticsPanel({required this.game});
+
+  final PaperFlightGame game;
+
+  @override
+  Widget build(BuildContext context) {
+    final snapshot = game.runtimeDiagnostics;
+    final shortFingerprint = snapshot.replay.fingerprint.length > 18
+        ? snapshot.replay.fingerprint.substring(
+            snapshot.replay.fingerprint.length - 18,
+          )
+        : snapshot.replay.fingerprint;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF18222B),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.accentAlt.withOpacity(.65)),
+      ),
+      child: DefaultTextStyle(
+        style: AppTypography.statSmall.copyWith(
+          color: const Color(0xFFE1F5FE),
+          fontSize: 10,
+          height: 1.45,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'DEV DIAGNOSTICS',
+              style: AppTypography.overline.copyWith(
+                color: AppColors.accentAlt,
+                fontSize: 9,
+                letterSpacing: 1.2,
+              ),
+            ),
+            Text('trace $shortFingerprint • ${snapshot.replay.eventCount} events'),
+            Text(
+              'active ${snapshot.activeEntityCount} • pools peak '
+              '${snapshot.poolPeakInUse} • rejected '
+              '${snapshot.poolRejectedReleases}',
+            ),
+            Text(
+              'difficulty ${(snapshot.dynamicDifficulty * 100).round()}% • '
+              'discarded ${snapshot.poolDiscarded}',
+            ),
+          ],
         ),
       ),
     );

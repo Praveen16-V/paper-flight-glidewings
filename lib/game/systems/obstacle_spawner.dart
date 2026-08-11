@@ -44,6 +44,7 @@ class ObstacleSpawner extends Component {
 
   final List<ObstacleComponent> _active = [];
   List<ObstacleComponent> get activeObstacles => _active;
+  int get activeCount => _active.length;
 
   /// Snapshot-only diagnostics; callers should sample this outside the frame
   /// hot path (e.g. at run completion or in a developer overlay).

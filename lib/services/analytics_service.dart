@@ -5,6 +5,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
+import '../game/diagnostics/runtime_diagnostics.dart';
 
 /// Central event contract for product, balance, economy, ad, and runtime data.
 ///
@@ -215,6 +216,30 @@ class AnalyticsService {
   }
 
   // ── Runtime performance ──────────────────────────────────────────────────
+
+  /// One bounded post-run health report joining replay integrity and pool
+  /// lifecycle counters. Frame timing remains in [logFramePerformance] so this
+  /// event stays useful even when platform timing callbacks are unavailable.
+  Future<void> logRuntimeDiagnostics({
+    required GameMode mode,
+    required String outcome,
+    required RuntimeDiagnosticsSnapshot snapshot,
+  }) {
+    return _safeEvent('game_runtime_diagnostics', {
+      'mode': mode.name,
+      'outcome': outcome,
+      'run_seed': snapshot.runSeed,
+      'replay_fingerprint': snapshot.replay.fingerprint,
+      'trace_events': snapshot.replay.eventCount,
+      'trace_entries': snapshot.replay.recentEntries.length,
+      'pool_created': snapshot.poolCreated,
+      'pool_discarded': snapshot.poolDiscarded,
+      'pool_rejected_releases': snapshot.poolRejectedReleases,
+      'pool_peak_in_use': snapshot.poolPeakInUse,
+      'active_entities': snapshot.activeEntityCount,
+      'difficulty_x100': (snapshot.dynamicDifficulty * 100).round(),
+    });
+  }
 
   Future<void> logFramePerformance({
     required GameMode mode,

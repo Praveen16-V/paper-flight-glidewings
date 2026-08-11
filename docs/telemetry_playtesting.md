@@ -19,6 +19,7 @@ changed.
 | Are rewards paced well? | `economy_transaction`, grouped by `currency`, `direction`, and `reason` |
 | Are ads healthy? | `ad_requested` → `ad_impression` → `ad_outcome` / `ad_reward_earned` |
 | Do low-end devices hold frame budget? | `game_frame_performance`: average/p95 build, raster and total frame time, slow/frozen frames |
+| Did a long run keep system health bounded? | `game_runtime_diagnostics`: trace count, active entities, pool creation/discard/rejection/peak counters |
 | Does onboarding help? | `onboarding_action` by `surface`, `action`, `page`, and `mode` |
 
 ## Recommended tuning loop

@@ -180,6 +180,7 @@ swap it for a Firestore/REST implementation without touching game code.
 | Typed gameplay event bus | Decouples confirmed near-miss and defensive-save signals from pacing, feedback, and future telemetry consumers without a global singleton |
 | Versioned named run RNG | Isolates layout, entity-animation, and cosmetic draws so Daily/replay seeds remain stable as systems evolve |
 | Bounded replay trace | Fingerprints all layout decisions while retaining only a fixed recent window for soak-safe divergence reports |
+| Runtime diagnostics snapshot | Aggregates replay, pool, active-entity, and adaptive-difficulty health for debug pause cards and one post-run report |
 | Test AdMob IDs | Always safe to commit; real IDs belong in a build-flavour env file, not source |
 
 ---
@@ -266,6 +267,9 @@ for the event dictionary, cohort workflow, guardrails, and physical-device matri
   sensor sample and remains user-paused after an interruption.
 - `FramePerformanceMonitor` records one bounded aggregate per run (average and
   p95 total/build/raster time plus slow/frozen-frame counts).
+- Debug pause cards expose a runtime health snapshot (replay fingerprint,
+  trace count, pool peaks/rejections, active entities, and adaptive intensity);
+  the same bounded summary is emitted as `game_runtime_diagnostics` post-run.
 - Rewarded/interstitial native objects are single-use and disposed on every
   terminal callback. Interstitial counters reset only after an ad was actually
   shown, not after capped or unavailable checks.
