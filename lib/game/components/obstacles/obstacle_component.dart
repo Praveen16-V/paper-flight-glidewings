@@ -27,6 +27,15 @@ abstract class ObstacleComponent extends PositionComponent
   bool get isActive => _active;
   bool _nearMissAwarded = false;
 
+  int _durability = 0;
+  bool get isDestructible => type.isDestructible;
+  bool get acceptsSnapInteraction => type.isSnapInteractive || isDestructible;
+  int get durability => _durability;
+  int get maxDurability => type.destructibleHitPoints;
+  double get durabilityFraction => maxDurability <= 0
+      ? 0.0
+      : (_durability / maxDurability).clamp(0.0, 1.0).toDouble();
+
   double _minNearMissClearance = double.infinity;
   void Function(ObstacleComponent)? onRecycle;
 
@@ -91,6 +100,7 @@ abstract class ObstacleComponent extends PositionComponent
     );
     _active = true;
     _nearMissAwarded = false;
+    _durability = type.destructibleHitPoints;
     _minNearMissClearance = double.infinity;
     animTime = 0.0;
     challengeGapCounted = false;
@@ -110,6 +120,7 @@ abstract class ObstacleComponent extends PositionComponent
     script = null;
     combinationId = null;
     _nearMissAwarded = false;
+    _durability = 0;
     _minNearMissClearance = double.infinity;
     if (!retainsHitboxesWhenInactive) {
       removeAll(children.whereType<ShapeHitbox>().toList());
@@ -133,13 +144,133 @@ abstract class ObstacleComponent extends PositionComponent
   void onActivate(double scrollSpeed) {}
 
   /// Returns a squared distance when this obstacle is inside a live paper-snap
-  /// interaction envelope, otherwise `null`. Keeping target selection on the
-  /// obstacle lets every future interactive family define its own fair shape.
-  double? snapInteractionDistanceSquaredTo(Vector2 planePosition) => null;
+  /// interaction envelope, otherwise `null`. Subclasses can replace the
+  /// envelope for bespoke interactions (such as kite tethers); destructibles
+  /// use this common, forward-facing target volume.
+  double? snapInteractionDistanceSquaredTo(Vector2 planePosition) {
+    if (!isActive || !isDestructible) return null;
+    final dx = position.x - planePosition.x;
+    final dy = position.y + size.y * .5 - planePosition.y;
+    if (dx.abs() > GameConfig.destructibleSnapHorizontalReach ||
+        dy < -GameConfig.destructibleSnapReachAhead ||
+        dy > GameConfig.destructibleSnapReachBehind) {
+      return null;
+    }
+    return dx * dx + dy * dy;
+  }
 
   /// Handles the selected paper-snap interaction. A `true` result consumes the
   /// current snap pulse, so only one nearby target can resolve per burst.
-  bool resolveSnapInteraction(Vector2 planePosition) => false;
+  bool resolveSnapInteraction(Vector2 planePosition) {
+    if (snapInteractionDistanceSquaredTo(planePosition) == null) return false;
+    return _applySnapDamage();
+  }
+
+  bool _applySnapDamage() {
+    if (!isDestructible || !_active) return false;
+    if (_durability <= 0) _durability = maxDurability;
+    _durability--;
+
+    final impactPosition = Vector2(position.x, position.y + size.y * .5);
+    if (_durability > 0) {
+      game.world.add(
+        ColoredBurst(
+          position: impactPosition.clone(),
+          color: const Color(0xFFFFAB40),
+        ),
+      );
+      game.world.add(
+        FloatingScoreText(
+          position: impactPosition.clone(),
+          text: 'CRACK! $_durability LEFT',
+          color: const Color(0xFFFFAB40),
+          fontSize: 14,
+        ),
+      );
+      game.gameFeelSystem.onNearMiss();
+      return true;
+    }
+
+    final comboNotches = GameConfig.destructibleDestroyComboNotches.toInt();
+    game.scoringSystem
+        .awardComboNotches(GameConfig.destructibleDestroyComboNotches);
+    game.inputManager.restoreSnapCharge(GameConfig.destructibleSnapChargeRefund);
+    game.collectibleSpawner.spawnCoinLine(
+      x: impactPosition.x,
+      startY: impactPosition.y,
+      count: GameConfig.destructibleDestroyCoinCount,
+      spacing: GameConfig.destructibleDestroyCoinSpacing,
+    );
+    game.world.add(
+      ColoredBurst(
+        position: impactPosition.clone(),
+        color: const Color(0xFFFFD740),
+      ),
+    );
+    game.world.add(
+      FloatingScoreText(
+        position: impactPosition.clone(),
+        text: 'PAPER BREAK! +$comboNotches COMBO',
+        color: const Color(0xFFFFD740),
+        fontSize: 16,
+      ),
+    );
+    game.gameFeelSystem.onCoinCollected(game.scoringSystem.comboCount);
+    recycleAfterInteraction();
+    return true;
+  }
+
+  /// Draws an intentionally tiny integrity strip, preserving the obstacle's
+  /// silhouette while making a second drone snap or a fragile target readable.
+  void renderDestructibleIntegrity(
+    Canvas canvas, {
+    required double centerX,
+    required double topY,
+  }) {
+    if (!isDestructible || maxDurability <= 0) return;
+
+    const width = 26.0;
+    const height = 3.4;
+    final rect = Rect.fromLTWH(centerX - width * .5, topY, width, height);
+    final background = Paint()
+      ..color = const Color(0x99000000)
+      ..style = PaintingStyle.fill;
+    final fraction = durabilityFraction;
+    final fill = Paint()
+      ..color = Color.lerp(
+        const Color(0xFFFF5252),
+        const Color(0xFF80DEEA),
+        fraction,
+      )!
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(2)),
+      background,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(rect.left, rect.top, rect.width * fraction, rect.height),
+        const Radius.circular(2),
+      ),
+      fill,
+    );
+
+    if (fraction < 1.0) {
+      final crack = Paint()
+        ..color = const Color(0xFFFFF3E0).withOpacity(.78)
+        ..strokeWidth = .8;
+      canvas.drawLine(
+        Offset(centerX - 5, topY + height + 2),
+        Offset(centerX - 1, topY + height + 6),
+        crack,
+      );
+      canvas.drawLine(
+        Offset(centerX - 1, topY + height + 6),
+        Offset(centerX + 3, topY + height + 3),
+        crack,
+      );
+    }
+  }
 
   void _playThreatCue() {
     final cue = switch (type) {
@@ -1569,6 +1700,7 @@ class DroneObstacle extends ObstacleComponent {
     }
 
     canvas.restore();
+    renderDestructibleIntegrity(canvas, centerX: w * .5, topY: -6);
     renderTelegraph(canvas);
   }
 
@@ -1702,6 +1834,7 @@ class HotAirBalloonObstacle extends ObstacleComponent {
 
     // Wicker basket
     canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(cx, 82), width: 20, height: 14), const Radius.circular(2)), Paint()..color = const Color(0xFF8D6E63));
+    renderDestructibleIntegrity(canvas, centerX: cx, topY: 0);
     renderTelegraph(canvas);
   }
 }
@@ -2076,6 +2209,7 @@ class FireworksObstacle extends ObstacleComponent {
       canvas.drawCircle(Offset(cx, cy), 5, Paint()..color = const Color(0xFFFFF9C4));
     }
 
+    renderDestructibleIntegrity(canvas, centerX: cx, topY: 1);
     renderTelegraph(canvas);
   }
 }
@@ -2111,6 +2245,7 @@ class WeatherBalloonObstacle extends ObstacleComponent {
     canvas.drawRect(Rect.fromLTWH(cx - 14, 54, 28, 16), Paint()..color = const Color(0xFF455A64));
     canvas.drawCircle(Offset(cx, 62), 3, Paint()..color = const Color(0xFF00E5FF));
 
+    renderDestructibleIntegrity(canvas, centerX: cx, topY: 0);
     renderTelegraph(canvas);
   }
 }

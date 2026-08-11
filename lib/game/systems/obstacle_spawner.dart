@@ -122,7 +122,7 @@ class ObstacleSpawner extends Component {
     ObstacleComponent? target;
     var bestDistanceSquared = double.infinity;
     for (final obstacle in _active) {
-      if (!obstacle.type.isSnapInteractive) continue;
+      if (!obstacle.acceptsSnapInteraction) continue;
       final distanceSquared =
           obstacle.snapInteractionDistanceSquaredTo(planePosition);
       if (distanceSquared == null || distanceSquared >= bestDistanceSquared) {

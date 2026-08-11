@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-obstacles-8';
+  static const String balanceVersion = '2026.08-obstacles-9';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of
@@ -406,6 +406,18 @@ abstract class GameConfig {
 
   /// Minimum spawn interval floor.
   static const double obstacleMinSpawnInterval = 0.55;
+
+  // ── Destructible Obstacles ───────────────────────────────────────────────
+  /// Paper-snap reaches a destructible target just ahead of the plane. Final
+  /// breaks refund the tactical snap and pay a compact reward; partial damage
+  /// intentionally does not, so armoured targets remain a real commitment.
+  static const double destructibleSnapReachAhead = 165.0;
+  static const double destructibleSnapReachBehind = 46.0;
+  static const double destructibleSnapHorizontalReach = 78.0;
+  static const int destructibleSnapChargeRefund = 1;
+  static const double destructibleDestroyComboNotches = 3.0;
+  static const int destructibleDestroyCoinCount = 4;
+  static const double destructibleDestroyCoinSpacing = 24.0;
 
   // ── Telegraphy 2.0 ───────────────────────────────────────────────────────
   /// Off-screen warnings combine a filling arrival dial with a short intent

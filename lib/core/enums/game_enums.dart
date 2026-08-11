@@ -282,6 +282,23 @@ extension ObstacleLabel on ObstacleType {
   /// being dodged. More interaction families can join this taxonomy later.
   bool get isSnapInteractive => this == ObstacleType.kite;
 
+  /// Breakable paper/technology hazards with a small visible integrity budget.
+  /// Drones need two deliberate snap hits; balloons and fireworks are fragile.
+  int get destructibleHitPoints {
+    switch (this) {
+      case ObstacleType.drone:
+        return 2;
+      case ObstacleType.hotAirBalloon:
+      case ObstacleType.fireworks:
+      case ObstacleType.weatherBalloon:
+        return 1;
+      default:
+        return 0;
+    }
+  }
+
+  bool get isDestructible => destructibleHitPoints > 0;
+
   /// Dynamic hazards vulnerable to Cursed Magnet's dangerous pull.
   bool get isCursedMagnetAttractable =>
       this == ObstacleType.bird ||
