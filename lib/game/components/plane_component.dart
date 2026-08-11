@@ -3011,6 +3011,11 @@ class PlaneComponent extends PositionComponent
     );
   }
 
+  void applyTornadoPull(Vector2 velocityDelta) {
+    _velocityX += velocityDelta.x;
+    _velocityY += velocityDelta.y;
+  }
+
   void applyUnstableGhostTeleport({required double dx, required double dy}) {
     position.x = (position.x + dx)
         .clamp(

@@ -35,7 +35,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-powerups-9';
+  static const String balanceVersion = '2026.08-obstacles-1';
 
   /// Riverpod/HUD publishing cadence. The Flame loop still simulates every
   /// frame; Flutter widgets receive a compact snapshot at 10 Hz instead of

@@ -34,6 +34,9 @@ class ObstacleSpawner extends Component {
   late final ObjectPool<WeatherBalloonObstacle> _weatherBalloonPool;
   late final ObjectPool<ClotheslineObstacle> _clotheslinePool;
   late final ObjectPool<WindSockObstacle> _windSockPool;
+  late final ObjectPool<LightningStrikeObstacle> _lightningPool;
+  late final ObjectPool<MeteorShowerObstacle> _meteorShowerPool;
+  late final ObjectPool<TornadoObstacle> _tornadoPool;
 
   final List<ObstacleComponent> _active = [];
   List<ObstacleComponent> get activeObstacles => _active;
@@ -63,6 +66,9 @@ class ObstacleSpawner extends Component {
     _weatherBalloonPool = ObjectPool(create: WeatherBalloonObstacle.new, initialSize: 3);
     _clotheslinePool = ObjectPool(create: ClotheslineObstacle.new, initialSize: 3);
     _windSockPool = ObjectPool(create: WindSockObstacle.new, initialSize: 3);
+    _lightningPool = ObjectPool(create: LightningStrikeObstacle.new, initialSize: 2);
+    _meteorShowerPool = ObjectPool(create: MeteorShowerObstacle.new, initialSize: 2);
+    _tornadoPool = ObjectPool(create: TornadoObstacle.new, initialSize: 2);
 
     await super.onLoad();
   }
@@ -276,6 +282,12 @@ class ObstacleSpawner extends Component {
         return _clotheslinePool.acquire();
       case ObstacleType.windsock:
         return _windSockPool.acquire();
+      case ObstacleType.lightningStrike:
+        return _lightningPool.acquire();
+      case ObstacleType.meteorShower:
+        return _meteorShowerPool.acquire();
+      case ObstacleType.tornado:
+        return _tornadoPool.acquire();
     }
   }
 
@@ -313,6 +325,12 @@ class ObstacleSpawner extends Component {
         _clotheslinePool.release(obs as ClotheslineObstacle);
       case ObstacleType.windsock:
         _windSockPool.release(obs as WindSockObstacle);
+      case ObstacleType.lightningStrike:
+        _lightningPool.release(obs as LightningStrikeObstacle);
+      case ObstacleType.meteorShower:
+        _meteorShowerPool.release(obs as MeteorShowerObstacle);
+      case ObstacleType.tornado:
+        _tornadoPool.release(obs as TornadoObstacle);
     }
   }
 }

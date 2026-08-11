@@ -128,6 +128,9 @@ class BiomeManager extends Component {
           ObstacleType.clothesline: 0.0,
           ObstacleType.fireworks: 0.0,
           ObstacleType.weatherBalloon: 0.0,
+          ObstacleType.lightningStrike: 1.25,
+          ObstacleType.meteorShower: 0.0,
+          ObstacleType.tornado: 0.70,
         }[type] ?? 0.0;
       case Biome.mountain:
         return const {
@@ -162,6 +165,9 @@ class BiomeManager extends Component {
           ObstacleType.windsock: 0.2,
           ObstacleType.weatherBalloon: 0.1,
           ObstacleType.clothesline: 0.0,
+          ObstacleType.lightningStrike: 0.25,
+          ObstacleType.meteorShower: 0.0,
+          ObstacleType.tornado: 0.15,
         }[type] ?? 0.0;
       case Biome.atmosphere:
         return const {
@@ -179,6 +185,9 @@ class BiomeManager extends Component {
           ObstacleType.building: 0.1,
           ObstacleType.treeBranch: 0.0,
           ObstacleType.clothesline: 0.0,
+          ObstacleType.lightningStrike: 0.35,
+          ObstacleType.meteorShower: 1.45,
+          ObstacleType.tornado: 0.50,
         }[type] ?? 0.0;
     }
   }

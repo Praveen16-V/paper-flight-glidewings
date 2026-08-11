@@ -163,6 +163,9 @@ enum ObstacleType {
   weatherBalloon, // satellite dish & tethered weather probe balloon cluster
   clothesline,    // backyard clothesline with fluttering paper dolls & clothespins
   windsock,       // aviation windsock cone pointing in direction of local wind
+  lightningStrike,// telegraphed vertical lightning bolt
+  meteorShower,   // atmosphere cluster with warning shadows
+  tornado,        // rotating wind column that pulls the plane
 }
 
 extension ObstacleLabel on ObstacleType {
@@ -196,6 +199,12 @@ extension ObstacleLabel on ObstacleType {
         return 'Paper Clothesline';
       case ObstacleType.windsock:
         return 'Airfield Windsock';
+      case ObstacleType.lightningStrike:
+        return 'Lightning Strike';
+      case ObstacleType.meteorShower:
+        return 'Meteor Shower';
+      case ObstacleType.tornado:
+        return 'Tornado';
     }
   }
 
@@ -229,6 +238,12 @@ extension ObstacleLabel on ObstacleType {
         return 'clothesline';
       case ObstacleType.windsock:
         return 'windsock';
+      case ObstacleType.lightningStrike:
+        return 'lightning_strike';
+      case ObstacleType.meteorShower:
+        return 'meteor_shower';
+      case ObstacleType.tornado:
+        return 'tornado';
     }
   }
 

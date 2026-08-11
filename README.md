@@ -205,6 +205,7 @@ Key knobs to adjust during playtesting:
 - `powerUpStatusRingRadius` / `powerUpStatusRingStrokeWidth` — in-flight radial effect readability
 - `AudioSynth.shieldHum` / `ghostWhisper` / `turboSpool` — synthesized power-up audio cues
 - `obstacleBaseSpawnInterval` / `obstacleMinSpawnInterval` — density curve
+- Environmental hazards: Lightning Strike, Meteor Shower, and Tornado are biome-weighted in Storm/Atmosphere
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts
 - `comboDrainDuration` / `comboHitRetentionFraction` — combo decay gauge pace & shield-hit penalty

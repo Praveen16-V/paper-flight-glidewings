@@ -60,7 +60,10 @@ abstract class ObstacleComponent extends PositionComponent
         type == ObstacleType.bird ||
         type == ObstacleType.stormCloud ||
         type == ObstacleType.trafficPlane ||
-        type == ObstacleType.fireworks;
+        type == ObstacleType.fireworks ||
+        type == ObstacleType.lightningStrike ||
+        type == ObstacleType.meteorShower ||
+        type == ObstacleType.tornado;
     position = Vector2(spawnX, earlyWarning ? -260 : GameConfig.obstacleSpawnY);
     _active = true;
     _nearMissAwarded = false;
@@ -100,7 +103,9 @@ abstract class ObstacleComponent extends PositionComponent
     final cue = switch (type) {
       ObstacleType.drone => 'drone_warning.wav',
       ObstacleType.bird => 'bird_warning.wav',
-      ObstacleType.stormCloud => 'thunder_warning.wav',
+      ObstacleType.stormCloud || ObstacleType.lightningStrike =>
+        'thunder_warning.wav',
+      ObstacleType.tornado => 'wind_loop.wav',
       _ => null,
     };
     if (cue != null) {
@@ -1731,6 +1736,229 @@ class WindSockObstacle extends ObstacleComponent {
     canvas.drawRect(Rect.fromLTWH(cx + 6, 9.5, 6, 15), Paint()..color = Colors.white);
     canvas.drawRect(Rect.fromLTWH(cx + 15, 12, 5, 13), Paint()..color = Colors.white);
 
+    renderTelegraph(canvas);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 15. LightningStrikeObstacle — Telegraph, Flash, Vertical Strike
+// ─────────────────────────────────────────────────────────────────────────────
+
+class LightningStrikeObstacle extends ObstacleComponent {
+  LightningStrikeObstacle() : super(type: ObstacleType.lightningStrike);
+
+  bool _struck = false;
+  double _strikeTimer = 0;
+
+  @override
+  Color get telegraphColor => const Color(0xFFFFF176);
+
+  @override
+  void onActivate(double scrollSpeed) {
+    size = Vector2(44, GameConfig.designHeight);
+    _struck = false;
+    _strikeTimer = 0;
+    removeAll(children.whereType<ShapeHitbox>().toList());
+  }
+
+  @override
+  void updateObstacle(double dt) {
+    if (!_struck && position.y >= -18) {
+      _struck = true;
+      _strikeTimer = .34;
+      add(RectangleHitbox(
+        size: Vector2(20, GameConfig.designHeight),
+        position: Vector2(12, 0),
+      ));
+    }
+    if (_struck) {
+      _strikeTimer -= dt;
+      if (_strikeTimer <= 0) {
+        _active = false;
+        onRecycle?.call(this);
+      }
+    }
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final x = size.x * .5;
+    if (!_struck) {
+      final warn = Paint()
+        ..color = const Color(0x44FFF176)
+        ..strokeWidth = 2.0;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.y), warn);
+      renderTelegraph(canvas);
+      return;
+    }
+
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.x, size.y),
+      Paint()..color = const Color(0x33FFFDE7),
+    );
+    final bolt = Path()..moveTo(x, 0);
+    for (var i = 0; i < 12; i++) {
+      final y = (i + 1) * size.y / 12;
+      final dx = i.isEven ? -10.0 : 10.0;
+      bolt.lineTo(x + dx, y - 18);
+      bolt.lineTo(x, y);
+    }
+    final glow = Paint()
+      ..color = const Color(0x99FFF176)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 8
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
+    final core = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+    canvas.drawPath(bolt, glow);
+    canvas.drawPath(bolt, core);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 16. MeteorShowerObstacle — Atmosphere Impacts with Warning Shadows
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MeteorShowerObstacle extends ObstacleComponent {
+  MeteorShowerObstacle() : super(type: ObstacleType.meteorShower);
+
+  final List<_Meteor> _meteors = [];
+
+  @override
+  Color get telegraphColor => const Color(0xFFFFAB91);
+
+  @override
+  void onActivate(double scrollSpeed) {
+    size = Vector2(GameConfig.designWidth, 300);
+    _meteors.clear();
+    removeAll(children.whereType<ShapeHitbox>().toList());
+    for (var i = 0; i < 4; i++) {
+      final meteor = _Meteor(
+        x: rngRange(42, GameConfig.designWidth - 42),
+        y: 35 + i * 63 + rngRange(-12, 12),
+        radius: rngRange(9, 16),
+        phase: rngRange(0, math.pi * 2),
+      );
+      _meteors.add(meteor);
+      add(CircleHitbox(
+        radius: meteor.radius,
+        position: Vector2(meteor.x - meteor.radius, meteor.y - meteor.radius),
+      ));
+    }
+  }
+
+  @override
+  void render(Canvas canvas) {
+    for (final meteor in _meteors) {
+      final shadow = Paint()
+        ..color = const Color(0x33000000)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(meteor.x + 10, meteor.y + 24),
+          width: meteor.radius * 2.8,
+          height: meteor.radius * .8,
+        ),
+        shadow,
+      );
+      final trail = Paint()
+        ..color = const Color(0x99FF7043)
+        ..strokeWidth = meteor.radius * .72
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(
+        Offset(meteor.x - meteor.radius * 2.2, meteor.y - meteor.radius * 2.5),
+        Offset(meteor.x, meteor.y),
+        trail,
+      );
+      canvas.drawCircle(
+        Offset(meteor.x, meteor.y),
+        meteor.radius,
+        Paint()..color = const Color(0xFF5D4037),
+      );
+      canvas.drawCircle(
+        Offset(meteor.x - meteor.radius * .22, meteor.y - meteor.radius * .25),
+        meteor.radius * .35,
+        Paint()..color = const Color(0xFFFFAB91),
+      );
+    }
+    renderTelegraph(canvas);
+  }
+}
+
+class _Meteor {
+  const _Meteor({
+    required this.x,
+    required this.y,
+    required this.radius,
+    required this.phase,
+  });
+
+  final double x;
+  final double y;
+  final double radius;
+  final double phase;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 17. TornadoObstacle — Rotating Wind Column with Pull Force
+// ─────────────────────────────────────────────────────────────────────────────
+
+class TornadoObstacle extends ObstacleComponent {
+  TornadoObstacle() : super(type: ObstacleType.tornado);
+
+  static const double _pullRadius = 128;
+
+  @override
+  Color get telegraphColor => const Color(0xFFB3E5FC);
+
+  @override
+  void onActivate(double scrollSpeed) {
+    size = Vector2(92, 190);
+    removeAll(children.whereType<ShapeHitbox>().toList());
+    add(CircleHitbox(radius: 35, position: Vector2(11, 74)));
+  }
+
+  @override
+  void updateObstacle(double dt) {
+    final center = position + Vector2(0, size.y * .58);
+    final plane = game.plane;
+    final delta = center - plane.position;
+    final distance = delta.length;
+    if (distance > 1 && distance < _pullRadius) {
+      final force = delta.normalized() *
+          (GameConfig.maxWindForce * 2.0 * (1.0 - distance / _pullRadius) * dt);
+      plane.applyTornadoPull(force);
+    }
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final centerX = size.x * .5;
+    final swirl = Paint()
+      ..color = const Color(0x88B3E5FC)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+    for (var i = 0; i < 6; i++) {
+      final y = 22 + i * 25.0;
+      final width = 28 + i * 8.0;
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(centerX + math.sin(animTime * 8 + i) * 7, y),
+          width: width,
+          height: 14,
+        ),
+        animTime * 5 + i * .65,
+        math.pi * 1.5,
+        false,
+        swirl,
+      );
+    }
+    final core = Paint()
+      ..color = const Color(0x2264B5F6)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+    canvas.drawOval(Rect.fromCenter(center: Offset(centerX, 104), width: 58, height: 142), core);
     renderTelegraph(canvas);
   }
 }
