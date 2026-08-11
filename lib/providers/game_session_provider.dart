@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
 import '../models/run_result.dart';
 

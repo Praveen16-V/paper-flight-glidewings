@@ -72,8 +72,8 @@ class PowerUpSpawner extends Component {
             ? CorruptedPowerUpType.cursedMagnet
             : CorruptedPowerUpType.unstableGhost)
         : null;
-    final type = corrupted?.baseType ??
-        _weightedPick(
+    final PowerUpType type = corrupted?.baseType ??
+        _weightedPick<PowerUpType>(
           PowerUpType.values,
           [
             1.4, // shield
