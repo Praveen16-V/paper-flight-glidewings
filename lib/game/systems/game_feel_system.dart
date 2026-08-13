@@ -17,14 +17,15 @@ import '../../providers/game_session_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../paper_flight_game.dart';
 
-/// The "juice" layer — adaptive flight audio, dynamic camera, speed streaks,
-/// coin-combo chime melody and rich haptics (Task 6).
+/// The "juice" layer — dynamic camera, speed streaks, coin-combo chimes and
+/// rich haptics (Task 6).
+///
+/// The old continuously looping wind bed was intentionally removed. Starting
+/// it as the run entered [GamePhase.playing] produced an unwanted whoosh at the
+/// beginning of every flight. Event sounds and Zen music remain unchanged.
 ///
 /// Responsibilities (each respects the player's SFX / haptic settings):
 ///
-///  * **Adaptive wind** — a continuously looping `wind_loop.wav` whose volume
-///    and playback rate (pitch) track world scroll speed + vertical dive speed.
-///    Gated by the SFX toggle and scaled by SFX volume (per spec).
 ///  * **Dynamic camera** — pulls the view back (zoom-out) once scroll speed
 ///    passes ~350 px/s. (The viewport previously also banked toward lateral
 ///    movement, tilting the whole world with the plane; that is intentionally
@@ -44,14 +45,6 @@ import '../paper_flight_game.dart';
 /// The camera zoom/rotation modify `game.camera.viewfinder` (Flame's zoom and
 /// angle both pivot about the viewport centre), so the framing is preserved.
 class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
-  // ── Continuous wind player ────────────────────────────────────────────────
-  AudioPlayer? _wind;
-  bool _windReady = false;
-  bool _windStarting = false;
-  double _windVol = 0.0;
-  double _windTarget = 0.0;
-  double _windRate = 1.0;
-
   // ── Zen Flight ambient pad (Task 8) ───────────────────────────────────────
   AudioPlayer? _zenMusic;
   bool _zenMusicStarting = false;
@@ -73,22 +66,15 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
   double _shieldHumTimer = 0.0;
 
   @override
-  Future<void> onLoad() async {
-    await super.onLoad();
-    _kickStartWind();
-  }
-
-  @override
   void onRemove() {
     dispose();
     super.onRemove();
   }
 
-  /// Releases the continuous wind and Zen-music audio players. Safe to call
-  /// multiple times. Exposed so the host game can tear audio down
-  /// deterministically on dispose instead of relying solely on onRemove.
+  /// Releases the Zen-music player. Safe to call multiple times. Exposed so the
+  /// host game can tear audio down deterministically on dispose instead of
+  /// relying solely on [onRemove].
   void dispose() {
-    _disposeWind();
     stopZenMusic();
   }
 
@@ -142,22 +128,12 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     _chromaticTimer = 0;
   }
 
-  /// Instantly silences the wind ambient.
-  void silence() {
-    _windTarget = 0;
-    _windVol = 0;
-    try {
-      _wind?.setVolume(0);
-    } catch (_) {}
-  }
-
   // ── Update ────────────────────────────────────────────────────────────────
 
   @override
   void update(double dt) {
     final playing = gameRef.phase == GamePhase.playing;
 
-    _updateWind(dt, playing);
     _updateCamera(dt, playing);
     _updateStreakOverlay(dt, playing);
     _updateThermalHaptics(dt, playing);
@@ -168,71 +144,6 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
     }
 
     super.update(dt);
-  }
-
-  // ── Continuous wind (SFX-gated ambient) ───────────────────────────────────
-
-  void _kickStartWind() {
-    if (_windReady || _windStarting) return;
-    _windStarting = true;
-    _startWindAsync();
-  }
-
-  Future<void> _startWindAsync() async {
-    try {
-      final player = AudioPlayer();
-      await player.setReleaseMode(ReleaseMode.loop);
-      await player.setSource(AssetSource('audio/wind_loop.wav'));
-      await player.setVolume(0.0);
-      _wind = player;
-      await player.resume();
-    } catch (_) {
-      _wind = null;
-    } finally {
-      _windReady = true;
-      _windStarting = false;
-    }
-  }
-
-  void _updateWind(double dt, bool playing) {
-    final settings = _settings();
-    final wantWind = playing && settings.sfxEnabled;
-    final volume = settings.sfxVolume;
-
-    if (!_windReady) {
-      if (wantWind) _kickStartWind();
-      return;
-    }
-    final wind = _wind;
-    if (wind == null) return;
-
-    if (!wantWind) {
-      _windTarget = 0.0;
-      _windRate = 1.0;
-    } else {
-      final speedFactor = ((gameRef.scrollSpeed - GameConfig.baseScrollSpeed) /
-              (GameConfig.maxScrollSpeed - GameConfig.baseScrollSpeed))
-          .clamp(0.0, 1.0)
-          .toDouble();
-      final dive = (gameRef.plane.verticalVelocity / GameConfig.maxFallSpeed)
-          .clamp(0.0, 1.0)
-          .toDouble();
-      final level = (0.28 + speedFactor * 0.5 + dive * 0.4).clamp(0.0, 1.0);
-      _windTarget = level * volume;
-      _windRate = 1.0 + speedFactor * 0.35 + dive * 0.25;
-    }
-
-    _windVol = MathUtils.lerp(_windVol, _windTarget, (4.0 * dt).clamp(0.0, 1.0));
-    unawaited(wind.setVolume(_windVol));
-    unawaited(wind.setPlaybackRate(_windRate));
-  }
-
-  void _disposeWind() {
-    try {
-      _wind?.dispose();
-    } catch (_) {}
-    _wind = null;
-    _windReady = false;
   }
 
   // ── Dynamic camera: zoom-out at high speed + screen shake ────────────────
@@ -404,8 +315,8 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
   }
 
   /// Distinct synthesized activation cue for each power-up family. The sounds
-  /// are plane-focused (and volume-gated by player settings) so they remain
-  /// readable over the continuous wind bed on small mobile speakers.
+  /// are plane-focused and volume-gated by player settings so they remain clear
+  /// on small mobile speakers.
   void onPowerUpActivated(PowerUpType type, {bool empowered = false}) {
     if (!_settings().sfxEnabled) return;
     final volume = _settings().sfxVolume * (empowered ? .95 : .72);

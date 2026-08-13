@@ -880,7 +880,6 @@ class PaperFlightGame extends FlameGame
       pauseEngine();
       inputManager.pauseSensors();
       gameFeelSystem.onCrash();
-      gameFeelSystem.silence();
       Future.delayed(
         Duration(milliseconds: (GameConfig.trialCrashFreezeSeconds * 1000).round()),
         () {
@@ -1011,7 +1010,6 @@ class PaperFlightGame extends FlameGame
     pauseEngine();
     inputManager.pauseSensors();
     gameFeelSystem.onCrash();
-    gameFeelSystem.silence();
 
     // Brief freeze then transition to game over. We fire the navigation
     // (triggerGameOver) immediately after the short hit-stop so the results
@@ -1103,7 +1101,6 @@ class PaperFlightGame extends FlameGame
     if (_phase != GamePhase.playing) return;
     pauseEngine();
     _phase = GamePhase.gameOver;
-    gameFeelSystem.silence();
     _finalizeTrial(completed: true, timedOut: false);
   }
 
@@ -1112,7 +1109,6 @@ class PaperFlightGame extends FlameGame
     if (_phase != GamePhase.playing) return;
     pauseEngine();
     _phase = GamePhase.gameOver;
-    gameFeelSystem.silence();
     _finalizeTrial(completed: false, timedOut: true);
   }
 
@@ -1188,7 +1184,6 @@ class PaperFlightGame extends FlameGame
     unawaited(_recordSkinWear(crashed: false));
     _phase = GamePhase.idle;
     inputManager.pauseSensors();
-    gameFeelSystem.silence();
     try {
       pauseEngine();
     } catch (_) {}
@@ -1199,7 +1194,6 @@ class PaperFlightGame extends FlameGame
     _phase = GamePhase.paused;
     pauseEngine();
     inputManager.pauseSensors();
-    gameFeelSystem.silence();
     ref.read(gameSessionProvider.notifier).pause();
   }
 
