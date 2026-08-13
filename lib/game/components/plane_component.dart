@@ -423,6 +423,11 @@ class PlaneComponent extends PositionComponent
             butterflyFlap)
         .clamp(-GameConfig.wingFoldOpenOvershoot, 1.0);
 
+    // Clean hold-driven sweep amount (0 = flat, 1 = wings swept back). Driven
+    // by the same spring as the fold but kept free of flutter/wobble noise so
+    // the backward sweep stays smooth while the span continues to flutter.
+    final wingSweep = _wingFold.clamp(0.0, 1.0).toDouble();
+
     // ── Night Lighting: Forward Projector Headlamp Beam ──────────────────────
     if (game.biomeManager.currentBiome == Biome.night) {
       _drawNightHeadlamp(canvas, w, h);
@@ -454,7 +459,7 @@ class PlaneComponent extends PositionComponent
       ..color = const Color(0x3D000000)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.2)
       ..style = PaintingStyle.fill;
-    _drawPlaneShape(canvas, shadowPaint, w, h, effectiveFold,
+    _drawSweptPlaneShape(canvas, shadowPaint, w, h, effectiveFold, wingSweep,
         isShadow: true, planeColor: planeColor, opacity: ghostOpacity);
     canvas.restore();
 
@@ -462,7 +467,7 @@ class PlaneComponent extends PositionComponent
     final mainPaint = Paint()
       ..color = planeColor.withOpacity(ghostOpacity)
       ..style = PaintingStyle.fill;
-    _drawPlaneShape(canvas, mainPaint, w, h, effectiveFold,
+    _drawSweptPlaneShape(canvas, mainPaint, w, h, effectiveFold, wingSweep,
         isShadow: false, planeColor: planeColor, opacity: ghostOpacity);
 
     // 3. Procedural Paper Grain & Texture Multiply Layer
@@ -565,6 +570,57 @@ class PlaneComponent extends PositionComponent
             isShadow: isShadow, planeColor: planeColor, opacity: opacity);
         break;
     }
+  }
+
+  /// Draws the silhouette with the wings swept back toward the tail in
+  /// proportion to [sweep] — the "pulling the wings back to fly faster" pose
+  /// that plays while the pilot holds the screen. Only the off-centreline wing
+  /// panels shift (their tips move toward the tail by up to
+  /// [GameConfig.wingSweepMaxShiftPixels]); the fuselage centreline is the
+  /// shear axis and therefore stays fixed, so the plane reads as accelerating
+  /// forward rather than turning or flipping. On release the same spring that
+  /// drives [sweep] returns it to 0 and the wings settle back to flat.
+  void _drawSweptPlaneShape(
+    Canvas canvas,
+    Paint basePaint,
+    double w,
+    double h,
+    double wingFold,
+    double sweep, {
+    required bool isShadow,
+    required Color planeColor,
+    required double opacity,
+  }) {
+    if (sweep <= 0.001) {
+      _drawPlaneShape(canvas, basePaint, w, h, wingFold,
+          isShadow: isShadow, planeColor: planeColor, opacity: opacity);
+      return;
+    }
+
+    final cy = h / 2;
+    // Shear coefficient: full shift at the extreme wingtip, zero at the
+    // centreline. Linear in |y - cy| so both halves sweep symmetrically.
+    final s = GameConfig.wingSweepMaxShiftPixels * sweep / cy;
+
+    // Upper wing half — shear backward (toward the tail, -x).
+    canvas.save();
+    canvas.clipRect(Rect.fromLTRB(-w * 3, -h * 3, w * 3, cy));
+    canvas.translate(0, cy);
+    canvas.shear(s, 0);
+    canvas.translate(0, -cy);
+    _drawPlaneShape(canvas, basePaint, w, h, wingFold,
+        isShadow: isShadow, planeColor: planeColor, opacity: opacity);
+    canvas.restore();
+
+    // Lower wing half — mirrored shear so it also sweeps backward.
+    canvas.save();
+    canvas.clipRect(Rect.fromLTRB(-w * 3, cy, w * 3, h * 3));
+    canvas.translate(0, cy);
+    canvas.shear(-s, 0);
+    canvas.translate(0, -cy);
+    _drawPlaneShape(canvas, basePaint, w, h, wingFold,
+        isShadow: isShadow, planeColor: planeColor, opacity: opacity);
+    canvas.restore();
   }
 
   void _drawDartSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
