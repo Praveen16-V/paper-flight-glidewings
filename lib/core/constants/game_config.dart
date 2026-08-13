@@ -395,6 +395,13 @@ abstract class GameConfig {
   /// How far past flat the wings may bow during the release flutter.
   static const double wingFoldOpenOvershoot = 0.12;
 
+  // ── Wing Sweep (Forward-Thrust Pose) ──────────────────────────────────────
+  /// While the pilot holds the screen, the wings sweep back toward the tail to
+  /// sell forward thrust. This is the maximum backward shift (px) of a wingtip
+  /// at full sweep. The shift scales with distance from the fuselage centreline
+  /// so the body never moves — the plane reads as accelerating, not turning.
+  static const double wingSweepMaxShiftPixels = 7.0;
+
   // ── Micro-biome Turbulence Pockets ───────────────────────────────────────
   /// Natural pockets persist long enough to be read and corrected for, rather
   /// than behaving like a single-frame random gust.
