@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flame/collisions.dart';
@@ -103,7 +104,7 @@ class PlaneComponent extends PositionComponent
   bool _glideArcActive = false;
 
   // Oscillation state.
-  double _oscillationPhase = 0.0;    // radians, ticks every frame
+  double _oscillationPhase = 0.0; // radians, ticks every frame
   double _oscillationStrength = 0.0; // [0,1], ramps up after release
 
   // Ceiling stall state.
@@ -209,14 +210,14 @@ class PlaneComponent extends PositionComponent
   Map<CorruptedPowerUpType, double> _corruptedTimerSnapshot = const {};
 
   // ── Distinct Pulse Channels ───────────────────────────────────────────────
-  double _shieldPhase = 0.0;     // 1.2 Hz breathing
-  double _ghostPhase = 0.0;      // 8.0 Hz rapid ethereal flicker
-  double _magnetAngle = 0.0;     // 36 deg/s rotation
-  double _coinRushPhase = 0.0;   // 3.0 Hz
-  double _slowMoPhase = 0.0;     // 1.0 Hz slow tick
-  double _doubleScorePhase = 0.0;// 12.0 Hz jet exhaust flutter
-  double _turboDashPhase = 0.0;  // 20.0 Hz blaze
-  double _blackHoleAngle = 0.0;  // 180 deg/s cosmic vortex
+  double _shieldPhase = 0.0; // 1.2 Hz breathing
+  double _ghostPhase = 0.0; // 8.0 Hz rapid ethereal flicker
+  double _magnetAngle = 0.0; // 36 deg/s rotation
+  double _coinRushPhase = 0.0; // 3.0 Hz
+  double _slowMoPhase = 0.0; // 1.0 Hz slow tick
+  double _doubleScorePhase = 0.0; // 12.0 Hz jet exhaust flutter
+  double _turboDashPhase = 0.0; // 20.0 Hz blaze
+  double _blackHoleAngle = 0.0; // 180 deg/s cosmic vortex
 
   double _shieldHitRippleTimer = 0.0;
   double _ghostFlickerPhase = 0.0;
@@ -320,12 +321,14 @@ class PlaneComponent extends PositionComponent
   }
 
   double get _activeHitboxScale => _shrinkActive
-      ? math.min(
-          _empoweredShrinkActive
-              ? GameConfig.empoweredShrinkHitboxScale
-              : GameConfig.shrinkHitboxScale,
-          _effectiveBaseHitboxScale,
-        ).toDouble()
+      ? math
+          .min(
+            _empoweredShrinkActive
+                ? GameConfig.empoweredShrinkHitboxScale
+                : GameConfig.shrinkHitboxScale,
+            _effectiveBaseHitboxScale,
+          )
+          .toDouble()
       : _effectiveBaseHitboxScale;
 
   void _syncHitboxGeometry() {
@@ -358,8 +361,7 @@ class PlaneComponent extends PositionComponent
       existing.removeFromParent();
       _customPatternOverlay = null;
     }
-    if (paperSkin != PaperSkin.customCraft ||
-        customSkinPatternBase64.isEmpty) {
+    if (paperSkin != PaperSkin.customCraft || customSkinPatternBase64.isEmpty) {
       return;
     }
     final overlay = CustomPatternSkinOverlay(
@@ -382,9 +384,8 @@ class PlaneComponent extends PositionComponent
     final baseColor = paperSkin == PaperSkin.customCraft
         ? Color(customSkinPrimaryHex)
         : Color(paperSkin.baseColorHex);
-    final Color planeColor = paperSkin == PaperSkin.plain
-        ? const Color(0xFFF5A623)
-        : baseColor;
+    final Color planeColor =
+        paperSkin == PaperSkin.plain ? const Color(0xFFF5A623) : baseColor;
 
     final w = size.x;
     final h = size.y;
@@ -412,16 +413,13 @@ class PlaneComponent extends PositionComponent
     final flexNoise = _noise.noise1d(_animTime * 3.8);
     final flexAmplitude = GameConfig.wingFlexBaseNoiseAmplitude +
         _wingFlexStrength * GameConfig.wingFlexCrosswindNoiseBoost;
-    final wingFlexWobble =
-        flexNoise * flexAmplitude * (1.0 - _wingFold * 0.4);
+    final wingFlexWobble = flexNoise * flexAmplitude * (1.0 - _wingFold * 0.4);
     final butterflyFlap = planeType == PlaneType.butterfly
         ? math.sin(_animTime * 10.0) * 0.35 * (1.0 - _wingFold * 0.5)
         : 0.0;
-    final effectiveFold = (_wingFold +
-            _wingFlutterOffset +
-            wingFlexWobble +
-            butterflyFlap)
-        .clamp(-GameConfig.wingFoldOpenOvershoot, 1.0);
+    final effectiveFold =
+        (_wingFold + _wingFlutterOffset + wingFlexWobble + butterflyFlap)
+            .clamp(-GameConfig.wingFoldOpenOvershoot, 1.0);
 
     // Clean hold-driven sweep amount (0 = flat, 1 = wings swept back). Driven
     // by the same spring as the fold but kept free of flutter/wobble noise so
@@ -606,7 +604,8 @@ class PlaneComponent extends PositionComponent
     canvas.save();
     canvas.clipRect(Rect.fromLTRB(-w * 3, -h * 3, w * 3, cy));
     canvas.translate(0, cy);
-    canvas.shear(s, 0);
+    // Apply shear transformation using matrix
+    _applyShearTransform(canvas, s, 0);
     canvas.translate(0, -cy);
     _drawPlaneShape(canvas, basePaint, w, h, wingFold,
         isShadow: isShadow, planeColor: planeColor, opacity: opacity);
@@ -616,56 +615,144 @@ class PlaneComponent extends PositionComponent
     canvas.save();
     canvas.clipRect(Rect.fromLTRB(-w * 3, cy, w * 3, h * 3));
     canvas.translate(0, cy);
-    canvas.shear(-s, 0);
+    // Apply shear transformation using matrix
+    _applyShearTransform(canvas, -s, 0);
     canvas.translate(0, -cy);
     _drawPlaneShape(canvas, basePaint, w, h, wingFold,
         isShadow: isShadow, planeColor: planeColor, opacity: opacity);
     canvas.restore();
   }
 
-  void _drawDartSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
+  /// Apply a shear transformation to the canvas using a transformation matrix.
+  /// This replaces the deprecated Canvas.shear() method.
+  /// [shearX] shifts x by amount proportional to y; [shearY] shifts y by amount proportional to x.
+  void _applyShearTransform(Canvas canvas, double shearX, double shearY) {
+    // Create a 4x4 transformation matrix in column-major order for shear transformation
+    // For 2D shear: [1, shearY, 0, 0; shearX, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1]
+    final Float64List matrix = Float64List(16);
+    matrix[0] = 1.0; // m00
+    matrix[1] = shearY; // m10
+    matrix[2] = 0.0; // m20
+    matrix[3] = 0.0; // m30
+    matrix[4] = shearX; // m01
+    matrix[5] = 1.0; // m11
+    matrix[6] = 0.0; // m21
+    matrix[7] = 0.0; // m31
+    matrix[8] = 0.0; // m02
+    matrix[9] = 0.0; // m12
+    matrix[10] = 1.0; // m22
+    matrix[11] = 0.0; // m32
+    matrix[12] = 0.0; // m03
+    matrix[13] = 0.0; // m13
+    matrix[14] = 0.0; // m23
+    matrix[15] = 1.0; // m33
+    canvas.transform(matrix);
+  }
+
+  void _drawDartSilhouette(
+      Canvas canvas, Paint paint, double w, double h, double wingFold,
+      {required bool isShadow,
+      required Color planeColor,
+      required double opacity}) {
     // Wings sweep from fully spread toward the keel as the fold deepens —
     // like pinching a real dart's wings between finger and thumb.
     final topWingY = MathUtils.lerp(h * 0.06, h * 0.42, wingFold);
     final botWingY = h - topWingY;
     const noseX = 2.0;
 
-    final upperWing = Path()..moveTo(w + noseX, h / 2)..lineTo(w * 0.32, h / 2)..lineTo(0, topWingY)..close();
-    final lowerWing = Path()..moveTo(w + noseX, h / 2)..lineTo(w * 0.32, h / 2)..lineTo(0, botWingY)..close();
-    final bodyKeel = Path()..moveTo(w + noseX, h / 2)..lineTo(w * 0.32, h / 2)..lineTo(0, h / 2)..close();
+    final upperWing = Path()
+      ..moveTo(w + noseX, h / 2)
+      ..lineTo(w * 0.32, h / 2)
+      ..lineTo(0, topWingY)
+      ..close();
+    final lowerWing = Path()
+      ..moveTo(w + noseX, h / 2)
+      ..lineTo(w * 0.32, h / 2)
+      ..lineTo(0, botWingY)
+      ..close();
+    final bodyKeel = Path()
+      ..moveTo(w + noseX, h / 2)
+      ..lineTo(w * 0.32, h / 2)
+      ..lineTo(0, h / 2)
+      ..close();
 
     if (isShadow) {
-      canvas.drawPath(upperWing, paint); canvas.drawPath(lowerWing, paint); canvas.drawPath(bodyKeel, paint);
+      canvas.drawPath(upperWing, paint);
+      canvas.drawPath(lowerWing, paint);
+      canvas.drawPath(bodyKeel, paint);
     } else {
-      final litPaint = _createLitWingPaint(Rect.fromLTWH(0, topWingY, w + noseX, h / 2 - topWingY), planeColor, opacity);
-      final shadowWingPaint = _createShadedWingPaint(Rect.fromLTWH(0, h / 2, w + noseX, botWingY - h / 2), planeColor, opacity);
-      canvas.drawPath(upperWing, litPaint); canvas.drawPath(lowerWing, shadowWingPaint); canvas.drawPath(bodyKeel, paint);
+      final litPaint = _createLitWingPaint(
+          Rect.fromLTWH(0, topWingY, w + noseX, h / 2 - topWingY),
+          planeColor,
+          opacity);
+      final shadowWingPaint = _createShadedWingPaint(
+          Rect.fromLTWH(0, h / 2, w + noseX, botWingY - h / 2),
+          planeColor,
+          opacity);
+      canvas.drawPath(upperWing, litPaint);
+      canvas.drawPath(lowerWing, shadowWingPaint);
+      canvas.drawPath(bodyKeel, paint);
     }
   }
 
-  void _drawGliderSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
+  void _drawGliderSilhouette(
+      Canvas canvas, Paint paint, double w, double h, double wingFold,
+      {required bool isShadow,
+      required Color planeColor,
+      required double opacity}) {
     final spreadY = h * 0.22;
     final topWingY = -spreadY * (1.0 - wingFold);
     final botWingY = h + spreadY * (1.0 - wingFold);
     final noseX = w + 4.0;
 
-    final upperWing = Path()..moveTo(noseX, h / 2)..quadraticBezierTo(w * 0.65, topWingY + 2, w * 0.05, topWingY)..lineTo(0, topWingY + 5)..lineTo(w * 0.22, h / 2)..close();
-    final lowerWing = Path()..moveTo(noseX, h / 2)..quadraticBezierTo(w * 0.65, botWingY - 2, w * 0.05, botWingY)..lineTo(0, botWingY - 5)..lineTo(w * 0.22, h / 2)..close();
-    final fuselage = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.22, h / 2)..lineTo(0, h / 2)..close();
+    final upperWing = Path()
+      ..moveTo(noseX, h / 2)
+      ..quadraticBezierTo(w * 0.65, topWingY + 2, w * 0.05, topWingY)
+      ..lineTo(0, topWingY + 5)
+      ..lineTo(w * 0.22, h / 2)
+      ..close();
+    final lowerWing = Path()
+      ..moveTo(noseX, h / 2)
+      ..quadraticBezierTo(w * 0.65, botWingY - 2, w * 0.05, botWingY)
+      ..lineTo(0, botWingY - 5)
+      ..lineTo(w * 0.22, h / 2)
+      ..close();
+    final fuselage = Path()
+      ..moveTo(noseX, h / 2)
+      ..lineTo(w * 0.22, h / 2)
+      ..lineTo(0, h / 2)
+      ..close();
 
     if (isShadow) {
-      canvas.drawPath(upperWing, paint); canvas.drawPath(lowerWing, paint); canvas.drawPath(fuselage, paint);
+      canvas.drawPath(upperWing, paint);
+      canvas.drawPath(lowerWing, paint);
+      canvas.drawPath(fuselage, paint);
     } else {
-      final litPaint = _createLitWingPaint(Rect.fromLTWH(0, topWingY, noseX, h / 2 - topWingY), planeColor, opacity);
-      final shadowWingPaint = _createShadedWingPaint(Rect.fromLTWH(0, h / 2, noseX, botWingY - h / 2), planeColor, opacity);
-      canvas.drawPath(upperWing, litPaint); canvas.drawPath(lowerWing, shadowWingPaint); canvas.drawPath(fuselage, paint);
+      final litPaint = _createLitWingPaint(
+          Rect.fromLTWH(0, topWingY, noseX, h / 2 - topWingY),
+          planeColor,
+          opacity);
+      final shadowWingPaint = _createShadedWingPaint(
+          Rect.fromLTWH(0, h / 2, noseX, botWingY - h / 2),
+          planeColor,
+          opacity);
+      canvas.drawPath(upperWing, litPaint);
+      canvas.drawPath(lowerWing, shadowWingPaint);
+      canvas.drawPath(fuselage, paint);
       _drawGliderRibs(canvas, w, h, topWingY, botWingY);
     }
   }
 
-  void _drawGliderRibs(Canvas canvas, double w, double h, double topY, double botY) {
-    final ribLit = Paint()..color = Colors.white.withOpacity(0.35)..strokeWidth = 0.8..style = PaintingStyle.stroke;
-    final ribShadow = Paint()..color = Colors.black.withOpacity(0.25)..strokeWidth = 0.8..style = PaintingStyle.stroke;
+  void _drawGliderRibs(
+      Canvas canvas, double w, double h, double topY, double botY) {
+    final ribLit = Paint()
+      ..color = Colors.white.withOpacity(0.35)
+      ..strokeWidth = 0.8
+      ..style = PaintingStyle.stroke;
+    final ribShadow = Paint()
+      ..color = Colors.black.withOpacity(0.25)
+      ..strokeWidth = 0.8
+      ..style = PaintingStyle.stroke;
     for (final rx in [w * 0.68, w * 0.46, w * 0.25]) {
       final upperY = MathUtils.lerp(h / 2, topY, (w - rx) / w);
       final lowerY = MathUtils.lerp(h / 2, botY, (w - rx) / w);
@@ -674,165 +761,497 @@ class PlaneComponent extends PositionComponent
     }
   }
 
-  void _drawStuntFoldSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
+  void _drawStuntFoldSilhouette(
+      Canvas canvas, Paint paint, double w, double h, double wingFold,
+      {required bool isShadow,
+      required Color planeColor,
+      required double opacity}) {
     final topWingY = MathUtils.lerp(h * 0.05, h * 0.40, wingFold);
     final botWingY = h - topWingY;
     final noseX = w + 3.0;
 
-    final upperWing = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.55, h / 2)..lineTo(w * 0.12, topWingY)..lineTo(0, topWingY + 4)..lineTo(w * 0.28, h / 2)..close();
-    final lowerWing = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.55, h / 2)..lineTo(w * 0.12, botWingY)..lineTo(0, botWingY - 4)..lineTo(w * 0.28, h / 2)..close();
-    final upperCanard = Path()..moveTo(w * 0.88, h / 2)..lineTo(w * 0.70, h * 0.08)..lineTo(w * 0.65, h / 2)..close();
-    final lowerCanard = Path()..moveTo(w * 0.88, h / 2)..lineTo(w * 0.70, h * 0.92)..lineTo(w * 0.65, h / 2)..close();
+    final upperWing = Path()
+      ..moveTo(noseX, h / 2)
+      ..lineTo(w * 0.55, h / 2)
+      ..lineTo(w * 0.12, topWingY)
+      ..lineTo(0, topWingY + 4)
+      ..lineTo(w * 0.28, h / 2)
+      ..close();
+    final lowerWing = Path()
+      ..moveTo(noseX, h / 2)
+      ..lineTo(w * 0.55, h / 2)
+      ..lineTo(w * 0.12, botWingY)
+      ..lineTo(0, botWingY - 4)
+      ..lineTo(w * 0.28, h / 2)
+      ..close();
+    final upperCanard = Path()
+      ..moveTo(w * 0.88, h / 2)
+      ..lineTo(w * 0.70, h * 0.08)
+      ..lineTo(w * 0.65, h / 2)
+      ..close();
+    final lowerCanard = Path()
+      ..moveTo(w * 0.88, h / 2)
+      ..lineTo(w * 0.70, h * 0.92)
+      ..lineTo(w * 0.65, h / 2)
+      ..close();
 
     if (isShadow) {
-      canvas.drawPath(upperWing, paint); canvas.drawPath(lowerWing, paint); canvas.drawPath(upperCanard, paint); canvas.drawPath(lowerCanard, paint);
+      canvas.drawPath(upperWing, paint);
+      canvas.drawPath(lowerWing, paint);
+      canvas.drawPath(upperCanard, paint);
+      canvas.drawPath(lowerCanard, paint);
     } else {
-      final litPaint = _createLitWingPaint(Rect.fromLTWH(0, topWingY, noseX, h / 2 - topWingY), planeColor, opacity);
-      final shadowWingPaint = _createShadedWingPaint(Rect.fromLTWH(0, h / 2, noseX, botWingY - h / 2), planeColor, opacity);
-      canvas.drawPath(upperWing, litPaint); canvas.drawPath(lowerWing, shadowWingPaint); canvas.drawPath(upperCanard, litPaint); canvas.drawPath(lowerCanard, shadowWingPaint);
-      final tipPaint = Paint()..color = Color.lerp(planeColor, Colors.white, 0.45)!.withOpacity(opacity)..style = PaintingStyle.fill;
-      final tipShadow = Paint()..color = Color.lerp(planeColor, Colors.black, 0.40)!.withOpacity(opacity)..style = PaintingStyle.fill;
-      canvas.drawPath(Path()..moveTo(w * 0.12, topWingY)..lineTo(0, topWingY + 4)..lineTo(w * 0.04, topWingY - 3)..close(), tipPaint);
-      canvas.drawPath(Path()..moveTo(w * 0.12, botWingY)..lineTo(0, botWingY - 4)..lineTo(w * 0.04, botWingY + 3)..close(), tipShadow);
+      final litPaint = _createLitWingPaint(
+          Rect.fromLTWH(0, topWingY, noseX, h / 2 - topWingY),
+          planeColor,
+          opacity);
+      final shadowWingPaint = _createShadedWingPaint(
+          Rect.fromLTWH(0, h / 2, noseX, botWingY - h / 2),
+          planeColor,
+          opacity);
+      canvas.drawPath(upperWing, litPaint);
+      canvas.drawPath(lowerWing, shadowWingPaint);
+      canvas.drawPath(upperCanard, litPaint);
+      canvas.drawPath(lowerCanard, shadowWingPaint);
+      final tipPaint = Paint()
+        ..color =
+            Color.lerp(planeColor, Colors.white, 0.45)!.withOpacity(opacity)
+        ..style = PaintingStyle.fill;
+      final tipShadow = Paint()
+        ..color =
+            Color.lerp(planeColor, Colors.black, 0.40)!.withOpacity(opacity)
+        ..style = PaintingStyle.fill;
+      canvas.drawPath(
+          Path()
+            ..moveTo(w * 0.12, topWingY)
+            ..lineTo(0, topWingY + 4)
+            ..lineTo(w * 0.04, topWingY - 3)
+            ..close(),
+          tipPaint);
+      canvas.drawPath(
+          Path()
+            ..moveTo(w * 0.12, botWingY)
+            ..lineTo(0, botWingY - 4)
+            ..lineTo(w * 0.04, botWingY + 3)
+            ..close(),
+          tipShadow);
     }
   }
 
-  void _drawCraneSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
+  void _drawCraneSilhouette(
+      Canvas canvas, Paint paint, double w, double h, double wingFold,
+      {required bool isShadow,
+      required Color planeColor,
+      required double opacity}) {
     final topWingY = MathUtils.lerp(h * 0.02 - 4, h * 0.40, wingFold);
     final botWingY = h - topWingY;
     final headX = w + 14.0;
 
-    final neckPath = Path()..moveTo(w * 0.65, h / 2)..lineTo(w * 0.95, h / 2 - 2)..lineTo(headX, h / 2 - 1)..lineTo(w * 0.92, h / 2 + 2)..lineTo(w * 0.65, h / 2)..close();
-    final upperBaseWing = Path()..moveTo(w * 0.65, h / 2)..lineTo(w * 0.25, topWingY)..lineTo(w * 0.15, h / 2)..close();
-    final upperFeatherWing = Path()..moveTo(w * 0.50, h / 2)..lineTo(w * 0.10, topWingY + 4)..lineTo(0, h / 2)..close();
-    final lowerBaseWing = Path()..moveTo(w * 0.65, h / 2)..lineTo(w * 0.25, botWingY)..lineTo(w * 0.15, h / 2)..close();
-    final lowerFeatherWing = Path()..moveTo(w * 0.50, h / 2)..lineTo(w * 0.10, botWingY - 4)..lineTo(0, h / 2)..close();
-    final saddle = Path()..moveTo(w * 0.65, h / 2)..lineTo(w * 0.40, h * 0.28)..lineTo(w * 0.15, h / 2)..lineTo(w * 0.40, h * 0.72)..close();
-    final tailPath = Path()..moveTo(w * 0.25, h / 2)..lineTo(-w * 0.12, h / 2)..lineTo(0, h / 2 + 1.5)..close();
+    final neckPath = Path()
+      ..moveTo(w * 0.65, h / 2)
+      ..lineTo(w * 0.95, h / 2 - 2)
+      ..lineTo(headX, h / 2 - 1)
+      ..lineTo(w * 0.92, h / 2 + 2)
+      ..lineTo(w * 0.65, h / 2)
+      ..close();
+    final upperBaseWing = Path()
+      ..moveTo(w * 0.65, h / 2)
+      ..lineTo(w * 0.25, topWingY)
+      ..lineTo(w * 0.15, h / 2)
+      ..close();
+    final upperFeatherWing = Path()
+      ..moveTo(w * 0.50, h / 2)
+      ..lineTo(w * 0.10, topWingY + 4)
+      ..lineTo(0, h / 2)
+      ..close();
+    final lowerBaseWing = Path()
+      ..moveTo(w * 0.65, h / 2)
+      ..lineTo(w * 0.25, botWingY)
+      ..lineTo(w * 0.15, h / 2)
+      ..close();
+    final lowerFeatherWing = Path()
+      ..moveTo(w * 0.50, h / 2)
+      ..lineTo(w * 0.10, botWingY - 4)
+      ..lineTo(0, h / 2)
+      ..close();
+    final saddle = Path()
+      ..moveTo(w * 0.65, h / 2)
+      ..lineTo(w * 0.40, h * 0.28)
+      ..lineTo(w * 0.15, h / 2)
+      ..lineTo(w * 0.40, h * 0.72)
+      ..close();
+    final tailPath = Path()
+      ..moveTo(w * 0.25, h / 2)
+      ..lineTo(-w * 0.12, h / 2)
+      ..lineTo(0, h / 2 + 1.5)
+      ..close();
 
     if (isShadow) {
-      canvas.drawPath(neckPath, paint); canvas.drawPath(upperBaseWing, paint); canvas.drawPath(upperFeatherWing, paint); canvas.drawPath(lowerBaseWing, paint); canvas.drawPath(lowerFeatherWing, paint); canvas.drawPath(saddle, paint); canvas.drawPath(tailPath, paint);
+      canvas.drawPath(neckPath, paint);
+      canvas.drawPath(upperBaseWing, paint);
+      canvas.drawPath(upperFeatherWing, paint);
+      canvas.drawPath(lowerBaseWing, paint);
+      canvas.drawPath(lowerFeatherWing, paint);
+      canvas.drawPath(saddle, paint);
+      canvas.drawPath(tailPath, paint);
     } else {
-      final litPaint = _createLitWingPaint(Rect.fromLTWH(0, topWingY, headX, h / 2 - topWingY), planeColor, opacity);
-      final shadowWingPaint = _createShadedWingPaint(Rect.fromLTWH(0, h / 2, headX, botWingY - h / 2), planeColor, opacity);
-      canvas.drawPath(upperFeatherWing, litPaint); canvas.drawPath(upperBaseWing, litPaint); canvas.drawPath(lowerFeatherWing, shadowWingPaint); canvas.drawPath(lowerBaseWing, shadowWingPaint); canvas.drawPath(tailPath, shadowWingPaint);
-      canvas.drawPath(saddle, Paint()..color = Color.lerp(planeColor, Colors.white, 0.18)!.withOpacity(opacity)..style = PaintingStyle.fill);
+      final litPaint = _createLitWingPaint(
+          Rect.fromLTWH(0, topWingY, headX, h / 2 - topWingY),
+          planeColor,
+          opacity);
+      final shadowWingPaint = _createShadedWingPaint(
+          Rect.fromLTWH(0, h / 2, headX, botWingY - h / 2),
+          planeColor,
+          opacity);
+      canvas.drawPath(upperFeatherWing, litPaint);
+      canvas.drawPath(upperBaseWing, litPaint);
+      canvas.drawPath(lowerFeatherWing, shadowWingPaint);
+      canvas.drawPath(lowerBaseWing, shadowWingPaint);
+      canvas.drawPath(tailPath, shadowWingPaint);
+      canvas.drawPath(
+          saddle,
+          Paint()
+            ..color =
+                Color.lerp(planeColor, Colors.white, 0.18)!.withOpacity(opacity)
+            ..style = PaintingStyle.fill);
       canvas.drawPath(neckPath, litPaint);
-      canvas.drawPath(Path()..moveTo(w + 10, h / 2 - 1.5)..lineTo(headX, h / 2 - 1)..lineTo(w + 10, h / 2 + 1.5)..close(), Paint()..color = const Color(0xFFFFD54F).withOpacity(opacity)..style = PaintingStyle.fill);
+      canvas.drawPath(
+          Path()
+            ..moveTo(w + 10, h / 2 - 1.5)
+            ..lineTo(headX, h / 2 - 1)
+            ..lineTo(w + 10, h / 2 + 1.5)
+            ..close(),
+          Paint()
+            ..color = const Color(0xFFFFD54F).withOpacity(opacity)
+            ..style = PaintingStyle.fill);
     }
   }
 
-  void _drawStealthJetSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
+  void _drawStealthJetSilhouette(
+      Canvas canvas, Paint paint, double w, double h, double wingFold,
+      {required bool isShadow,
+      required Color planeColor,
+      required double opacity}) {
     final topWingY = MathUtils.lerp(h * 0.10, h * 0.44, wingFold);
     final botWingY = h - topWingY;
     final noseX = w + 5.0;
 
-    final upperWing = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.70, h * 0.32)..lineTo(w * 0.05, topWingY)..lineTo(w * 0.15, h / 2)..close();
-    final lowerWing = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.70, h * 0.68)..lineTo(w * 0.05, botWingY)..lineTo(w * 0.15, h / 2)..close();
-    final upperFin = Path()..moveTo(w * 0.32, h * 0.36)..lineTo(w * 0.08, topWingY - 4)..lineTo(w * 0.02, topWingY - 1)..lineTo(w * 0.20, h * 0.36)..close();
-    final lowerFin = Path()..moveTo(w * 0.32, h * 0.64)..lineTo(w * 0.08, botWingY + 4)..lineTo(w * 0.02, botWingY + 1)..lineTo(w * 0.20, h * 0.64)..close();
+    final upperWing = Path()
+      ..moveTo(noseX, h / 2)
+      ..lineTo(w * 0.70, h * 0.32)
+      ..lineTo(w * 0.05, topWingY)
+      ..lineTo(w * 0.15, h / 2)
+      ..close();
+    final lowerWing = Path()
+      ..moveTo(noseX, h / 2)
+      ..lineTo(w * 0.70, h * 0.68)
+      ..lineTo(w * 0.05, botWingY)
+      ..lineTo(w * 0.15, h / 2)
+      ..close();
+    final upperFin = Path()
+      ..moveTo(w * 0.32, h * 0.36)
+      ..lineTo(w * 0.08, topWingY - 4)
+      ..lineTo(w * 0.02, topWingY - 1)
+      ..lineTo(w * 0.20, h * 0.36)
+      ..close();
+    final lowerFin = Path()
+      ..moveTo(w * 0.32, h * 0.64)
+      ..lineTo(w * 0.08, botWingY + 4)
+      ..lineTo(w * 0.02, botWingY + 1)
+      ..lineTo(w * 0.20, h * 0.64)
+      ..close();
 
     if (isShadow) {
-      canvas.drawPath(upperWing, paint); canvas.drawPath(lowerWing, paint); canvas.drawPath(upperFin, paint); canvas.drawPath(lowerFin, paint);
+      canvas.drawPath(upperWing, paint);
+      canvas.drawPath(lowerWing, paint);
+      canvas.drawPath(upperFin, paint);
+      canvas.drawPath(lowerFin, paint);
     } else {
-      final litPaint = _createLitWingPaint(Rect.fromLTWH(0, topWingY, noseX, h / 2 - topWingY), planeColor, opacity);
-      final shadowWingPaint = _createShadedWingPaint(Rect.fromLTWH(0, h / 2, noseX, botWingY - h / 2), planeColor, opacity);
-      canvas.drawPath(upperWing, litPaint); canvas.drawPath(lowerWing, shadowWingPaint);
-      canvas.drawPath(upperFin, Paint()..color = Color.lerp(planeColor, Colors.white, 0.32)!.withOpacity(opacity)..style = PaintingStyle.fill);
-      canvas.drawPath(lowerFin, Paint()..color = Color.lerp(planeColor, Colors.black, 0.38)!.withOpacity(opacity)..style = PaintingStyle.fill);
-      final intakeDark = Paint()..color = const Color(0xFF1E272C).withOpacity(opacity)..style = PaintingStyle.fill;
-      canvas.drawPath(Path()..moveTo(w * 0.62, h / 2 - 2)..lineTo(w * 0.48, h * 0.26)..lineTo(w * 0.40, h / 2 - 2)..close(), intakeDark);
-      canvas.drawPath(Path()..moveTo(w * 0.62, h / 2 + 2)..lineTo(w * 0.48, h * 0.74)..lineTo(w * 0.40, h / 2 + 2)..close(), intakeDark);
-      final canopy = Path()..moveTo(w * 0.74, h / 2)..lineTo(w * 0.60, h / 2 - 3.5)..lineTo(w * 0.46, h / 2)..lineTo(w * 0.60, h / 2 + 3.5)..close();
-      canvas.drawPath(canopy, Paint()..color = const Color(0xFFFFD54F).withOpacity(0.55 * opacity)..style = PaintingStyle.fill);
+      final litPaint = _createLitWingPaint(
+          Rect.fromLTWH(0, topWingY, noseX, h / 2 - topWingY),
+          planeColor,
+          opacity);
+      final shadowWingPaint = _createShadedWingPaint(
+          Rect.fromLTWH(0, h / 2, noseX, botWingY - h / 2),
+          planeColor,
+          opacity);
+      canvas.drawPath(upperWing, litPaint);
+      canvas.drawPath(lowerWing, shadowWingPaint);
+      canvas.drawPath(
+          upperFin,
+          Paint()
+            ..color =
+                Color.lerp(planeColor, Colors.white, 0.32)!.withOpacity(opacity)
+            ..style = PaintingStyle.fill);
+      canvas.drawPath(
+          lowerFin,
+          Paint()
+            ..color =
+                Color.lerp(planeColor, Colors.black, 0.38)!.withOpacity(opacity)
+            ..style = PaintingStyle.fill);
+      final intakeDark = Paint()
+        ..color = const Color(0xFF1E272C).withOpacity(opacity)
+        ..style = PaintingStyle.fill;
+      canvas.drawPath(
+          Path()
+            ..moveTo(w * 0.62, h / 2 - 2)
+            ..lineTo(w * 0.48, h * 0.26)
+            ..lineTo(w * 0.40, h / 2 - 2)
+            ..close(),
+          intakeDark);
+      canvas.drawPath(
+          Path()
+            ..moveTo(w * 0.62, h / 2 + 2)
+            ..lineTo(w * 0.48, h * 0.74)
+            ..lineTo(w * 0.40, h / 2 + 2)
+            ..close(),
+          intakeDark);
+      final canopy = Path()
+        ..moveTo(w * 0.74, h / 2)
+        ..lineTo(w * 0.60, h / 2 - 3.5)
+        ..lineTo(w * 0.46, h / 2)
+        ..lineTo(w * 0.60, h / 2 + 3.5)
+        ..close();
+      canvas.drawPath(
+          canopy,
+          Paint()
+            ..color = const Color(0xFFFFD54F).withOpacity(0.55 * opacity)
+            ..style = PaintingStyle.fill);
     }
   }
 
-  void _drawButterflySilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
+  void _drawButterflySilhouette(
+      Canvas canvas, Paint paint, double w, double h, double wingFold,
+      {required bool isShadow,
+      required Color planeColor,
+      required double opacity}) {
     final spreadY = h * 0.28;
     final topWingY = -spreadY * (1.0 - wingFold);
     final botWingY = h + spreadY * (1.0 - wingFold);
 
-    final upperForewing = Path()..moveTo(w * 0.85, h / 2)..quadraticBezierTo(w * 0.65, topWingY - 4, w * 0.25, topWingY)..quadraticBezierTo(w * 0.10, topWingY + 6, w * 0.35, h / 2)..close();
-    final upperHindwing = Path()..moveTo(w * 0.35, h / 2)..quadraticBezierTo(w * 0.05, topWingY + 10, 0, h / 2)..close();
-    final lowerForewing = Path()..moveTo(w * 0.85, h / 2)..quadraticBezierTo(w * 0.65, botWingY + 4, w * 0.25, botWingY)..quadraticBezierTo(w * 0.10, botWingY - 6, w * 0.35, h / 2)..close();
-    final lowerHindwing = Path()..moveTo(w * 0.35, h / 2)..quadraticBezierTo(w * 0.05, botWingY - 10, 0, h / 2)..close();
-    final body = Path()..moveTo(w * 0.90, h / 2)..lineTo(w * 0.20, h / 2 - 2)..lineTo(0, h / 2)..lineTo(w * 0.20, h / 2 + 2)..close();
+    final upperForewing = Path()
+      ..moveTo(w * 0.85, h / 2)
+      ..quadraticBezierTo(w * 0.65, topWingY - 4, w * 0.25, topWingY)
+      ..quadraticBezierTo(w * 0.10, topWingY + 6, w * 0.35, h / 2)
+      ..close();
+    final upperHindwing = Path()
+      ..moveTo(w * 0.35, h / 2)
+      ..quadraticBezierTo(w * 0.05, topWingY + 10, 0, h / 2)
+      ..close();
+    final lowerForewing = Path()
+      ..moveTo(w * 0.85, h / 2)
+      ..quadraticBezierTo(w * 0.65, botWingY + 4, w * 0.25, botWingY)
+      ..quadraticBezierTo(w * 0.10, botWingY - 6, w * 0.35, h / 2)
+      ..close();
+    final lowerHindwing = Path()
+      ..moveTo(w * 0.35, h / 2)
+      ..quadraticBezierTo(w * 0.05, botWingY - 10, 0, h / 2)
+      ..close();
+    final body = Path()
+      ..moveTo(w * 0.90, h / 2)
+      ..lineTo(w * 0.20, h / 2 - 2)
+      ..lineTo(0, h / 2)
+      ..lineTo(w * 0.20, h / 2 + 2)
+      ..close();
 
     if (isShadow) {
-      canvas.drawPath(upperForewing, paint); canvas.drawPath(upperHindwing, paint); canvas.drawPath(lowerForewing, paint); canvas.drawPath(lowerHindwing, paint); canvas.drawPath(body, paint);
+      canvas.drawPath(upperForewing, paint);
+      canvas.drawPath(upperHindwing, paint);
+      canvas.drawPath(lowerForewing, paint);
+      canvas.drawPath(lowerHindwing, paint);
+      canvas.drawPath(body, paint);
     } else {
-      final litPaint = _createLitWingPaint(Rect.fromLTWH(0, topWingY, w, h / 2 - topWingY), planeColor, opacity);
-      final shadowWingPaint = _createShadedWingPaint(Rect.fromLTWH(0, h / 2, w, botWingY - h / 2), planeColor, opacity);
-      canvas.drawPath(upperForewing, litPaint); canvas.drawPath(upperHindwing, litPaint); canvas.drawPath(lowerForewing, shadowWingPaint); canvas.drawPath(lowerHindwing, shadowWingPaint); canvas.drawPath(body, paint);
-      final ant = Paint()..color = Colors.white.withOpacity(0.6 * opacity)..strokeWidth = 0.9;
-      canvas.drawLine(Offset(w * 0.88, h / 2 - 1), Offset(w + 6, h / 2 - 5), ant);
-      canvas.drawLine(Offset(w * 0.88, h / 2 + 1), Offset(w + 6, h / 2 + 5), ant);
+      final litPaint = _createLitWingPaint(
+          Rect.fromLTWH(0, topWingY, w, h / 2 - topWingY), planeColor, opacity);
+      final shadowWingPaint = _createShadedWingPaint(
+          Rect.fromLTWH(0, h / 2, w, botWingY - h / 2), planeColor, opacity);
+      canvas.drawPath(upperForewing, litPaint);
+      canvas.drawPath(upperHindwing, litPaint);
+      canvas.drawPath(lowerForewing, shadowWingPaint);
+      canvas.drawPath(lowerHindwing, shadowWingPaint);
+      canvas.drawPath(body, paint);
+      final ant = Paint()
+        ..color = Colors.white.withOpacity(0.6 * opacity)
+        ..strokeWidth = 0.9;
+      canvas.drawLine(
+          Offset(w * 0.88, h / 2 - 1), Offset(w + 6, h / 2 - 5), ant);
+      canvas.drawLine(
+          Offset(w * 0.88, h / 2 + 1), Offset(w + 6, h / 2 + 5), ant);
     }
   }
 
-  void _drawBomberSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
+  void _drawBomberSilhouette(
+      Canvas canvas, Paint paint, double w, double h, double wingFold,
+      {required bool isShadow,
+      required Color planeColor,
+      required double opacity}) {
     final topWingY = MathUtils.lerp(h * 0.04, h * 0.36, wingFold);
     final botWingY = h - topWingY;
 
-    final upperWing = Path()..moveTo(w * 0.88, h / 2)..lineTo(w * 0.50, topWingY)..lineTo(w * 0.08, topWingY + 3)..lineTo(w * 0.20, h / 2)..close();
-    final lowerWing = Path()..moveTo(w * 0.88, h / 2)..lineTo(w * 0.50, botWingY)..lineTo(w * 0.08, botWingY - 3)..lineTo(w * 0.20, h / 2)..close();
-    final fuselage = Path()..moveTo(w + 3, h / 2)..lineTo(w * 0.75, h / 2 - 6)..lineTo(0, h / 2 - 4)..lineTo(0, h / 2 + 4)..lineTo(w * 0.75, h / 2 + 6)..close();
-    final upperTailFin = Path()..moveTo(w * 0.22, topWingY + 3)..lineTo(w * 0.08, topWingY - 4)..lineTo(0, topWingY + 3)..close();
-    final lowerTailFin = Path()..moveTo(w * 0.22, botWingY - 3)..lineTo(w * 0.08, botWingY + 4)..lineTo(0, botWingY - 3)..close();
+    final upperWing = Path()
+      ..moveTo(w * 0.88, h / 2)
+      ..lineTo(w * 0.50, topWingY)
+      ..lineTo(w * 0.08, topWingY + 3)
+      ..lineTo(w * 0.20, h / 2)
+      ..close();
+    final lowerWing = Path()
+      ..moveTo(w * 0.88, h / 2)
+      ..lineTo(w * 0.50, botWingY)
+      ..lineTo(w * 0.08, botWingY - 3)
+      ..lineTo(w * 0.20, h / 2)
+      ..close();
+    final fuselage = Path()
+      ..moveTo(w + 3, h / 2)
+      ..lineTo(w * 0.75, h / 2 - 6)
+      ..lineTo(0, h / 2 - 4)
+      ..lineTo(0, h / 2 + 4)
+      ..lineTo(w * 0.75, h / 2 + 6)
+      ..close();
+    final upperTailFin = Path()
+      ..moveTo(w * 0.22, topWingY + 3)
+      ..lineTo(w * 0.08, topWingY - 4)
+      ..lineTo(0, topWingY + 3)
+      ..close();
+    final lowerTailFin = Path()
+      ..moveTo(w * 0.22, botWingY - 3)
+      ..lineTo(w * 0.08, botWingY + 4)
+      ..lineTo(0, botWingY - 3)
+      ..close();
 
     if (isShadow) {
-      canvas.drawPath(upperWing, paint); canvas.drawPath(lowerWing, paint); canvas.drawPath(fuselage, paint); canvas.drawPath(upperTailFin, paint); canvas.drawPath(lowerTailFin, paint);
+      canvas.drawPath(upperWing, paint);
+      canvas.drawPath(lowerWing, paint);
+      canvas.drawPath(fuselage, paint);
+      canvas.drawPath(upperTailFin, paint);
+      canvas.drawPath(lowerTailFin, paint);
     } else {
-      final litPaint = _createLitWingPaint(Rect.fromLTWH(0, topWingY, w, h / 2 - topWingY), planeColor, opacity);
-      final shadowWingPaint = _createShadedWingPaint(Rect.fromLTWH(0, h / 2, w, botWingY - h / 2), planeColor, opacity);
-      canvas.drawPath(upperWing, litPaint); canvas.drawPath(lowerWing, shadowWingPaint); canvas.drawPath(fuselage, litPaint);
-      canvas.drawPath(upperTailFin, litPaint); canvas.drawPath(lowerTailFin, shadowWingPaint);
-      final seam = Paint()..color = Colors.black.withOpacity(0.35 * opacity)..strokeWidth = 0.8;
-      canvas.drawLine(Offset(w * 0.65, h / 2 - 3), Offset(w * 0.35, h / 2 - 3), seam);
-      canvas.drawLine(Offset(w * 0.65, h / 2 + 3), Offset(w * 0.35, h / 2 + 3), seam);
+      final litPaint = _createLitWingPaint(
+          Rect.fromLTWH(0, topWingY, w, h / 2 - topWingY), planeColor, opacity);
+      final shadowWingPaint = _createShadedWingPaint(
+          Rect.fromLTWH(0, h / 2, w, botWingY - h / 2), planeColor, opacity);
+      canvas.drawPath(upperWing, litPaint);
+      canvas.drawPath(lowerWing, shadowWingPaint);
+      canvas.drawPath(fuselage, litPaint);
+      canvas.drawPath(upperTailFin, litPaint);
+      canvas.drawPath(lowerTailFin, shadowWingPaint);
+      final seam = Paint()
+        ..color = Colors.black.withOpacity(0.35 * opacity)
+        ..strokeWidth = 0.8;
+      canvas.drawLine(
+          Offset(w * 0.65, h / 2 - 3), Offset(w * 0.35, h / 2 - 3), seam);
+      canvas.drawLine(
+          Offset(w * 0.65, h / 2 + 3), Offset(w * 0.35, h / 2 + 3), seam);
     }
   }
 
-  void _drawInterceptorSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
+  void _drawInterceptorSilhouette(
+      Canvas canvas, Paint paint, double w, double h, double wingFold,
+      {required bool isShadow,
+      required Color planeColor,
+      required double opacity}) {
     final topWingY = MathUtils.lerp(h * 0.12, h * 0.42, wingFold);
     final botWingY = h - topWingY;
     final noseX = w + 7.0;
 
-    final upperWing = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.65, h * 0.36)..lineTo(0, topWingY)..lineTo(w * 0.18, h / 2)..close();
-    final lowerWing = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.65, h * 0.64)..lineTo(0, botWingY)..lineTo(w * 0.18, h / 2)..close();
-    final upperCanard = Path()..moveTo(w * 0.85, h / 2)..lineTo(w * 0.70, h * 0.12)..lineTo(w * 0.62, h / 2)..close();
-    final lowerCanard = Path()..moveTo(w * 0.85, h / 2)..lineTo(w * 0.70, h * 0.88)..lineTo(w * 0.62, h / 2)..close();
+    final upperWing = Path()
+      ..moveTo(noseX, h / 2)
+      ..lineTo(w * 0.65, h * 0.36)
+      ..lineTo(0, topWingY)
+      ..lineTo(w * 0.18, h / 2)
+      ..close();
+    final lowerWing = Path()
+      ..moveTo(noseX, h / 2)
+      ..lineTo(w * 0.65, h * 0.64)
+      ..lineTo(0, botWingY)
+      ..lineTo(w * 0.18, h / 2)
+      ..close();
+    final upperCanard = Path()
+      ..moveTo(w * 0.85, h / 2)
+      ..lineTo(w * 0.70, h * 0.12)
+      ..lineTo(w * 0.62, h / 2)
+      ..close();
+    final lowerCanard = Path()
+      ..moveTo(w * 0.85, h / 2)
+      ..lineTo(w * 0.70, h * 0.88)
+      ..lineTo(w * 0.62, h / 2)
+      ..close();
 
     if (isShadow) {
-      canvas.drawPath(upperWing, paint); canvas.drawPath(lowerWing, paint); canvas.drawPath(upperCanard, paint); canvas.drawPath(lowerCanard, paint);
+      canvas.drawPath(upperWing, paint);
+      canvas.drawPath(lowerWing, paint);
+      canvas.drawPath(upperCanard, paint);
+      canvas.drawPath(lowerCanard, paint);
     } else {
-      final litPaint = _createLitWingPaint(Rect.fromLTWH(0, topWingY, noseX, h / 2 - topWingY), planeColor, opacity);
-      final shadowWingPaint = _createShadedWingPaint(Rect.fromLTWH(0, h / 2, noseX, botWingY - h / 2), planeColor, opacity);
-      canvas.drawPath(upperWing, litPaint); canvas.drawPath(lowerWing, shadowWingPaint); canvas.drawPath(upperCanard, litPaint); canvas.drawPath(lowerCanard, shadowWingPaint);
-      final intake = Paint()..color = const Color(0xFF263238).withOpacity(opacity)..style = PaintingStyle.fill;
+      final litPaint = _createLitWingPaint(
+          Rect.fromLTWH(0, topWingY, noseX, h / 2 - topWingY),
+          planeColor,
+          opacity);
+      final shadowWingPaint = _createShadedWingPaint(
+          Rect.fromLTWH(0, h / 2, noseX, botWingY - h / 2),
+          planeColor,
+          opacity);
+      canvas.drawPath(upperWing, litPaint);
+      canvas.drawPath(lowerWing, shadowWingPaint);
+      canvas.drawPath(upperCanard, litPaint);
+      canvas.drawPath(lowerCanard, shadowWingPaint);
+      final intake = Paint()
+        ..color = const Color(0xFF263238).withOpacity(opacity)
+        ..style = PaintingStyle.fill;
       canvas.drawRect(Rect.fromLTWH(w * 0.42, h / 2 - 3.5, 10, 2), intake);
       canvas.drawRect(Rect.fromLTWH(w * 0.42, h / 2 + 1.5, 10, 2), intake);
     }
   }
 
-  void _drawAlbatrossSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
+  void _drawAlbatrossSilhouette(
+      Canvas canvas, Paint paint, double w, double h, double wingFold,
+      {required bool isShadow,
+      required Color planeColor,
+      required double opacity}) {
     final spreadY = h * 0.32;
     final topWingY = -spreadY * (1.0 - wingFold);
     final botWingY = h + spreadY * (1.0 - wingFold);
     final billX = w + 8.0;
 
-    final upperWing = Path()..moveTo(w * 0.75, h / 2)..quadraticBezierTo(w * 0.55, topWingY - 3, w * 0.05, topWingY)..lineTo(0, topWingY + 4)..lineTo(w * 0.15, h / 2)..close();
-    final lowerWing = Path()..moveTo(w * 0.75, h / 2)..quadraticBezierTo(w * 0.55, botWingY + 3, w * 0.05, botWingY)..lineTo(0, botWingY - 4)..lineTo(w * 0.15, h / 2)..close();
-    final body = Path()..moveTo(billX, h / 2)..lineTo(w * 0.80, h / 2 - 2)..lineTo(0, h / 2 - 1.5)..lineTo(0, h / 2 + 1.5)..lineTo(w * 0.80, h / 2 + 2)..close();
+    final upperWing = Path()
+      ..moveTo(w * 0.75, h / 2)
+      ..quadraticBezierTo(w * 0.55, topWingY - 3, w * 0.05, topWingY)
+      ..lineTo(0, topWingY + 4)
+      ..lineTo(w * 0.15, h / 2)
+      ..close();
+    final lowerWing = Path()
+      ..moveTo(w * 0.75, h / 2)
+      ..quadraticBezierTo(w * 0.55, botWingY + 3, w * 0.05, botWingY)
+      ..lineTo(0, botWingY - 4)
+      ..lineTo(w * 0.15, h / 2)
+      ..close();
+    final body = Path()
+      ..moveTo(billX, h / 2)
+      ..lineTo(w * 0.80, h / 2 - 2)
+      ..lineTo(0, h / 2 - 1.5)
+      ..lineTo(0, h / 2 + 1.5)
+      ..lineTo(w * 0.80, h / 2 + 2)
+      ..close();
 
     if (isShadow) {
-      canvas.drawPath(upperWing, paint); canvas.drawPath(lowerWing, paint); canvas.drawPath(body, paint);
+      canvas.drawPath(upperWing, paint);
+      canvas.drawPath(lowerWing, paint);
+      canvas.drawPath(body, paint);
     } else {
-      final litPaint = _createLitWingPaint(Rect.fromLTWH(0, topWingY, billX, h / 2 - topWingY), planeColor, opacity);
-      final shadowWingPaint = _createShadedWingPaint(Rect.fromLTWH(0, h / 2, billX, botWingY - h / 2), planeColor, opacity);
-      canvas.drawPath(upperWing, litPaint); canvas.drawPath(lowerWing, shadowWingPaint); canvas.drawPath(body, paint);
-      final ribLit = Paint()..color = Colors.white.withOpacity(0.35)..strokeWidth = 0.7..style = PaintingStyle.stroke;
+      final litPaint = _createLitWingPaint(
+          Rect.fromLTWH(0, topWingY, billX, h / 2 - topWingY),
+          planeColor,
+          opacity);
+      final shadowWingPaint = _createShadedWingPaint(
+          Rect.fromLTWH(0, h / 2, billX, botWingY - h / 2),
+          planeColor,
+          opacity);
+      canvas.drawPath(upperWing, litPaint);
+      canvas.drawPath(lowerWing, shadowWingPaint);
+      canvas.drawPath(body, paint);
+      final ribLit = Paint()
+        ..color = Colors.white.withOpacity(0.35)
+        ..strokeWidth = 0.7
+        ..style = PaintingStyle.stroke;
       for (final rx in [w * 0.65, w * 0.48, w * 0.32, w * 0.16]) {
         final upperY = MathUtils.lerp(h / 2, topWingY, (w - rx) / w);
         final lowerY = MathUtils.lerp(h / 2, botWingY, (w - rx) / w);
@@ -842,77 +1261,199 @@ class PlaneComponent extends PositionComponent
     }
   }
 
-  void _drawBiplaneSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
+  void _drawBiplaneSilhouette(
+      Canvas canvas, Paint paint, double w, double h, double wingFold,
+      {required bool isShadow,
+      required Color planeColor,
+      required double opacity}) {
     final topWingY = MathUtils.lerp(h * 0.08, h * 0.34, wingFold);
     final botWingY = h - topWingY;
-    final upperWing = Path()..moveTo(w * 0.85, h / 2)..lineTo(w * 0.65, topWingY)..lineTo(w * 0.15, topWingY)..lineTo(w * 0.25, h / 2)..close();
-    final lowerWing = Path()..moveTo(w * 0.85, h / 2)..lineTo(w * 0.65, botWingY)..lineTo(w * 0.15, botWingY)..lineTo(w * 0.25, h / 2)..close();
-    final cowl = Path()..moveTo(w + 2, h / 2)..lineTo(w * 0.80, h / 2 - 4)..lineTo(0, h / 2 - 2)..lineTo(0, h / 2 + 2)..lineTo(w * 0.80, h / 2 + 4)..close();
+    final upperWing = Path()
+      ..moveTo(w * 0.85, h / 2)
+      ..lineTo(w * 0.65, topWingY)
+      ..lineTo(w * 0.15, topWingY)
+      ..lineTo(w * 0.25, h / 2)
+      ..close();
+    final lowerWing = Path()
+      ..moveTo(w * 0.85, h / 2)
+      ..lineTo(w * 0.65, botWingY)
+      ..lineTo(w * 0.15, botWingY)
+      ..lineTo(w * 0.25, h / 2)
+      ..close();
+    final cowl = Path()
+      ..moveTo(w + 2, h / 2)
+      ..lineTo(w * 0.80, h / 2 - 4)
+      ..lineTo(0, h / 2 - 2)
+      ..lineTo(0, h / 2 + 2)
+      ..lineTo(w * 0.80, h / 2 + 4)
+      ..close();
 
     if (isShadow) {
-      canvas.drawPath(upperWing, paint); canvas.drawPath(lowerWing, paint); canvas.drawPath(cowl, paint);
+      canvas.drawPath(upperWing, paint);
+      canvas.drawPath(lowerWing, paint);
+      canvas.drawPath(cowl, paint);
     } else {
-      final litPaint = _createLitWingPaint(Rect.fromLTWH(0, topWingY, w, h / 2 - topWingY), planeColor, opacity);
-      final shadowWingPaint = _createShadedWingPaint(Rect.fromLTWH(0, h / 2, w, botWingY - h / 2), planeColor, opacity);
-      canvas.drawPath(upperWing, litPaint); canvas.drawPath(lowerWing, shadowWingPaint); canvas.drawPath(cowl, paint);
-      final strut = Paint()..color = const Color(0xFF5D4037).withOpacity(opacity)..strokeWidth = 1.2;
-      canvas.drawLine(Offset(w * 0.35, topWingY), Offset(w * 0.35, h / 2 - 4), strut);
-      canvas.drawLine(Offset(w * 0.35, botWingY), Offset(w * 0.35, h / 2 + 4), strut);
+      final litPaint = _createLitWingPaint(
+          Rect.fromLTWH(0, topWingY, w, h / 2 - topWingY), planeColor, opacity);
+      final shadowWingPaint = _createShadedWingPaint(
+          Rect.fromLTWH(0, h / 2, w, botWingY - h / 2), planeColor, opacity);
+      canvas.drawPath(upperWing, litPaint);
+      canvas.drawPath(lowerWing, shadowWingPaint);
+      canvas.drawPath(cowl, paint);
+      final strut = Paint()
+        ..color = const Color(0xFF5D4037).withOpacity(opacity)
+        ..strokeWidth = 1.2;
+      canvas.drawLine(
+          Offset(w * 0.35, topWingY), Offset(w * 0.35, h / 2 - 4), strut);
+      canvas.drawLine(
+          Offset(w * 0.35, botWingY), Offset(w * 0.35, h / 2 + 4), strut);
     }
   }
 
-  void _drawNinjaStarSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
+  void _drawNinjaStarSilhouette(
+      Canvas canvas, Paint paint, double w, double h, double wingFold,
+      {required bool isShadow,
+      required Color planeColor,
+      required double opacity}) {
     final cx = w / 2;
     final cy = h / 2;
     final r = w * 0.45 * (1.0 - wingFold.clamp(0.0, 1.0) * 0.12);
-    final b1 = Path()..moveTo(cx, cy)..lineTo(cx + r, cy)..lineTo(cx + r * 0.4, cy - r * 0.5)..close();
-    final b2 = Path()..moveTo(cx, cy)..lineTo(cx, cy - r)..lineTo(cx - r * 0.5, cy - r * 0.4)..close();
-    final b3 = Path()..moveTo(cx, cy)..lineTo(cx - r, cy)..lineTo(cx - r * 0.4, cy + r * 0.5)..close();
-    final b4 = Path()..moveTo(cx, cy)..lineTo(cx, cy + r)..lineTo(cx + r * 0.5, cy + r * 0.4)..close();
+    final b1 = Path()
+      ..moveTo(cx, cy)
+      ..lineTo(cx + r, cy)
+      ..lineTo(cx + r * 0.4, cy - r * 0.5)
+      ..close();
+    final b2 = Path()
+      ..moveTo(cx, cy)
+      ..lineTo(cx, cy - r)
+      ..lineTo(cx - r * 0.5, cy - r * 0.4)
+      ..close();
+    final b3 = Path()
+      ..moveTo(cx, cy)
+      ..lineTo(cx - r, cy)
+      ..lineTo(cx - r * 0.4, cy + r * 0.5)
+      ..close();
+    final b4 = Path()
+      ..moveTo(cx, cy)
+      ..lineTo(cx, cy + r)
+      ..lineTo(cx + r * 0.5, cy + r * 0.4)
+      ..close();
 
     if (isShadow) {
-      canvas.drawPath(b1, paint); canvas.drawPath(b2, paint); canvas.drawPath(b3, paint); canvas.drawPath(b4, paint);
+      canvas.drawPath(b1, paint);
+      canvas.drawPath(b2, paint);
+      canvas.drawPath(b3, paint);
+      canvas.drawPath(b4, paint);
     } else {
-      final litPaint = _createLitWingPaint(Rect.fromCircle(center: Offset(cx, cy), radius: r), planeColor, opacity);
-      final shadowWingPaint = _createShadedWingPaint(Rect.fromCircle(center: Offset(cx, cy), radius: r), planeColor, opacity);
-      canvas.drawPath(b1, litPaint); canvas.drawPath(b2, litPaint); canvas.drawPath(b3, shadowWingPaint); canvas.drawPath(b4, shadowWingPaint);
-      canvas.drawCircle(Offset(cx, cy), 3.5, Paint()..color = Color.lerp(planeColor, Colors.white, 0.4)!.withOpacity(opacity)..style = PaintingStyle.fill);
+      final litPaint = _createLitWingPaint(
+          Rect.fromCircle(center: Offset(cx, cy), radius: r),
+          planeColor,
+          opacity);
+      final shadowWingPaint = _createShadedWingPaint(
+          Rect.fromCircle(center: Offset(cx, cy), radius: r),
+          planeColor,
+          opacity);
+      canvas.drawPath(b1, litPaint);
+      canvas.drawPath(b2, litPaint);
+      canvas.drawPath(b3, shadowWingPaint);
+      canvas.drawPath(b4, shadowWingPaint);
+      canvas.drawCircle(
+          Offset(cx, cy),
+          3.5,
+          Paint()
+            ..color =
+                Color.lerp(planeColor, Colors.white, 0.4)!.withOpacity(opacity)
+            ..style = PaintingStyle.fill);
     }
   }
 
-  void _drawRocketSilhouette(Canvas canvas, Paint paint, double w, double h, double wingFold, {required bool isShadow, required Color planeColor, required double opacity}) {
+  void _drawRocketSilhouette(
+      Canvas canvas, Paint paint, double w, double h, double wingFold,
+      {required bool isShadow,
+      required Color planeColor,
+      required double opacity}) {
     final topFinY = MathUtils.lerp(h * 0.08, h * 0.34, wingFold);
     final botFinY = h - topFinY;
     final noseX = w + 6.0;
 
-    final fuselage = Path()..moveTo(noseX, h / 2)..lineTo(w * 0.65, h / 2 - 5)..lineTo(w * 0.12, h / 2 - 5)..lineTo(w * 0.05, h / 2)..lineTo(w * 0.12, h / 2 + 5)..lineTo(w * 0.65, h / 2 + 5)..close();
-    final upperFin = Path()..moveTo(w * 0.40, h / 2 - 5)..lineTo(w * 0.05, topFinY)..lineTo(w * 0.12, h / 2 - 5)..close();
-    final lowerFin = Path()..moveTo(w * 0.40, h / 2 + 5)..lineTo(w * 0.05, botFinY)..lineTo(w * 0.12, h / 2 + 5)..close();
+    final fuselage = Path()
+      ..moveTo(noseX, h / 2)
+      ..lineTo(w * 0.65, h / 2 - 5)
+      ..lineTo(w * 0.12, h / 2 - 5)
+      ..lineTo(w * 0.05, h / 2)
+      ..lineTo(w * 0.12, h / 2 + 5)
+      ..lineTo(w * 0.65, h / 2 + 5)
+      ..close();
+    final upperFin = Path()
+      ..moveTo(w * 0.40, h / 2 - 5)
+      ..lineTo(w * 0.05, topFinY)
+      ..lineTo(w * 0.12, h / 2 - 5)
+      ..close();
+    final lowerFin = Path()
+      ..moveTo(w * 0.40, h / 2 + 5)
+      ..lineTo(w * 0.05, botFinY)
+      ..lineTo(w * 0.12, h / 2 + 5)
+      ..close();
 
     if (isShadow) {
-      canvas.drawPath(fuselage, paint); canvas.drawPath(upperFin, paint); canvas.drawPath(lowerFin, paint);
+      canvas.drawPath(fuselage, paint);
+      canvas.drawPath(upperFin, paint);
+      canvas.drawPath(lowerFin, paint);
     } else {
-      final litPaint = _createLitWingPaint(Rect.fromLTWH(0, topFinY, noseX, h / 2 - topFinY), planeColor, opacity);
-      final shadowWingPaint = _createShadedWingPaint(Rect.fromLTWH(0, h / 2, noseX, botFinY - h / 2), planeColor, opacity);
-      canvas.drawPath(upperFin, litPaint); canvas.drawPath(lowerFin, shadowWingPaint); canvas.drawPath(fuselage, litPaint);
-      canvas.drawPath(Path()..moveTo(noseX, h / 2)..lineTo(w * 0.82, h / 2 - 3.8)..lineTo(w * 0.82, h / 2 + 3.8)..close(), Paint()..color = const Color(0xFFFF1744).withOpacity(opacity)..style = PaintingStyle.fill);
-      canvas.drawRect(Rect.fromLTWH(0, h / 2 - 3, 5, 6), Paint()..color = const Color(0xFF37474F).withOpacity(opacity)..style = PaintingStyle.fill);
+      final litPaint = _createLitWingPaint(
+          Rect.fromLTWH(0, topFinY, noseX, h / 2 - topFinY),
+          planeColor,
+          opacity);
+      final shadowWingPaint = _createShadedWingPaint(
+          Rect.fromLTWH(0, h / 2, noseX, botFinY - h / 2), planeColor, opacity);
+      canvas.drawPath(upperFin, litPaint);
+      canvas.drawPath(lowerFin, shadowWingPaint);
+      canvas.drawPath(fuselage, litPaint);
+      canvas.drawPath(
+          Path()
+            ..moveTo(noseX, h / 2)
+            ..lineTo(w * 0.82, h / 2 - 3.8)
+            ..lineTo(w * 0.82, h / 2 + 3.8)
+            ..close(),
+          Paint()
+            ..color = const Color(0xFFFF1744).withOpacity(opacity)
+            ..style = PaintingStyle.fill);
+      canvas.drawRect(
+          Rect.fromLTWH(0, h / 2 - 3, 5, 6),
+          Paint()
+            ..color = const Color(0xFF37474F).withOpacity(opacity)
+            ..style = PaintingStyle.fill);
     }
   }
 
   // ── Procedural Paper Texture Layer (Shader-like Multiply Grain) ────────────
 
-  void _drawPaperGrainTexture(Canvas canvas, double w, double h, Color baseColor, double wingFold) {
-    final fiberPaint = Paint()..color = Colors.white.withOpacity(0.065)..strokeWidth = 0.5..style = PaintingStyle.stroke;
-    final fiberDark = Paint()..color = Colors.black.withOpacity(0.045)..strokeWidth = 0.5..style = PaintingStyle.stroke;
+  void _drawPaperGrainTexture(
+      Canvas canvas, double w, double h, Color baseColor, double wingFold) {
+    final fiberPaint = Paint()
+      ..color = Colors.white.withOpacity(0.065)
+      ..strokeWidth = 0.5
+      ..style = PaintingStyle.stroke;
+    final fiberDark = Paint()
+      ..color = Colors.black.withOpacity(0.045)
+      ..strokeWidth = 0.5
+      ..style = PaintingStyle.stroke;
 
     for (double x = 4; x < w - 2; x += 6.5) {
       canvas.drawLine(Offset(x, h * 0.2), Offset(x + 5, h * 0.8), fiberPaint);
-      canvas.drawLine(Offset(x + 2, h * 0.3), Offset(x - 3, h * 0.7), fiberDark);
+      canvas.drawLine(
+          Offset(x + 2, h * 0.3), Offset(x - 3, h * 0.7), fiberDark);
     }
 
-    final specklePaint = Paint()..color = Colors.white.withOpacity(0.10)..style = PaintingStyle.fill;
-    for (final sp in [Offset(w * 0.35, h * 0.35), Offset(w * 0.55, h * 0.65), Offset(w * 0.75, h * 0.48), Offset(w * 0.20, h * 0.70)]) {
+    final specklePaint = Paint()
+      ..color = Colors.white.withOpacity(0.10)
+      ..style = PaintingStyle.fill;
+    for (final sp in [
+      Offset(w * 0.35, h * 0.35),
+      Offset(w * 0.55, h * 0.65),
+      Offset(w * 0.75, h * 0.48),
+      Offset(w * 0.20, h * 0.70)
+    ]) {
       canvas.drawCircle(sp, 0.8, specklePaint);
     }
   }
@@ -927,9 +1468,8 @@ class PlaneComponent extends PositionComponent
     double effectiveFold,
   ) {
     final direction = _crosswindForce == 0 ? 1.0 : _crosswindForce.sign;
-    final bend = direction *
-        GameConfig.wingFlexMaxBendPixels *
-        _wingFlexStrength;
+    final bend =
+        direction * GameConfig.wingFlexMaxBendPixels * _wingFlexStrength;
     final spread = 1.0 - effectiveFold;
     final upperTipY = h / 2 - h * .34 * spread;
     final lowerTipY = h / 2 + h * .34 * spread;
@@ -978,8 +1518,8 @@ class PlaneComponent extends PositionComponent
     // A tiny displaced wingtip fold sells the paper bending into the gust even
     // on compact archetypes whose silhouettes have very short wings.
     final tipPaint = Paint()
-      ..color = const Color(0xFFFFF9C4)
-          .withOpacity(.20 + _wingFlexStrength * .38)
+      ..color =
+          const Color(0xFFFFF9C4).withOpacity(.20 + _wingFlexStrength * .38)
       ..style = PaintingStyle.stroke
       ..strokeWidth = .8 + _wingFlexStrength * .55;
     canvas.drawArc(
@@ -999,16 +1539,34 @@ class PlaneComponent extends PositionComponent
 
   void _drawCrumpleDamage(Canvas canvas, double w, double h, double crumple) {
     final curlAlpha = (crumple * 0.85).clamp(0.0, 1.0);
-    final crinklePaint = Paint()..color = Colors.black.withOpacity(0.35 * curlAlpha)..strokeWidth = 0.9..style = PaintingStyle.stroke;
-    final highlightCrinkle = Paint()..color = Colors.white.withOpacity(0.40 * curlAlpha)..strokeWidth = 0.7..style = PaintingStyle.stroke;
+    final crinklePaint = Paint()
+      ..color = Colors.black.withOpacity(0.35 * curlAlpha)
+      ..strokeWidth = 0.9
+      ..style = PaintingStyle.stroke;
+    final highlightCrinkle = Paint()
+      ..color = Colors.white.withOpacity(0.40 * curlAlpha)
+      ..strokeWidth = 0.7
+      ..style = PaintingStyle.stroke;
 
-    canvas.drawLine(Offset(w * 0.08, h * 0.22), Offset(w * 0.18, h * 0.32), crinklePaint);
-    canvas.drawLine(Offset(w * 0.08, h * 0.22), Offset(w * 0.18, h * 0.32), highlightCrinkle);
-    canvas.drawLine(Offset(w * 0.06, h * 0.78), Offset(w * 0.16, h * 0.68), crinklePaint);
-    canvas.drawLine(Offset(w * 0.06, h * 0.78), Offset(w * 0.16, h * 0.68), highlightCrinkle);
+    canvas.drawLine(
+        Offset(w * 0.08, h * 0.22), Offset(w * 0.18, h * 0.32), crinklePaint);
+    canvas.drawLine(Offset(w * 0.08, h * 0.22), Offset(w * 0.18, h * 0.32),
+        highlightCrinkle);
+    canvas.drawLine(
+        Offset(w * 0.06, h * 0.78), Offset(w * 0.16, h * 0.68), crinklePaint);
+    canvas.drawLine(Offset(w * 0.06, h * 0.78), Offset(w * 0.16, h * 0.68),
+        highlightCrinkle);
 
-    final dogEar = Path()..moveTo(0, h * 0.20)..lineTo(w * 0.10, h * 0.16)..lineTo(w * 0.06, h * 0.28)..close();
-    canvas.drawPath(dogEar, Paint()..color = Colors.black.withOpacity(0.22 * curlAlpha)..style = PaintingStyle.fill);
+    final dogEar = Path()
+      ..moveTo(0, h * 0.20)
+      ..lineTo(w * 0.10, h * 0.16)
+      ..lineTo(w * 0.06, h * 0.28)
+      ..close();
+    canvas.drawPath(
+        dogEar,
+        Paint()
+          ..color = Colors.black.withOpacity(0.22 * curlAlpha)
+          ..style = PaintingStyle.fill);
   }
 
   // ── Night Lighting: Forward Headlamp Cone ──────────────────────────────────
@@ -1028,9 +1586,15 @@ class PlaneComponent extends PositionComponent
       ..lineTo(w / 2 + 70, h / 2 - 150)
       ..lineTo(w / 2 + 6, h / 2 - 12)
       ..close();
-    canvas.drawPath(beamPath, Paint()..shader = lampShader..style = PaintingStyle.fill);
+    canvas.drawPath(
+        beamPath,
+        Paint()
+          ..shader = lampShader
+          ..style = PaintingStyle.fill);
 
-    final motePaint = Paint()..color = const Color(0x99FFF9C4)..style = PaintingStyle.fill;
+    final motePaint = Paint()
+      ..color = const Color(0x99FFF9C4)
+      ..style = PaintingStyle.fill;
     for (int i = 0; i < 4; i++) {
       final mx = w / 2 + math.sin(_animTime * 3.0 + i * 1.5) * 35;
       final my = h / 2 - 40 - (i * 25);
@@ -1041,15 +1605,27 @@ class PlaneComponent extends PositionComponent
   // ── Gradient Factory Helpers ───────────────────────────────────────────────
 
   Paint _createLitWingPaint(Rect bounds, Color baseColor, double opacity) {
-    final litColor = Color.lerp(baseColor, Colors.white, 0.26)!.withOpacity(opacity);
+    final litColor =
+        Color.lerp(baseColor, Colors.white, 0.26)!.withOpacity(opacity);
     final midColor = baseColor.withOpacity(opacity);
-    return Paint()..shader = LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [litColor, midColor]).createShader(bounds)..style = PaintingStyle.fill;
+    return Paint()
+      ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [litColor, midColor]).createShader(bounds)
+      ..style = PaintingStyle.fill;
   }
 
   Paint _createShadedWingPaint(Rect bounds, Color baseColor, double opacity) {
     final midColor = baseColor.withOpacity(opacity);
-    final shadowColor = Color.lerp(baseColor, Colors.black, 0.28)!.withOpacity(opacity);
-    return Paint()..shader = LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [midColor, shadowColor]).createShader(bounds)..style = PaintingStyle.fill;
+    final shadowColor =
+        Color.lerp(baseColor, Colors.black, 0.28)!.withOpacity(opacity);
+    return Paint()
+      ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [midColor, shadowColor]).createShader(bounds)
+      ..style = PaintingStyle.fill;
   }
 
   // ── Paper Skin Overlay Patterns ───────────────────────────────────────────
@@ -1061,35 +1637,67 @@ class PlaneComponent extends PositionComponent
       case PaperSkin.plain:
         break;
       case PaperSkin.newspaper:
-        final inkPaint = Paint()..color = const Color(0xFF3E2723).withOpacity(0.24 * pulse)..strokeWidth = 0.8;
-        canvas.drawLine(Offset(w * 0.20, h * 0.28), Offset(w * 0.80, h * 0.28), Paint()..color = const Color(0xFF212121).withOpacity(0.35 * pulse)..strokeWidth = 1.6);
+        final inkPaint = Paint()
+          ..color = const Color(0xFF3E2723).withOpacity(0.24 * pulse)
+          ..strokeWidth = 0.8;
+        canvas.drawLine(
+            Offset(w * 0.20, h * 0.28),
+            Offset(w * 0.80, h * 0.28),
+            Paint()
+              ..color = const Color(0xFF212121).withOpacity(0.35 * pulse)
+              ..strokeWidth = 1.6);
         for (double y = h * 0.36; y < h * 0.82; y += 3.8) {
           final wave = math.sin(y * 4.0 + _animTime * 0.5) * 1.0;
-          canvas.drawLine(Offset(w * 0.18 + wave, y), Offset(w * 0.48 - wave, y), inkPaint);
-          canvas.drawLine(Offset(w * 0.52 + wave, y), Offset(w * 0.82 - wave, y), inkPaint);
+          canvas.drawLine(
+              Offset(w * 0.18 + wave, y), Offset(w * 0.48 - wave, y), inkPaint);
+          canvas.drawLine(
+              Offset(w * 0.52 + wave, y), Offset(w * 0.82 - wave, y), inkPaint);
         }
         break;
       case PaperSkin.graphPaper:
-        final gridPaint = Paint()..color = const Color(0xFF0288D1).withOpacity(0.25)..strokeWidth = 0.5;
-        final majorGrid = Paint()..color = const Color(0xFF01579B).withOpacity(0.40)..strokeWidth = 0.8;
+        final gridPaint = Paint()
+          ..color = const Color(0xFF0288D1).withOpacity(0.25)
+          ..strokeWidth = 0.5;
+        final majorGrid = Paint()
+          ..color = const Color(0xFF01579B).withOpacity(0.40)
+          ..strokeWidth = 0.8;
         for (double x = w * 0.12; x < w * 0.88; x += 6.5) {
-          canvas.drawLine(Offset(x, h * 0.15), Offset(x, h * 0.85), (x / 6.5).round() % 3 == 0 ? majorGrid : gridPaint);
+          canvas.drawLine(Offset(x, h * 0.15), Offset(x, h * 0.85),
+              (x / 6.5).round() % 3 == 0 ? majorGrid : gridPaint);
         }
         for (double y = h * 0.18; y < h * 0.82; y += 6.5) {
-          canvas.drawLine(Offset(w * 0.12, y), Offset(w * 0.88, y), (y / 6.5).round() % 3 == 0 ? majorGrid : gridPaint);
+          canvas.drawLine(Offset(w * 0.12, y), Offset(w * 0.88, y),
+              (y / 6.5).round() % 3 == 0 ? majorGrid : gridPaint);
         }
-        canvas.drawArc(Rect.fromCircle(center: Offset(w * 0.5, h * 0.5), radius: 12), 0, math.pi * 1.5, false, gridPaint..style = PaintingStyle.stroke);
+        canvas.drawArc(
+            Rect.fromCircle(center: Offset(w * 0.5, h * 0.5), radius: 12),
+            0,
+            math.pi * 1.5,
+            false,
+            gridPaint..style = PaintingStyle.stroke);
         break;
       case PaperSkin.notebookDoodle:
-        final linePaint = Paint()..color = const Color(0xFF4FC3F7).withOpacity(0.38)..strokeWidth = 0.7;
+        final linePaint = Paint()
+          ..color = const Color(0xFF4FC3F7).withOpacity(0.38)
+          ..strokeWidth = 0.7;
         for (double y = h * 0.28; y < h * 0.82; y += 5.5) {
           canvas.drawLine(Offset(w * 0.18, y), Offset(w * 0.88, y), linePaint);
         }
-        canvas.drawLine(Offset(w * 0.26, h * 0.16), Offset(w * 0.26, h * 0.84), Paint()..color = const Color(0xFFFF5252).withOpacity(0.55)..strokeWidth = 1.0);
-        final doodle = Paint()..color = const Color(0xFF5D4037).withOpacity(0.35)..style = PaintingStyle.stroke..strokeWidth = 0.9;
+        canvas.drawLine(
+            Offset(w * 0.26, h * 0.16),
+            Offset(w * 0.26, h * 0.84),
+            Paint()
+              ..color = const Color(0xFFFF5252).withOpacity(0.55)
+              ..strokeWidth = 1.0);
+        final doodle = Paint()
+          ..color = const Color(0xFF5D4037).withOpacity(0.35)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.9;
         canvas.drawCircle(Offset(w * 0.72, h * 0.38), 3.5 * pulse, doodle);
-        canvas.drawLine(Offset(w * 0.72 - 5, h * 0.38), Offset(w * 0.72 + 5, h * 0.38), doodle);
-        canvas.drawLine(Offset(w * 0.72, h * 0.38 - 5), Offset(w * 0.72, h * 0.38 + 5), doodle);
+        canvas.drawLine(Offset(w * 0.72 - 5, h * 0.38),
+            Offset(w * 0.72 + 5, h * 0.38), doodle);
+        canvas.drawLine(Offset(w * 0.72, h * 0.38 - 5),
+            Offset(w * 0.72, h * 0.38 + 5), doodle);
         break;
       case PaperSkin.holographicFoil:
         final sweepShift = (_animTime * 35.0) % (w * 1.5);
@@ -1116,8 +1724,7 @@ class PlaneComponent extends PositionComponent
         canvas.drawRect(Rect.fromLTWH(0, 0, w, h), foilPaint);
         final glint = Paint()
           ..color = Colors.white.withOpacity(
-            (0.75 * pulse +
-                    _skinPainter.holographicNearMissIntensity * 0.20)
+            (0.75 * pulse + _skinPainter.holographicNearMissIntensity * 0.20)
                 .clamp(0.0, 1.0)
                 .toDouble(),
           );
@@ -1133,8 +1740,16 @@ class PlaneComponent extends PositionComponent
         }
         break;
       case PaperSkin.watercolorWash:
-        final washA = Paint()..color = const Color(0xFF80DEEA).withOpacity(0.20 + 0.08 * math.sin(_animTime * 2.5))..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5)..style = PaintingStyle.fill;
-        final washB = Paint()..color = const Color(0xFFFF80AB).withOpacity(0.18 + 0.06 * math.cos(_animTime * 2.0))..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4)..style = PaintingStyle.fill;
+        final washA = Paint()
+          ..color = const Color(0xFF80DEEA)
+              .withOpacity(0.20 + 0.08 * math.sin(_animTime * 2.5))
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5)
+          ..style = PaintingStyle.fill;
+        final washB = Paint()
+          ..color = const Color(0xFFFF80AB)
+              .withOpacity(0.18 + 0.06 * math.cos(_animTime * 2.0))
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4)
+          ..style = PaintingStyle.fill;
         canvas.drawCircle(Offset(w * 0.55, h * 0.42), 15 * pulse, washA);
         canvas.drawCircle(Offset(w * 0.38, h * 0.62), 11, washB);
         break;
@@ -1143,10 +1758,9 @@ class PlaneComponent extends PositionComponent
         final fleckPaint = Paint()..style = PaintingStyle.fill;
         final fleckCount = 5 + (coinSparkle * 5).round();
         for (int i = 0; i < fleckCount; i++) {
-          final sparkleTTL =
-              math.sin(_animTime * 7.0 + i * 2.1) * 0.5 + 0.5;
-          final reactionBoost = coinSparkle *
-              (0.55 + math.sin(_animTime * 18.0 + i) * 0.45);
+          final sparkleTTL = math.sin(_animTime * 7.0 + i * 2.1) * 0.5 + 0.5;
+          final reactionBoost =
+              coinSparkle * (0.55 + math.sin(_animTime * 18.0 + i) * 0.45);
           fleckPaint.color = Color.fromRGBO(
             255,
             215,
@@ -1175,36 +1789,50 @@ class PlaneComponent extends PositionComponent
           ),
           Paint()
             ..color = const Color(0xFFFFD700).withOpacity(
-              (0.30 * pulse + coinSparkle * 0.35)
-                  .clamp(0.0, 0.8)
-                  .toDouble(),
+              (0.30 * pulse + coinSparkle * 0.35).clamp(0.0, 0.8).toDouble(),
             )
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.4 + coinSparkle,
         );
         break;
       case PaperSkin.blueprint:
-        final bpLine = Paint()..color = Colors.white.withOpacity(0.40)..strokeWidth = 0.7..style = PaintingStyle.stroke;
-        canvas.drawLine(Offset(w * 0.15, h * 0.3), Offset(w * 0.85, h * 0.3), bpLine);
-        canvas.drawLine(Offset(w * 0.15, h * 0.7), Offset(w * 0.85, h * 0.7), bpLine);
+        final bpLine = Paint()
+          ..color = Colors.white.withOpacity(0.40)
+          ..strokeWidth = 0.7
+          ..style = PaintingStyle.stroke;
+        canvas.drawLine(
+            Offset(w * 0.15, h * 0.3), Offset(w * 0.85, h * 0.3), bpLine);
+        canvas.drawLine(
+            Offset(w * 0.15, h * 0.7), Offset(w * 0.85, h * 0.7), bpLine);
         canvas.drawCircle(Offset(w * 0.5, h * 0.5), 8, bpLine);
         break;
       case PaperSkin.receipt:
-        final bar = Paint()..color = const Color(0xFF212121).withOpacity(0.32)..style = PaintingStyle.fill;
+        final bar = Paint()
+          ..color = const Color(0xFF212121).withOpacity(0.32)
+          ..style = PaintingStyle.fill;
         for (double x = w * 0.25; x < w * 0.75; x += 3.2) {
-          canvas.drawRect(Rect.fromLTWH(x, h * 0.40, (x * 7).toInt() % 2 == 0 ? 2.0 : 1.0, 10), bar);
+          canvas.drawRect(
+              Rect.fromLTWH(
+                  x, h * 0.40, (x * 7).toInt() % 2 == 0 ? 2.0 : 1.0, 10),
+              bar);
         }
         break;
       case PaperSkin.carbonFiber:
-        final weaveA = Paint()..color = const Color(0xFF424242).withOpacity(0.40)..strokeWidth = 1.0;
-        final weaveB = Paint()..color = const Color(0xFF1E1E1E).withOpacity(0.50)..strokeWidth = 1.0;
+        final weaveA = Paint()
+          ..color = const Color(0xFF424242).withOpacity(0.40)
+          ..strokeWidth = 1.0;
+        final weaveB = Paint()
+          ..color = const Color(0xFF1E1E1E).withOpacity(0.50)
+          ..strokeWidth = 1.0;
         for (double d = -w; d < w * 2; d += 4.5) {
           canvas.drawLine(Offset(d, 0), Offset(d + h, h), weaveA);
           canvas.drawLine(Offset(d, h), Offset(d + h, 0), weaveB);
         }
         break;
       case PaperSkin.mangaHalftone:
-        final dot = Paint()..color = const Color(0xFF212121).withOpacity(0.22)..style = PaintingStyle.fill;
+        final dot = Paint()
+          ..color = const Color(0xFF212121).withOpacity(0.22)
+          ..style = PaintingStyle.fill;
         for (double x = w * 0.2; x < w * 0.8; x += 4.0) {
           for (double y = h * 0.25; y < h * 0.75; y += 4.0) {
             canvas.drawCircle(Offset(x, y), 0.75, dot);
@@ -1212,16 +1840,34 @@ class PlaneComponent extends PositionComponent
         }
         break;
       case PaperSkin.kraftEnvelope:
-        final redChevrons = Paint()..color = const Color(0xFFD32F2F).withOpacity(0.45)..strokeWidth = 1.8;
-        final blueChevrons = Paint()..color = const Color(0xFF1976D2).withOpacity(0.45)..strokeWidth = 1.8;
+        final redChevrons = Paint()
+          ..color = const Color(0xFFD32F2F).withOpacity(0.45)
+          ..strokeWidth = 1.8;
+        final blueChevrons = Paint()
+          ..color = const Color(0xFF1976D2).withOpacity(0.45)
+          ..strokeWidth = 1.8;
         for (double x = w * 0.2; x < w * 0.8; x += 8) {
-          canvas.drawLine(Offset(x, h * 0.18), Offset(x + 4, h * 0.18), redChevrons);
-          canvas.drawLine(Offset(x + 4, h * 0.18), Offset(x + 8, h * 0.18), blueChevrons);
+          canvas.drawLine(
+              Offset(x, h * 0.18), Offset(x + 4, h * 0.18), redChevrons);
+          canvas.drawLine(
+              Offset(x + 4, h * 0.18), Offset(x + 8, h * 0.18), blueChevrons);
         }
         break;
       case PaperSkin.prideGradient:
         final waveShift = (_animTime * 0.6) % 1.0;
-        final pridePaint = Paint()..shader = LinearGradient(begin: Alignment(-1.0 + waveShift, -1.0), end: Alignment(1.0 + waveShift, 1.0), colors: const [Color(0xFFFF1744), Color(0xFFFF9100), Color(0xFFFFEA00), Color(0xFF00E676), Color(0xFF2979FF), Color(0xFFAA00FF)]).createShader(Rect.fromLTWH(0, 0, w, h))..style = PaintingStyle.fill;
+        final pridePaint = Paint()
+          ..shader = LinearGradient(
+              begin: Alignment(-1.0 + waveShift, -1.0),
+              end: Alignment(1.0 + waveShift, 1.0),
+              colors: const [
+                Color(0xFFFF1744),
+                Color(0xFFFF9100),
+                Color(0xFFFFEA00),
+                Color(0xFF00E676),
+                Color(0xFF2979FF),
+                Color(0xFFAA00FF)
+              ]).createShader(Rect.fromLTWH(0, 0, w, h))
+          ..style = PaintingStyle.fill;
         canvas.drawRect(Rect.fromLTWH(0, 0, w, h), pridePaint);
         break;
       case PaperSkin.dragonScales:
@@ -1250,20 +1896,40 @@ class PlaneComponent extends PositionComponent
         }
         break;
       case PaperSkin.snowflake:
-        final snowPaint = Paint()..color = Colors.white.withOpacity(0.55 * pulse)..strokeWidth = 0.8..style = PaintingStyle.stroke;
+        final snowPaint = Paint()
+          ..color = Colors.white.withOpacity(0.55 * pulse)
+          ..strokeWidth = 0.8
+          ..style = PaintingStyle.stroke;
         final sc = Offset(w * 0.5, h * 0.5);
         for (int i = 0; i < 6; i++) {
           final ang = i * math.pi / 3 + _animTime * 0.2;
-          canvas.drawLine(sc, Offset(sc.dx + math.cos(ang) * 9, sc.dy + math.sin(ang) * 9), snowPaint);
+          canvas.drawLine(
+              sc,
+              Offset(sc.dx + math.cos(ang) * 9, sc.dy + math.sin(ang) * 9),
+              snowPaint);
         }
         break;
       case PaperSkin.pumpkin:
-        canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.5), width: 18, height: 14), Paint()..color = const Color(0xFFFFD54F).withOpacity(0.35 * pulse)..strokeWidth = 1.0..style = PaintingStyle.stroke);
+        canvas.drawOval(
+            Rect.fromCenter(
+                center: Offset(w * 0.5, h * 0.5), width: 18, height: 14),
+            Paint()
+              ..color = const Color(0xFFFFD54F).withOpacity(0.35 * pulse)
+              ..strokeWidth = 1.0
+              ..style = PaintingStyle.stroke);
         break;
       case PaperSkin.cherryBlossom:
-        final petalPaint = Paint()..color = const Color(0xFFF48FB1).withOpacity(0.40 * pulse)..style = PaintingStyle.fill;
+        final petalPaint = Paint()
+          ..color = const Color(0xFFF48FB1).withOpacity(0.40 * pulse)
+          ..style = PaintingStyle.fill;
         for (int i = 0; i < 4; i++) {
-          canvas.drawOval(Rect.fromCenter(center: Offset(w * (0.35 + i * 0.15), h * (0.35 + math.sin(_animTime * 3.0 + i) * 0.15)), width: 5, height: 3), petalPaint);
+          canvas.drawOval(
+              Rect.fromCenter(
+                  center: Offset(w * (0.35 + i * 0.15),
+                      h * (0.35 + math.sin(_animTime * 3.0 + i) * 0.15)),
+                  width: 5,
+                  height: 3),
+              petalPaint);
         }
         break;
       // Frame-animated skins are rendered by [AnimatedPaperSkin], a child
@@ -1387,9 +2053,7 @@ class PlaneComponent extends PositionComponent
       final phase = _animTime * (1.7 + i.toDouble() * .12) + i.toDouble() * 1.9;
       final x = w * (.12 + i.toDouble() * .19) + math.sin(phase) * 7;
       final y = h * .15 + ((phase * 11) % (h * .92));
-      leaf.color = i.isEven
-          ? const Color(0xCCFF7043)
-          : const Color(0xCCFFCA28);
+      leaf.color = i.isEven ? const Color(0xCCFF7043) : const Color(0xCCFFCA28);
       canvas.save();
       canvas.translate(x, y);
       canvas.rotate(phase);
@@ -1422,9 +2086,8 @@ class PlaneComponent extends PositionComponent
       final phase = _animTime * (2.8 + i.toDouble() * .16) + i.toDouble() * 2.2;
       final x = w * (.16 + i.toDouble() * .17) + math.sin(phase * 1.3) * 5;
       final y = h * .82 - ((phase * 10) % (h * .72));
-      ember.color = i.isEven
-          ? const Color(0xFFFFD740)
-          : const Color(0xFFFF5252);
+      ember.color =
+          i.isEven ? const Color(0xFFFFD740) : const Color(0xFFFF5252);
       canvas.drawCircle(Offset(x, y), 1.1 + (i % 2).toDouble() * .55, ember);
     }
   }
@@ -1486,8 +2149,10 @@ class PlaneComponent extends PositionComponent
     for (int i = 0; i < 6; i++) {
       final a1 = i * math.pi / 3;
       final a2 = (i + 1) * math.pi / 3;
-      final p1 = Offset(center.dx + math.cos(a1) * r, center.dy + math.sin(a1) * r);
-      final p2 = Offset(center.dx + math.cos(a2) * r, center.dy + math.sin(a2) * r);
+      final p1 =
+          Offset(center.dx + math.cos(a1) * r, center.dy + math.sin(a1) * r);
+      final p2 =
+          Offset(center.dx + math.cos(a2) * r, center.dy + math.sin(a2) * r);
       canvas.drawLine(center, p1, seamPaint);
       canvas.drawLine(p1, p2, seamPaint);
     }
@@ -1509,9 +2174,12 @@ class PlaneComponent extends PositionComponent
         ..color = Colors.white.withOpacity(_crumpleAmount * 0.7)
         ..strokeWidth = 1.0
         ..style = PaintingStyle.stroke;
-      canvas.drawLine(Offset(center.dx - 4, center.dy - r * 0.8), Offset(center.dx + 2, center.dy - r * 0.4), crackPaint);
-      canvas.drawLine(Offset(center.dx + 2, center.dy - r * 0.4), Offset(center.dx - 3, center.dy), crackPaint);
-      canvas.drawLine(Offset(center.dx - 3, center.dy), Offset(center.dx + 6, center.dy + r * 0.4), crackPaint);
+      canvas.drawLine(Offset(center.dx - 4, center.dy - r * 0.8),
+          Offset(center.dx + 2, center.dy - r * 0.4), crackPaint);
+      canvas.drawLine(Offset(center.dx + 2, center.dy - r * 0.4),
+          Offset(center.dx - 3, center.dy), crackPaint);
+      canvas.drawLine(Offset(center.dx - 3, center.dy),
+          Offset(center.dx + 6, center.dy + r * 0.4), crackPaint);
     }
   }
 
@@ -1531,11 +2199,15 @@ class PlaneComponent extends PositionComponent
       ..color = Color.fromRGBO(212, 143, 229, 0.6)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.4;
-    canvas.drawArc(Rect.fromCircle(center: center, radius: r), _magnetAngle, math.pi * 0.8, false, fluxPaint);
-    canvas.drawArc(Rect.fromCircle(center: center, radius: r), _magnetAngle + math.pi, math.pi * 0.8, false, fluxPaint);
+    canvas.drawArc(Rect.fromCircle(center: center, radius: r), _magnetAngle,
+        math.pi * 0.8, false, fluxPaint);
+    canvas.drawArc(Rect.fromCircle(center: center, radius: r),
+        _magnetAngle + math.pi, math.pi * 0.8, false, fluxPaint);
 
     // Orbiting iron filing particles
-    final filing = Paint()..color = const Color(0xFFE1BEE7)..style = PaintingStyle.fill;
+    final filing = Paint()
+      ..color = const Color(0xFFE1BEE7)
+      ..style = PaintingStyle.fill;
     for (int i = 0; i < 6; i++) {
       final a = _magnetAngle + i * (math.pi / 3);
       final px = center.dx + math.cos(a) * (r + 2);
@@ -1554,14 +2226,16 @@ class PlaneComponent extends PositionComponent
 
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromCenter(center: Offset(w / 2, h / 2), width: w + 12, height: h + 12),
+        Rect.fromCenter(
+            center: Offset(w / 2, h / 2), width: w + 12, height: h + 12),
         const Radius.circular(8),
       ),
       outlinePaint,
     );
   }
 
-  void _drawGhostAfterImages(Canvas canvas, double w, double h, double wingFold, Color planeColor) {
+  void _drawGhostAfterImages(
+      Canvas canvas, double w, double h, double wingFold, Color planeColor) {
     final trailPositions = _trail.recentPositions;
     final count = trailPositions.length;
     if (count < 3) return;
@@ -1587,19 +2261,22 @@ class PlaneComponent extends PositionComponent
       canvas.translate(halfW + dx, halfH + dy);
       canvas.rotate(-math.pi / 2);
       canvas.translate(-halfW, -halfH);
-      _drawPlaneShape(canvas, ghostPaint, w, h, wingFold, isShadow: false, planeColor: planeColor, opacity: opacity);
+      _drawPlaneShape(canvas, ghostPaint, w, h, wingFold,
+          isShadow: false, planeColor: planeColor, opacity: opacity);
       canvas.restore();
     }
   }
 
   // D. Slow-Mo Stretched After-Image
-  void _drawSlowMoAfterImage(Canvas canvas, double w, double h, double wingFold, Color planeColor) {
+  void _drawSlowMoAfterImage(
+      Canvas canvas, double w, double h, double wingFold, Color planeColor) {
     final slowPaint = Paint()
       ..color = const Color(0x2800E5FF)
       ..style = PaintingStyle.fill;
     canvas.save();
     canvas.translate(0, 6.0);
-    _drawPlaneShape(canvas, slowPaint, w, h, wingFold, isShadow: false, planeColor: planeColor, opacity: 0.25);
+    _drawPlaneShape(canvas, slowPaint, w, h, wingFold,
+        isShadow: false, planeColor: planeColor, opacity: 0.25);
     canvas.restore();
   }
 
@@ -1616,8 +2293,13 @@ class PlaneComponent extends PositionComponent
     canvas.drawCircle(center, w * 0.75, glowPaint);
 
     // Saturn Ring of miniature gold coins
-    final coinPaint = Paint()..color = const Color(0xFFFFD700)..style = PaintingStyle.fill;
-    final coinRim = Paint()..color = const Color(0xFFFFA000)..style = PaintingStyle.stroke..strokeWidth = 0.8;
+    final coinPaint = Paint()
+      ..color = const Color(0xFFFFD700)
+      ..style = PaintingStyle.fill;
+    final coinRim = Paint()
+      ..color = const Color(0xFFFFA000)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
     for (int i = 0; i < 5; i++) {
       final a = _coinRushPhase + i * (2 * math.pi / 5);
       final px = center.dx + math.cos(a) * rx;
@@ -1627,11 +2309,19 @@ class PlaneComponent extends PositionComponent
     }
 
     // Wingtip gold dust sparkles
-    final spark = Paint()..color = const Color(0xFFFFF9C4)..style = PaintingStyle.fill;
+    final spark = Paint()
+      ..color = const Color(0xFFFFF9C4)
+      ..style = PaintingStyle.fill;
     for (int i = 0; i < 3; i++) {
       final sy = h / 2 + 10 + (i * 7);
-      canvas.drawCircle(Offset(w * 0.15 + math.sin(_animTime * 15.0 + i) * 2, sy), 1.2, spark);
-      canvas.drawCircle(Offset(w * 0.85 + math.sin(_animTime * 15.0 + i + 1) * 2, sy), 1.2, spark);
+      canvas.drawCircle(
+          Offset(w * 0.15 + math.sin(_animTime * 15.0 + i) * 2, sy),
+          1.2,
+          spark);
+      canvas.drawCircle(
+          Offset(w * 0.85 + math.sin(_animTime * 15.0 + i + 1) * 2, sy),
+          1.2,
+          spark);
     }
   }
 
@@ -1682,8 +2372,10 @@ class PlaneComponent extends PositionComponent
       ..strokeWidth = 1.4;
     final center = Offset(w / 2, h / 2 - 16);
     canvas.drawCircle(center, 7, rose);
-    canvas.drawLine(Offset(center.dx, center.dy - 11), Offset(center.dx, center.dy + 11), rose);
-    canvas.drawLine(Offset(center.dx - 11, center.dy), Offset(center.dx + 11, center.dy), rose);
+    canvas.drawLine(Offset(center.dx, center.dy - 11),
+        Offset(center.dx, center.dy + 11), rose);
+    canvas.drawLine(Offset(center.dx - 11, center.dy),
+        Offset(center.dx + 11, center.dy), rose);
   }
 
   // I. Decoy Clones: 2 Flanking Ghost Paper Planes
@@ -1715,13 +2407,23 @@ class PlaneComponent extends PositionComponent
     final center = Offset(w / 2, h / 2);
     final vortex = Paint()
       ..shader = SweepGradient(
-        colors: const [Color(0xFF311B92), Color(0xFF7C4DFF), Color(0xFF00E5FF), Color(0xFF311B92)],
+        colors: const [
+          Color(0xFF311B92),
+          Color(0xFF7C4DFF),
+          Color(0xFF00E5FF),
+          Color(0xFF311B92)
+        ],
         transform: GradientRotation(_blackHoleAngle),
       ).createShader(Rect.fromCircle(center: center, radius: 28))
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4.0;
     canvas.drawCircle(center, 24, vortex);
-    canvas.drawCircle(center, 12, Paint()..color = Colors.black..style = PaintingStyle.fill);
+    canvas.drawCircle(
+        center,
+        12,
+        Paint()
+          ..color = Colors.black
+          ..style = PaintingStyle.fill);
   }
 
   // K. Turbo Dash: Blazing Hypersonic Plasma Barrier Cone
@@ -1807,7 +2509,8 @@ class PlaneComponent extends PositionComponent
         ..color = const Color(0x8864FFDA)
         ..strokeWidth = 1.2;
       final shift = math.sin(_turboDashPhase * .65 + i.toDouble()) * 5;
-      canvas.drawLine(Offset(w * .05 + shift, y), Offset(w * .95 + shift, y), line);
+      canvas.drawLine(
+          Offset(w * .05 + shift, y), Offset(w * .95 + shift, y), line);
     }
   }
 
@@ -1895,14 +2598,16 @@ class PlaneComponent extends PositionComponent
 
     final spinPulse = .72 + math.sin(_animTime * 12) * .18;
     final spinPaint = Paint()
-      ..color = Color.fromRGBO(255, 82, 82, spinPulse.clamp(0.0, 1.0).toDouble())
+      ..color =
+          Color.fromRGBO(255, 82, 82, spinPulse.clamp(0.0, 1.0).toDouble())
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0
       ..strokeCap = StrokeCap.round;
     for (var i = 0; i < 3; i++) {
       final radius = w * (.45 + i * .18);
-      final start = _animTime * GameConfig.spinAngularVelocity * _spinDirection +
-          i * math.pi * .66;
+      final start =
+          _animTime * GameConfig.spinAngularVelocity * _spinDirection +
+              i * math.pi * .66;
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         start,
@@ -1973,21 +2678,26 @@ class PlaneComponent extends PositionComponent
     _magnetActive = session.activePowerUps.contains(PowerUpType.magnet);
     _coinRushActive = session.activePowerUps.contains(PowerUpType.coinRush);
     _slowMoActive = session.activePowerUps.contains(PowerUpType.slowMo);
-    _doubleScoreActive = session.activePowerUps.contains(PowerUpType.doubleScore);
+    _doubleScoreActive =
+        session.activePowerUps.contains(PowerUpType.doubleScore);
     _shrinkActive = session.activePowerUps.contains(PowerUpType.shrink);
-    _empoweredShrinkActive = session.activeEmpoweredPowerUps
-        .contains(PowerUpType.shrink);
+    _empoweredShrinkActive =
+        session.activeEmpoweredPowerUps.contains(PowerUpType.shrink);
     _windCallerActive = session.activePowerUps.contains(PowerUpType.windCaller);
-    _decoyCloneActive = session.activePowerUps.contains(PowerUpType.decoyClone) || game.decoyCloneCharges > 0;
+    _decoyCloneActive =
+        session.activePowerUps.contains(PowerUpType.decoyClone) ||
+            game.decoyCloneCharges > 0;
     _blackHoleActive = session.activePowerUps.contains(PowerUpType.blackHole);
     _turboDashActive = session.activePowerUps.contains(PowerUpType.turboDash);
     _activePowerUps = Set<PowerUpType>.from(session.activePowerUps);
-    _powerUpTimerSnapshot = Map<PowerUpType, double>.from(session.powerUpRemaining);
-    _activeEmpoweredPowerUps = Set<PowerUpType>.from(session.activeEmpoweredPowerUps);
+    _powerUpTimerSnapshot =
+        Map<PowerUpType, double>.from(session.powerUpRemaining);
+    _activeEmpoweredPowerUps =
+        Set<PowerUpType>.from(session.activeEmpoweredPowerUps);
     _activeCorruptedPowerUps =
         Set<CorruptedPowerUpType>.from(session.activeCorruptedPowerUps);
-    _corruptedTimerSnapshot =
-        Map<CorruptedPowerUpType, double>.from(session.corruptedPowerUpRemaining);
+    _corruptedTimerSnapshot = Map<CorruptedPowerUpType, double>.from(
+        session.corruptedPowerUpRemaining);
     final combos = session.activePowerUpCombos;
     _phaseShieldActive = combos.contains(PowerUpCombo.phaseShield);
     _goldVortexActive = combos.contains(PowerUpCombo.goldVortex);
@@ -2008,7 +2718,8 @@ class PlaneComponent extends PositionComponent
     _blackHoleAngle += dt * (180.0 * math.pi / 180.0);
 
     if (_shieldHitRippleTimer > 0) {
-      _shieldHitRippleTimer = (_shieldHitRippleTimer - dt * 2.5).clamp(0.0, 1.0);
+      _shieldHitRippleTimer =
+          (_shieldHitRippleTimer - dt * 2.5).clamp(0.0, 1.0);
     }
     if (_snapFlashTimer > 0) {
       _snapFlashTimer = (_snapFlashTimer - dt).clamp(0.0, 10.0);
@@ -2062,8 +2773,7 @@ class PlaneComponent extends PositionComponent
         GameConfig.liftCruiseSpeed,
         (GameConfig.liftKickDecayRate * dt).clamp(0.0, 1.0),
       );
-      _oscillationStrength =
-          (_oscillationStrength - 3.0 * dt).clamp(0.0, 1.0);
+      _oscillationStrength = (_oscillationStrength - 3.0 * dt).clamp(0.0, 1.0);
     } else {
       if (releaseEdge) {
         if (_velocityY < 0) {
@@ -2075,13 +2785,16 @@ class PlaneComponent extends PositionComponent
         _oscillationStrength = 0.0;
       }
 
-      final glideScale = (planeType == PlaneType.glider || planeType == PlaneType.albatross)
-          ? GameConfig.glideGravityScale * (planeLevel >= 3 ? 0.70 : (planeLevel == 2 ? 0.75 : 0.80))
-          : GameConfig.glideGravityScale;
+      final glideScale =
+          (planeType == PlaneType.glider || planeType == PlaneType.albatross)
+              ? GameConfig.glideGravityScale *
+                  (planeLevel >= 3 ? 0.70 : (planeLevel == 2 ? 0.75 : 0.80))
+              : GameConfig.glideGravityScale;
 
-      final diveRecoveryScale = (planeType == PlaneType.stealthJet && _velocityY > 60)
-          ? (planeLevel >= 3 ? 0.76 : (planeLevel == 2 ? 0.82 : 0.88))
-          : (planeType == PlaneType.rocket && _velocityY > 60 ? 0.80 : 1.0);
+      final diveRecoveryScale =
+          (planeType == PlaneType.stealthJet && _velocityY > 60)
+              ? (planeLevel >= 3 ? 0.76 : (planeLevel == 2 ? 0.82 : 0.88))
+              : (planeType == PlaneType.rocket && _velocityY > 60 ? 0.80 : 1.0);
 
       if (_glideArcActive) {
         _velocityY += GameConfig.gravity *
@@ -2090,9 +2803,9 @@ class PlaneComponent extends PositionComponent
             wind.profile.gravity *
             diveRecoveryScale *
             dt;
-        _oscillationStrength = (_oscillationStrength +
-                GameConfig.oscillationFadeInRate * dt)
-            .clamp(0.0, 1.0);
+        _oscillationStrength =
+            (_oscillationStrength + GameConfig.oscillationFadeInRate * dt)
+                .clamp(0.0, 1.0);
         if (_velocityY >= 0) {
           _glideArcActive = false;
         }
@@ -2103,9 +2816,9 @@ class PlaneComponent extends PositionComponent
             fallMult *
             wind.profile.gravity *
             dt;
-        _oscillationStrength = (_oscillationStrength +
-                GameConfig.oscillationFadeInRate * dt)
-            .clamp(0.0, 1.0);
+        _oscillationStrength =
+            (_oscillationStrength + GameConfig.oscillationFadeInRate * dt)
+                .clamp(0.0, 1.0);
       }
 
       _oscillationPhase += GameConfig.oscillationFrequency * 2.0 * math.pi * dt;
@@ -2142,9 +2855,8 @@ class PlaneComponent extends PositionComponent
     final laneWind = wind.windAt(laneIndex);
     final windCallerThermal =
         wind.windCallerActive && laneWind.type == WindType.thermal;
-    final thermalSample = windCallerThermal
-        ? null
-        : game.thermalColumnSystem.sampleAt(position);
+    final thermalSample =
+        windCallerThermal ? null : game.thermalColumnSystem.sampleAt(position);
     final inThermal = thermalSample != null || windCallerThermal;
     _inThermal = inThermal;
 
@@ -2165,8 +2877,8 @@ class PlaneComponent extends PositionComponent
       _thermalSurfBoostActive = false;
     }
 
-    _thermalBreathFactor = MathUtils.lerp(
-        _thermalBreathFactor, inThermal ? 1.0 : 0.0, dt * 3.5);
+    _thermalBreathFactor =
+        MathUtils.lerp(_thermalBreathFactor, inThermal ? 1.0 : 0.0, dt * 3.5);
 
     if (inThermal) {
       double lift = thermalSample?.lift ?? laneWind.liftBonus;
@@ -2250,8 +2962,7 @@ class PlaneComponent extends PositionComponent
     // reversal. The same state machine is used by tilt, touch zones, and stick.
     _velocityX = input.resolveTurnMomentum(
       planeType: planeType,
-      desiredVelocity:
-          targetVX + laneWind.lateralForce + turbulenceForce,
+      desiredVelocity: targetVX + laneWind.lateralForce + turbulenceForce,
       hasSteeringInput:
           input.horizontalInput.abs() > GameConfig.turnMomentumInputDeadZone,
       dt: dt,
@@ -2383,10 +3094,12 @@ class PlaneComponent extends PositionComponent
         _angleOfAttack >= GameConfig.stallAngleOfAttackThreshold;
 
     if (!canBuildStall) {
-      _stallRisk = math.max(
-        0.0,
-        _stallRisk - GameConfig.stallRiskDecayPerSecond * dt,
-      ).toDouble();
+      _stallRisk = math
+          .max(
+            0.0,
+            _stallRisk - GameConfig.stallRiskDecayPerSecond * dt,
+          )
+          .toDouble();
       if (_flightControlState == FlightControlState.stallWarning &&
           _stallRisk <= 0.01) {
         _flightControlState = FlightControlState.stable;
@@ -2439,22 +3152,24 @@ class PlaneComponent extends PositionComponent
     // Tilt players can release lift while keeping their device banked. Touch
     // and joystick schemes couple altitude + steering to the same finger, so
     // their deliberate opposite steer is sufficient to count as recovery.
-    final coupledLiftAndSteer = input.currentScheme == ControlScheme.touchZones ||
-        input.currentScheme == ControlScheme.joystick;
+    final coupledLiftAndSteer =
+        input.currentScheme == ControlScheme.touchZones ||
+            input.currentScheme == ControlScheme.joystick;
     final recoveryPosture = coupledLiftAndSteer || !isHolding;
     final counterSteering = recoveryPosture &&
-        input.horizontalInput.abs() >=
-            GameConfig.spinRecoveryInputThreshold &&
+        input.horizontalInput.abs() >= GameConfig.spinRecoveryInputThreshold &&
         input.horizontalInput * _spinDirection < 0;
     if (counterSteering) {
       _spinRecovery = (_spinRecovery + dt / GameConfig.spinRecoveryDuration)
           .clamp(0.0, 1.0)
           .toDouble();
     } else {
-      _spinRecovery = math.max(
-        0.0,
-        _spinRecovery - GameConfig.spinRecoveryDecayPerSecond * dt,
-      ).toDouble();
+      _spinRecovery = math
+          .max(
+            0.0,
+            _spinRecovery - GameConfig.spinRecoveryDecayPerSecond * dt,
+          )
+          .toDouble();
     }
 
     if (_spinRecovery >= 1.0) {
@@ -2470,9 +3185,9 @@ class PlaneComponent extends PositionComponent
     _velocityY = _velocityY
         .clamp(0.0, GameConfig.maxFallSpeed * fallMultiplier)
         .toDouble();
-    _velocityX +=
-        (_spinDirection * GameConfig.spinLateralAcceleration + crosswindForce * .20) *
-            dt;
+    _velocityX += (_spinDirection * GameConfig.spinLateralAcceleration +
+            crosswindForce * .20) *
+        dt;
     _velocityX = _velocityX
         .clamp(
           -GameConfig.maxTurnMomentumSpeed,
@@ -2497,7 +3212,8 @@ class PlaneComponent extends PositionComponent
       position.y = GameConfig.ceilingY;
       _velocityY = GameConfig.ceilingStallPush;
     }
-    angle = _wrapAngle(angle + _spinDirection * GameConfig.spinAngularVelocity * dt);
+    angle = _wrapAngle(
+        angle + _spinDirection * GameConfig.spinAngularVelocity * dt);
     _wingFold = MathUtils.lerp(
       _wingFold,
       .18,
@@ -2556,7 +3272,8 @@ class PlaneComponent extends PositionComponent
     } else if (planeType == PlaneType.butterfly) {
       bankFactor = 0.0008;
       lerpSpeed = 6.0;
-    } else if (planeType == PlaneType.interceptor || planeType == PlaneType.ninjaStar) {
+    } else if (planeType == PlaneType.interceptor ||
+        planeType == PlaneType.ninjaStar) {
       bankFactor = 0.0014;
       lerpSpeed = 12.0;
     } else {
@@ -2565,9 +3282,11 @@ class PlaneComponent extends PositionComponent
     }
 
     const maxBankRad = 12.0 * math.pi / 180.0;
-    final targetAngle = (_velocityX * bankFactor).clamp(-maxBankRad, maxBankRad);
+    final targetAngle =
+        (_velocityX * bankFactor).clamp(-maxBankRad, maxBankRad);
 
-    angle = MathUtils.lerp(angle, targetAngle, (lerpSpeed * dt).clamp(0.0, 1.0));
+    angle =
+        MathUtils.lerp(angle, targetAngle, (lerpSpeed * dt).clamp(0.0, 1.0));
   }
 
   void onNearMiss(NearMissTier tier) {
