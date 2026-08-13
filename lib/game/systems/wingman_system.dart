@@ -79,7 +79,7 @@ class WingmanSystem extends Component {
       wingman.followLeader(leaderPosition, dt);
     }
 
-    final squadClose = !game.plane.isSpinning &&
+    final squadClose =
         _wingmen.every((wingman) => wingman.isNearLeader(leaderPosition));
     _updateFormationState(dt, squadClose);
     super.update(dt);

@@ -9,7 +9,7 @@ import '../../core/constants/game_config.dart';
 /// A non-colliding friendly paper plane that follows the player's formation.
 ///
 /// Wingmen deliberately use delayed steering rather than snapping to their
-/// offsets: steady pilots keep their squad close, while abrupt dives, spins, or
+/// offsets: steady pilots keep their squad close, while abrupt dives or
 /// lateral changes can break the formation bonus until everyone regroups.
 class WingmanComponent extends PositionComponent {
   WingmanComponent({

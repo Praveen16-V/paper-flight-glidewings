@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flame/collisions.dart';
@@ -15,7 +14,6 @@ import '../../core/utils/math_utils.dart';
 import '../../core/utils/noise.dart';
 import '../../providers/game_session_provider.dart';
 import '../paper_flight_game.dart';
-import '../systems/input_manager.dart';
 import 'effects/thermal_column_component.dart';
 import 'skins/animated_paper_skin.dart';
 import 'skins/custom_pattern_skin_overlay.dart';
@@ -31,8 +29,7 @@ import 'plane_trail_component.dart';
 ///            before tipping into full fall (1.0).
 ///   OSCILLATION: sinusoidal air undulation (10 px/s @ 0.8 Hz) fades in after release.
 ///   SNAP BURST: upward paper-snap kick (-252 px/s).
-///   STALL/SPIN: sustained extreme low-speed climb -> recover with release + counter-steer.
-///   CEILING: soft resistance zone (64px) -> hard clamp (40px) with stall dip.
+///   CEILING: soft resistance zone (64px) -> hard clamp (40px) with a gentle dip.
 ///
 /// Visual & Rendering features:
 ///   - Dynamic banking into lateral velocityX (capped at 12°). Glider banks slower.
@@ -40,7 +37,7 @@ import 'plane_trail_component.dart';
 ///     Origami Butterfly, Paper Bomber, Interceptor, Soaring Albatross,
 ///     Classic Biplane, Origami Shuriken, Paper Rocket).
 ///   - 3-level upgrade tree perks & stats scaling.
-///   - Crosswind-amplified Perlin wing flex on top of hold/release fold.
+///   - Crosswind-amplified Perlin wing flex independent of touch input.
 ///   - Eight-frame SpriteAnimationComponent overlays for premium paper skins.
 ///   - Event-reactive Gold Leaf, Holographic Foil, and Dragon Scale finishes.
 ///   - Thermal breathing scale pulse while riding updrafts.
@@ -111,40 +108,9 @@ class PlaneComponent extends PositionComponent
   double _ceilingStallTimer = 0.0; // seconds remaining in stall dip
   bool _ceilingWasInSoftZone = false;
 
-  // ── Aerodynamic Stall / Spin State ────────────────────────────────────────
-
-  /// Effective pitch between upward motion and forward world speed, radians.
-  /// It is a gameplay-facing angle of attack rather than the render bank angle.
-  double _angleOfAttack = 0.0;
-  double get angleOfAttack => _angleOfAttack;
-
-  FlightControlState _flightControlState = FlightControlState.stable;
-  FlightControlState get flightControlState => _flightControlState;
-  bool get isSpinning => _flightControlState == FlightControlState.spinning;
-
-  /// 0..1 warning build-up before the wing actually stalls.
-  double _stallRisk = 0.0;
-  double get stallRisk => _stallRisk;
-  double _stallSnapGraceTimer = 0.0;
-
-  double _spinDirection = 1.0;
-  double _spinRecovery = 0.0;
-  double get spinRecovery => _spinRecovery;
-
   // ── Visual & Animation State ───────────────────────────────────────────────
 
   bool _isAlive = true;
-
-  /// Wing-fold amount [0 = fully spread (gliding), 1 = folded up (holding)].
-  double _wingFold = 0.0;
-
-  /// Spring velocity of the wing fold, so pinch-in and spring-back both ease
-  /// smoothly instead of snapping between poses.
-  double _wingFoldVelocity = 0.0;
-
-  /// Elapsed time since the finger was released; drives the damped paper
-  /// flutter that plays as the wings spring back open. -1 = not fluttering.
-  double _wingFlutterTime = -1.0;
 
   /// Total elapsed time in seconds.
   double _animTime = 0.0;
@@ -406,25 +372,22 @@ class PlaneComponent extends PositionComponent
           : GameConfig.shrinkVisualScale;
     }
 
-    // ── Crosswind-amplified wing flex on top of hold/release fold ───────────
-    // Calm air keeps a small paper flutter; a real local gust amplifies the
-    // same noise field, so wings bend organically instead of snapping between
-    // a separate "windy" pose and a calm pose.
+    // ── Crosswind-amplified wing flex ───────────────────────────────────────
+    // This subtle ambient flex is driven only by air and the Butterfly's own
+    // animation. Touching or holding the screen never changes the silhouette.
     final flexNoise = _noise.noise1d(_animTime * 3.8);
     final flexAmplitude = GameConfig.wingFlexBaseNoiseAmplitude +
         _wingFlexStrength * GameConfig.wingFlexCrosswindNoiseBoost;
-    final wingFlexWobble = flexNoise * flexAmplitude * (1.0 - _wingFold * 0.4);
+    final wingFlexWobble = flexNoise * flexAmplitude;
     final butterflyFlap = planeType == PlaneType.butterfly
-        ? math.sin(_animTime * 10.0) * 0.35 * (1.0 - _wingFold * 0.5)
+        ? math.sin(_animTime * 10.0) * 0.35
         : 0.0;
-    final effectiveFold =
-        (_wingFold + _wingFlutterOffset + wingFlexWobble + butterflyFlap)
-            .clamp(-GameConfig.wingFoldOpenOvershoot, 1.0);
-
-    // Clean hold-driven sweep amount (0 = flat, 1 = wings swept back). Driven
-    // by the same spring as the fold but kept free of flutter/wobble noise so
-    // the backward sweep stays smooth while the span continues to flutter.
-    final wingSweep = _wingFold.clamp(0.0, 1.0).toDouble();
+    final effectiveFold = (wingFlexWobble + butterflyFlap)
+        .clamp(
+          -GameConfig.wingFlexOpenOvershoot,
+          GameConfig.wingFlexMaxVisualBend,
+        )
+        .toDouble();
 
     // ── Night Lighting: Forward Projector Headlamp Beam ──────────────────────
     if (game.biomeManager.currentBiome == Biome.night) {
@@ -457,7 +420,7 @@ class PlaneComponent extends PositionComponent
       ..color = const Color(0x3D000000)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.2)
       ..style = PaintingStyle.fill;
-    _drawSweptPlaneShape(canvas, shadowPaint, w, h, effectiveFold, wingSweep,
+    _drawPlaneShape(canvas, shadowPaint, w, h, effectiveFold,
         isShadow: true, planeColor: planeColor, opacity: ghostOpacity);
     canvas.restore();
 
@@ -465,7 +428,7 @@ class PlaneComponent extends PositionComponent
     final mainPaint = Paint()
       ..color = planeColor.withOpacity(ghostOpacity)
       ..style = PaintingStyle.fill;
-    _drawSweptPlaneShape(canvas, mainPaint, w, h, effectiveFold, wingSweep,
+    _drawPlaneShape(canvas, mainPaint, w, h, effectiveFold,
         isShadow: false, planeColor: planeColor, opacity: ghostOpacity);
 
     // 3. Procedural Paper Grain & Texture Multiply Layer
@@ -502,8 +465,6 @@ class PlaneComponent extends PositionComponent
     // ── Active In-Flight Power-Up Visuals ────────────────────────────────────
     _drawPowerUpOverlays(canvas, w, h);
 
-    // ── Aerodynamic Stall / Spin Readout ────────────────────────────────────
-    _drawStallSpinOverlay(canvas, w, h);
   }
 
   // ── Silhouette per type ────────────────────────────────────────────────────
@@ -570,92 +531,13 @@ class PlaneComponent extends PositionComponent
     }
   }
 
-  /// Draws the silhouette with the wings swept back toward the tail in
-  /// proportion to [sweep] — the "pulling the wings back to fly faster" pose
-  /// that plays while the pilot holds the screen. Only the off-centreline wing
-  /// panels shift (their tips move toward the tail by up to
-  /// [GameConfig.wingSweepMaxShiftPixels]); the fuselage centreline is the
-  /// shear axis and therefore stays fixed, so the plane reads as accelerating
-  /// forward rather than turning or flipping. On release the same spring that
-  /// drives [sweep] returns it to 0 and the wings settle back to flat.
-  void _drawSweptPlaneShape(
-    Canvas canvas,
-    Paint basePaint,
-    double w,
-    double h,
-    double wingFold,
-    double sweep, {
-    required bool isShadow,
-    required Color planeColor,
-    required double opacity,
-  }) {
-    if (sweep <= 0.001) {
-      _drawPlaneShape(canvas, basePaint, w, h, wingFold,
-          isShadow: isShadow, planeColor: planeColor, opacity: opacity);
-      return;
-    }
-
-    final cy = h / 2;
-    // Shear coefficient: full shift at the extreme wingtip, zero at the
-    // centreline. Linear in |y - cy| so both halves sweep symmetrically.
-    final s = GameConfig.wingSweepMaxShiftPixels * sweep / cy;
-
-    // Upper wing half — shear backward (toward the tail, -x).
-    canvas.save();
-    canvas.clipRect(Rect.fromLTRB(-w * 3, -h * 3, w * 3, cy));
-    canvas.translate(0, cy);
-    // Apply shear transformation using matrix
-    _applyShearTransform(canvas, s, 0);
-    canvas.translate(0, -cy);
-    _drawPlaneShape(canvas, basePaint, w, h, wingFold,
-        isShadow: isShadow, planeColor: planeColor, opacity: opacity);
-    canvas.restore();
-
-    // Lower wing half — mirrored shear so it also sweeps backward.
-    canvas.save();
-    canvas.clipRect(Rect.fromLTRB(-w * 3, cy, w * 3, h * 3));
-    canvas.translate(0, cy);
-    // Apply shear transformation using matrix
-    _applyShearTransform(canvas, -s, 0);
-    canvas.translate(0, -cy);
-    _drawPlaneShape(canvas, basePaint, w, h, wingFold,
-        isShadow: isShadow, planeColor: planeColor, opacity: opacity);
-    canvas.restore();
-  }
-
-  /// Apply a shear transformation to the canvas using a transformation matrix.
-  /// This replaces the deprecated Canvas.shear() method.
-  /// [shearX] shifts x by amount proportional to y; [shearY] shifts y by amount proportional to x.
-  void _applyShearTransform(Canvas canvas, double shearX, double shearY) {
-    // Create a 4x4 transformation matrix in column-major order for shear transformation
-    // For 2D shear: [1, shearY, 0, 0; shearX, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1]
-    final Float64List matrix = Float64List(16);
-    matrix[0] = 1.0; // m00
-    matrix[1] = shearY; // m10
-    matrix[2] = 0.0; // m20
-    matrix[3] = 0.0; // m30
-    matrix[4] = shearX; // m01
-    matrix[5] = 1.0; // m11
-    matrix[6] = 0.0; // m21
-    matrix[7] = 0.0; // m31
-    matrix[8] = 0.0; // m02
-    matrix[9] = 0.0; // m12
-    matrix[10] = 1.0; // m22
-    matrix[11] = 0.0; // m32
-    matrix[12] = 0.0; // m03
-    matrix[13] = 0.0; // m13
-    matrix[14] = 0.0; // m23
-    matrix[15] = 1.0; // m33
-    canvas.transform(matrix);
-  }
-
   void _drawDartSilhouette(
       Canvas canvas, Paint paint, double w, double h, double wingFold,
       {required bool isShadow,
       required Color planeColor,
       required double opacity}) {
-    // Wings sweep from fully spread toward the keel as the fold deepens —
-    // like pinching a real dart's wings between finger and thumb.
+    // Wind flex draws the wings slightly inward while preserving the dart's
+    // recognizable spread silhouette.
     final topWingY = MathUtils.lerp(h * 0.06, h * 0.42, wingFold);
     final botWingY = h - topWingY;
     const noseX = 2.0;
@@ -1459,7 +1341,7 @@ class PlaneComponent extends PositionComponent
   }
 
   /// Draws subtle, asymmetric crease arcs that bow with the live crosswind.
-  /// The base silhouette already receives the amplified noise fold; these lines
+  /// The base silhouette already receives the amplified air flex; these lines
   /// make the direction and magnitude legible on every paper archetype.
   void _drawCrosswindWingFlex(
     Canvas canvas,
@@ -2555,99 +2437,6 @@ class PlaneComponent extends PositionComponent
     );
   }
 
-  // ── Aerodynamic Stall / Spin Overlay ──────────────────────────────────────
-
-  void _drawStallSpinOverlay(Canvas canvas, double w, double h) {
-    final state = _flightControlState;
-    if (state == FlightControlState.stable) return;
-
-    final center = Offset(w / 2, h / 2);
-    if (state == FlightControlState.stallWarning) {
-      final risk = _stallRisk.clamp(0.0, 1.0).toDouble();
-      final warningPaint = Paint()
-        ..color = Color.fromRGBO(255, 179, 0, .38 + risk * .52)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.6 + risk * 1.4
-        ..strokeCap = StrokeCap.round;
-      final radius = w * (.50 + risk * .18);
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        -math.pi / 2,
-        math.pi * 2 * risk,
-        false,
-        warningPaint,
-      );
-
-      // Buffeting tick marks communicate "unload the wing" before a spin.
-      final buffet = Paint()
-        ..color = Color.fromRGBO(255, 235, 59, .30 + risk * .55)
-        ..strokeWidth = 1.2
-        ..strokeCap = StrokeCap.round;
-      for (var i = 0; i < 4; i++) {
-        final phase = _animTime * (11 + risk * 8) + i * math.pi / 2;
-        final x = center.dx + math.cos(phase) * radius;
-        final y = center.dy + math.sin(phase) * radius * .62;
-        canvas.drawLine(
-          Offset(x, y),
-          Offset(x + math.cos(phase) * 5, y + math.sin(phase) * 4),
-          buffet,
-        );
-      }
-      return;
-    }
-
-    final spinPulse = .72 + math.sin(_animTime * 12) * .18;
-    final spinPaint = Paint()
-      ..color =
-          Color.fromRGBO(255, 82, 82, spinPulse.clamp(0.0, 1.0).toDouble())
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0
-      ..strokeCap = StrokeCap.round;
-    for (var i = 0; i < 3; i++) {
-      final radius = w * (.45 + i * .18);
-      final start =
-          _animTime * GameConfig.spinAngularVelocity * _spinDirection +
-              i * math.pi * .66;
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        start,
-        math.pi * 1.05,
-        false,
-        spinPaint,
-      );
-    }
-
-    // Recovery fills only while the pilot counter-steers against rotation; the
-    // arrow points toward the required correction for every control scheme.
-    final recoveryPaint = Paint()
-      ..color = const Color(0xFFB9F6CA)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.4
-      ..strokeCap = StrokeCap.round;
-    final recoveryRect = Rect.fromCircle(center: center, radius: w * .78);
-    canvas.drawArc(
-      recoveryRect,
-      -math.pi / 2,
-      math.pi * 2 * _spinRecovery.clamp(0.0, 1.0).toDouble(),
-      false,
-      recoveryPaint,
-    );
-
-    final counterDirection = -_spinDirection;
-    final arrowX = center.dx + counterDirection * w * .78;
-    final arrow = Path()
-      ..moveTo(arrowX + counterDirection * 7, center.dy)
-      ..lineTo(arrowX - counterDirection * 4, center.dy - 5)
-      ..lineTo(arrowX - counterDirection * 4, center.dy + 5)
-      ..close();
-    canvas.drawPath(
-      arrow,
-      Paint()
-        ..color = const Color(0xFFB9F6CA)
-        ..style = PaintingStyle.fill,
-    );
-  }
-
   void _triggerSnapFlash() {
     _snapFlashTimer = 0.22;
   }
@@ -2732,11 +2521,6 @@ class PlaneComponent extends PositionComponent
     if (_ceilingStallTimer > 0) {
       _ceilingStallTimer = (_ceilingStallTimer - dt).clamp(0.0, 10.0);
     }
-    if (_stallSnapGraceTimer > 0) {
-      _stallSnapGraceTimer = (_stallSnapGraceTimer - dt)
-          .clamp(0.0, GameConfig.stallSnapGraceSeconds)
-          .toDouble();
-    }
     if (_crumpleAmount > 0) {
       _crumpleAmount = (_crumpleAmount - dt / 3.5).clamp(0.0, 1.0);
     }
@@ -2744,27 +2528,11 @@ class PlaneComponent extends PositionComponent
     // Shrink + skin-synergy hitbox update.
     _syncHitboxGeometry();
 
-    // A spin owns all motion until the pilot releases lift and counter-steers.
-    // It intentionally bypasses normal hold/glide and turn-momentum physics.
-    if (isSpinning) {
-      _updateSpin(
-        dt: dt,
-        input: input,
-        isHolding: isHolding,
-        fallMultiplier: fallMult,
-        gravityScale: wind.profile.gravity,
-        crosswindForce: wind.currentForceAt(position.x),
-      );
-      _wasHolding = isHolding;
-      return;
-    }
-
     // ── Vertical Physics ─────────────────────────────────────────────────────
 
     if (pressEdge) {
       _glideArcActive = false;
       _oscillationStrength = 0.0;
-      _playHoldKickEffect();
     }
 
     if (isHolding) {
@@ -2835,7 +2603,6 @@ class PlaneComponent extends PositionComponent
           : (planeType == PlaneType.rocket && planeLevel >= 3 ? 1.20 : 1.0);
       _velocityY = GameConfig.snapBurstVelocity * snapMult;
       _glideArcActive = false;
-      _stallSnapGraceTimer = GameConfig.stallSnapGraceSeconds;
       _snapInteractionTimer = GameConfig.snapInteractionDuration;
       _snapInteractionResolved = false;
       _triggerSnapFlash();
@@ -2900,24 +2667,6 @@ class PlaneComponent extends PositionComponent
       GameConfig.snapBurstVelocity * 1.2,
       GameConfig.maxFallSpeed * fallMult,
     );
-
-    _updateStallRisk(
-      dt: dt,
-      isHolding: isHolding,
-      crosswindForce: wind.currentForceAt(position.x),
-    );
-    if (isSpinning) {
-      _updateSpin(
-        dt: dt,
-        input: input,
-        isHolding: isHolding,
-        fallMultiplier: fallMult,
-        gravityScale: wind.profile.gravity,
-        crosswindForce: wind.currentForceAt(position.x),
-      );
-      _wasHolding = isHolding;
-      return;
-    }
 
     // ── Horizontal Physics ────────────────────────────────────────────────────
 
@@ -3003,244 +2752,13 @@ class PlaneComponent extends PositionComponent
     }
 
     _updateRotation(dt);
-    _updateWingFold(dt, isHolding, releaseEdge);
     _wasHolding = isHolding;
-  }
-
-  // ── Paper-Wing Fold (finger tap & release) ────────────────────────────────
-
-  /// Wings pinch in smoothly while the pilot's finger is held and spring back
-  /// open on release with a soft damped flutter — the squeeze-and-let-go feel
-  /// of a real paper dart.
-  ///
-  /// The fold is driven by a critically-damped spring rather than a fixed
-  /// per-frame lerp, so both the pinch-in and the spring-back accelerate
-  /// organically and never snap between poses.
-  void _updateWingFold(double dt, bool isHolding, bool releaseEdge) {
-    if (releaseEdge) {
-      _wingFlutterTime = 0.0;
-    }
-    final target = isHolding ? 1.0 : 0.0;
-    final stiffness = isHolding
-        ? GameConfig.wingFoldPressStiffness
-        : GameConfig.wingFoldReleaseStiffness;
-    final damping = isHolding
-        ? GameConfig.wingFoldPressDamping
-        : GameConfig.wingFoldReleaseDamping;
-
-    // Semi-implicit Euler integration of a damped spring (mass = 1).
-    final accel =
-        stiffness * (target - _wingFold) - damping * _wingFoldVelocity;
-    _wingFoldVelocity += accel * dt;
-    _wingFold += _wingFoldVelocity * dt;
-
-    // Let the release spring bow slightly past flat (the paper bounce handled
-    // by the fold + flutter), but stop any fold that would creep past a state
-    // the pose can't represent. Hard clamps would snap the wing, so these only
-    // fire when the spring would carry it beyond the fully-folded extremes.
-    if (!isHolding && _wingFold < 0.0 && _wingFoldVelocity < 0.0) {
-      _wingFold = 0.0;
-      _wingFoldVelocity = 0.0;
-    } else if (isHolding && _wingFold > 1.0) {
-      _wingFold = 1.0;
-      _wingFoldVelocity = 0.0;
-    }
-
-    _tickWingFlutter(dt);
-  }
-
-  /// Ages the release flutter and expires it when the paper has settled.
-  void _tickWingFlutter(double dt) {
-    if (_wingFlutterTime < 0.0) return;
-    _wingFlutterTime += dt;
-    if (_wingFlutterTime >= GameConfig.wingReleaseFlutterDuration) {
-      _wingFlutterTime = -1.0;
-    }
-  }
-
-  /// Damped sinusoid added to the fold while the released paper settles:
-  /// the wings bow slightly past flat, then beat a couple of times.
-  double get _wingFlutterOffset {
-    if (_wingFlutterTime < 0.0) return 0.0;
-    final t = _wingFlutterTime;
-    final progress =
-        (t / GameConfig.wingReleaseFlutterDuration).clamp(0.0, 1.0);
-    final decay = (1.0 - progress) * (1.0 - progress);
-    return -math.sin(t * GameConfig.wingReleaseFlutterFrequency * 2 * math.pi) *
-        GameConfig.wingReleaseFlutterAmplitude *
-        decay;
-  }
-
-  // ── Stall / Spin Simulation ───────────────────────────────────────────────
-
-  void _updateStallRisk({
-    required double dt,
-    required bool isHolding,
-    required double crosswindForce,
-  }) {
-    final forwardAirspeed = math.max(1.0, game.scrollSpeed).toDouble();
-    // This measures wing airflow, not [angle], which is only visual bank.
-    _angleOfAttack = GameConfig.angleOfAttackFor(
-      forwardAirspeed: forwardAirspeed,
-      verticalVelocity: _velocityY,
-      holdingLift: isHolding,
-    );
-
-    final canBuildStall = game.mode != GameMode.zen &&
-        !_turboDashActive &&
-        game.distanceMeters >= GameConfig.stallArmDistanceMeters &&
-        _stallSnapGraceTimer <= 0 &&
-        forwardAirspeed < GameConfig.stallLowAirspeedThreshold &&
-        _angleOfAttack >= GameConfig.stallAngleOfAttackThreshold;
-
-    if (!canBuildStall) {
-      _stallRisk = math
-          .max(
-            0.0,
-            _stallRisk - GameConfig.stallRiskDecayPerSecond * dt,
-          )
-          .toDouble();
-      if (_flightControlState == FlightControlState.stallWarning &&
-          _stallRisk <= 0.01) {
-        _flightControlState = FlightControlState.stable;
-      }
-      return;
-    }
-
-    _stallRisk = (_stallRisk + dt / GameConfig.stallBuildUpDuration)
-        .clamp(0.0, 1.0)
-        .toDouble();
-    if (_stallRisk >= 1.0) {
-      _enterSpin(crosswindForce);
-    } else {
-      _flightControlState = FlightControlState.stallWarning;
-    }
-  }
-
-  void _enterSpin(double crosswindForce) {
-    if (isSpinning) return;
-
-    final lateralBias = _velocityX.abs() > 18.0 ? _velocityX : crosswindForce;
-    _spinDirection = lateralBias.abs() > 1.0
-        ? lateralBias.sign
-        : (math.sin(_animTime * 2.7) >= 0 ? 1.0 : -1.0);
-    _flightControlState = FlightControlState.spinning;
-    _stallRisk = 0.0;
-    _spinRecovery = 0.0;
-    _glideArcActive = false;
-    _oscillationStrength = 0.0;
-    _velocityY = math.max(_velocityY, 24.0).toDouble();
-    _velocityX += _spinDirection * 35.0;
-    _inThermal = false;
-    _surfingThermalColumn?.resetPilotOrbit(clearBonus: true);
-    _surfingThermalColumn = null;
-    _thermalSurfBoostActive = false;
-    _thermalSurfLoopQueued = false;
-  }
-
-  void _updateSpin({
-    required double dt,
-    required InputManager input,
-    required bool isHolding,
-    required double fallMultiplier,
-    required double gravityScale,
-    required double crosswindForce,
-  }) {
-    _syncCrosswindFlex(dt, crosswindForce);
-    _angleOfAttack = 0.0;
-
-    // Tilt players can release lift while keeping their device banked. Touch
-    // and joystick schemes couple altitude + steering to the same finger, so
-    // their deliberate opposite steer is sufficient to count as recovery.
-    final coupledLiftAndSteer =
-        input.currentScheme == ControlScheme.touchZones ||
-            input.currentScheme == ControlScheme.joystick;
-    final recoveryPosture = coupledLiftAndSteer || !isHolding;
-    final counterSteering = recoveryPosture &&
-        input.horizontalInput.abs() >= GameConfig.spinRecoveryInputThreshold &&
-        input.horizontalInput * _spinDirection < 0;
-    if (counterSteering) {
-      _spinRecovery = (_spinRecovery + dt / GameConfig.spinRecoveryDuration)
-          .clamp(0.0, 1.0)
-          .toDouble();
-    } else {
-      _spinRecovery = math
-          .max(
-            0.0,
-            _spinRecovery - GameConfig.spinRecoveryDecayPerSecond * dt,
-          )
-          .toDouble();
-    }
-
-    if (_spinRecovery >= 1.0) {
-      _exitSpin(input);
-      return;
-    }
-
-    _velocityY += GameConfig.gravity *
-        GameConfig.spinGravityMultiplier *
-        fallMultiplier *
-        gravityScale *
-        dt;
-    _velocityY = _velocityY
-        .clamp(0.0, GameConfig.maxFallSpeed * fallMultiplier)
-        .toDouble();
-    _velocityX += (_spinDirection * GameConfig.spinLateralAcceleration +
-            crosswindForce * .20) *
-        dt;
-    _velocityX = _velocityX
-        .clamp(
-          -GameConfig.maxTurnMomentumSpeed,
-          GameConfig.maxTurnMomentumSpeed,
-        )
-        .toDouble();
-
-    final minX = GameConfig.horizontalEdgeMargin;
-    final maxX = GameConfig.designWidth - GameConfig.horizontalEdgeMargin;
-    final proposedX = position.x + _velocityX * dt;
-    position.x = proposedX.clamp(minX, maxX).toDouble();
-    position.y += _velocityY * dt;
-    if (proposedX <= minX && _velocityX < 0) {
-      _velocityX = 0;
-      input.blockTurnMomentumAtEdge(left: true);
-    } else if (proposedX >= maxX && _velocityX > 0) {
-      _velocityX = 0;
-      input.blockTurnMomentumAtEdge(right: true);
-    }
-
-    if (position.y < GameConfig.ceilingY) {
-      position.y = GameConfig.ceilingY;
-      _velocityY = GameConfig.ceilingStallPush;
-    }
-    angle = _wrapAngle(
-        angle + _spinDirection * GameConfig.spinAngularVelocity * dt);
-    _wingFold = MathUtils.lerp(
-      _wingFold,
-      .18,
-      (5.0 * dt).clamp(0.0, 1.0).toDouble(),
-    );
-    _tickWingFlutter(dt);
-
-    if (position.y > GameConfig.designHeight + size.y) {
-      game.onPlaneCrash();
-    }
-  }
-
-  void _exitSpin(InputManager input) {
-    _flightControlState = FlightControlState.stable;
-    _stallRisk = 0.0;
-    _spinRecovery = 0.0;
-    _stallSnapGraceTimer = GameConfig.stallSnapGraceSeconds * .5;
-    _velocityY = GameConfig.spinRecoveryVerticalKick;
-    _velocityX = -_spinDirection * 45.0;
-    angle = -_spinDirection * .12;
-    input.resetTurnMomentum();
   }
 
   void _syncCrosswindFlex(double dt, double liveCrosswindForce) {
     // Render-time paper flex uses the exact same composed lane + pocket force
     // the plane is fighting in physics. Smoothing prevents turbulence reversals
-    // from making folded wings visually flicker frame-to-frame.
+    // from making flexed wings visually flicker frame-to-frame.
     final flexBlend =
         (GameConfig.wingFlexResponseRate * dt).clamp(0.0, 1.0).toDouble();
     _crosswindForce = MathUtils.lerp(
@@ -3253,13 +2771,6 @@ class PlaneComponent extends PositionComponent
       GameConfig.wingFlexStrengthForForce(liveCrosswindForce),
       flexBlend,
     );
-  }
-
-  double _wrapAngle(double value) {
-    final fullTurn = math.pi * 2;
-    var wrapped = value % fullTurn;
-    if (wrapped > math.pi) wrapped -= fullTurn;
-    return wrapped;
   }
 
   void _updateRotation(double dt) {
@@ -3281,9 +2792,10 @@ class PlaneComponent extends PositionComponent
       lerpSpeed = 9.5;
     }
 
-    const maxBankRad = 12.0 * math.pi / 180.0;
-    final targetAngle =
-        (_velocityX * bankFactor).clamp(-maxBankRad, maxBankRad);
+    final targetAngle = (_velocityX * bankFactor).clamp(
+      -GameConfig.planeMaxBankAngleRadians,
+      GameConfig.planeMaxBankAngleRadians,
+    );
 
     angle =
         MathUtils.lerp(angle, targetAngle, (lerpSpeed * dt).clamp(0.0, 1.0));
@@ -3365,21 +2877,6 @@ class PlaneComponent extends PositionComponent
     );
   }
 
-  void _playHoldKickEffect() {
-    children.whereType<ScaleEffect>().toList().forEach(remove);
-    add(
-      ScaleEffect.by(
-        Vector2(1.06, GameConfig.wingSquishScaleY),
-        EffectController(
-          duration: GameConfig.wingSquishDuration / 2,
-          reverseDuration: GameConfig.wingSquishDuration / 2,
-          curve: Curves.easeOut,
-          reverseCurve: Curves.easeIn,
-        ),
-      ),
-    );
-  }
-
   @override
   void onCollisionStart(
     Set<Vector2> intersectionPoints,
@@ -3393,21 +2890,12 @@ class PlaneComponent extends PositionComponent
     _skinPainter.reset();
     _velocityX = 0;
     _velocityY = 0;
-    _wingFold = 0;
-    _wingFoldVelocity = 0;
-    _wingFlutterTime = -1.0;
     _wasHolding = false;
     _glideArcActive = false;
     _oscillationPhase = 0;
     _oscillationStrength = 0;
     _ceilingStallTimer = 0.0;
     _ceilingWasInSoftZone = false;
-    _angleOfAttack = 0.0;
-    _flightControlState = FlightControlState.stable;
-    _stallRisk = 0.0;
-    _stallSnapGraceTimer = 0.0;
-    _spinDirection = 1.0;
-    _spinRecovery = 0.0;
     _snapFlashTimer = 0.0;
     _snapInteractionTimer = 0.0;
     _snapInteractionResolved = false;
@@ -3454,21 +2942,12 @@ class PlaneComponent extends PositionComponent
     _skinPainter.reset();
     _velocityY = 0;
     _velocityX = 0;
-    _wingFold = 0;
-    _wingFoldVelocity = 0;
-    _wingFlutterTime = -1.0;
     _wasHolding = false;
     _glideArcActive = false;
     _oscillationPhase = 0;
     _oscillationStrength = 0;
     _ceilingStallTimer = 0.0;
     _ceilingWasInSoftZone = false;
-    _angleOfAttack = 0.0;
-    _flightControlState = FlightControlState.stable;
-    _stallRisk = 0.0;
-    _stallSnapGraceTimer = 0.0;
-    _spinDirection = 1.0;
-    _spinRecovery = 0.0;
     _snapFlashTimer = 0.0;
     _snapInteractionTimer = 0.0;
     _snapInteractionResolved = false;

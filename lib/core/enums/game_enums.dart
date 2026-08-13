@@ -16,16 +16,6 @@ enum GamePhase {
   reviving,  // watching rewarded ad to revive
 }
 
-/// Moment-to-moment aerodynamic control state for the player plane.
-///
-/// This is intentionally separate from [GamePhase]: a spin is recoverable play
-/// state, while dying/game over are terminal run states.
-enum FlightControlState {
-  stable,
-  stallWarning,
-  spinning,
-}
-
 /// Gameplay signals forwarded from the plane to its active paper-skin painter.
 enum SkinGameEvent {
   coinCollected,

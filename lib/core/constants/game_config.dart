@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import '../enums/game_enums.dart';
 
 /// Extra visual trail supplied by a specific plane + paper-skin pairing.
@@ -159,6 +157,10 @@ abstract class GameConfig {
   /// from throwing a plane through the world edge in one frame.
   static const double maxTurnMomentumSpeed = 380.0;
 
+  /// Maximum visual bank during normal flight (12 degrees). With the old spin
+  /// state removed, this is the only rotation applied to the player plane.
+  static const double planeMaxBankAngleRadians = 0.20943951023931953;
+
   /// Default tilt sensitivity (1.0 = neutral, range 0.3–2.0 via settings).
   static const double defaultTiltSensitivity = 1.0;
 
@@ -219,53 +221,6 @@ abstract class GameConfig {
   /// the plane is still moving upward — gives that "float" moment.
   static const double glideNoseUpBias = 0.09;
 
-  // ── Stall / Spin Recovery ────────────────────────────────────────────────
-  /// Stalls only arm after the onboarding-speed opening, so a new run's first
-  /// lift or BOOST burst cannot surprise the player before they have space.
-  static const double stallArmDistanceMeters = 140.0;
-
-  /// Forward world speed below which an over-pitched fold can lose lift.
-  static const double stallLowAirspeedThreshold = 190.0;
-
-  /// Extreme effective angle of attack required to build a stall (radians).
-  static const double stallAngleOfAttackThreshold = 0.98;
-
-  /// Small additional pitch demand while the player is holding lift.
-  static const double stallHoldingPitchBias = 18.0;
-
-  /// Computes effective angle of attack from forward world speed and vertical
-  /// air motion. This deliberately does not use render bank angle: a hard bank
-  /// is safe, while an over-pitched, slow climb is the stall risk.
-  static double angleOfAttackFor({
-    required double forwardAirspeed,
-    required double verticalVelocity,
-    required bool holdingLift,
-  }) {
-    final forward = math.max(1.0, forwardAirspeed).toDouble();
-    final climb = math.max(0.0, -verticalVelocity).toDouble();
-    final commandBias = holdingLift ? stallHoldingPitchBias : 0.0;
-    return math.atan2(climb + commandBias, forward);
-  }
-
-  /// Time spent above the stall threshold before the spin begins.
-  static const double stallBuildUpDuration = 0.55;
-
-  /// How quickly the warning gauge drains once the pilot unloads the wing.
-  static const double stallRiskDecayPerSecond = 1.9;
-
-  /// A short grace window after a snap burst; sustained high-angle climbing
-  /// afterwards can still stall, but the ability never self-punishes on tap.
-  static const double stallSnapGraceSeconds = 0.36;
-
-  /// Spin dynamics and the deliberate counter-steer recovery input.
-  static const double spinAngularVelocity = 9.5;
-  static const double spinGravityMultiplier = 1.75;
-  static const double spinLateralAcceleration = 240.0;
-  static const double spinRecoveryInputThreshold = 0.42;
-  static const double spinRecoveryDuration = 0.58;
-  static const double spinRecoveryDecayPerSecond = 0.85;
-  static const double spinRecoveryVerticalKick = -42.0;
-
   // ── Friendly Wingmen / Formation Flying ─────────────────────────────────
   /// Zen and Daily Flights launch two non-colliding friendly paper planes.
   static const int wingmanCount = 2;
@@ -279,14 +234,6 @@ abstract class GameConfig {
   static const double wingmanComboPulseInterval = 2.4;
   static const double wingmanComboBonusNotches = 0.5;
   static const double wingmanCoinScoreMultiplier = 1.25;
-
-  // ── Wing Squish Effect ────────────────────────────────────────────────────
-
-  /// Scale Y at peak squish when hold is pressed (< 1.0 = compressed).
-  static const double wingSquishScaleY = 0.82;
-
-  /// Total duration (seconds) of the squish-in + spring-back cycle.
-  static const double wingSquishDuration = 0.12;
 
   // ── Plane Trail ───────────────────────────────────────────────────────────
 
@@ -368,39 +315,16 @@ abstract class GameConfig {
   /// Max wing-crease bend in local plane pixels at full crosswind.
   static const double wingFlexMaxBendPixels = 6.0;
 
+  /// Bounds for air-driven silhouette flex. They keep gust animation subtle and
+  /// prevent it from ever resembling the removed touch-driven wing fold.
+  static const double wingFlexOpenOvershoot = 0.12;
+  static const double wingFlexMaxVisualBend = 0.42;
+
   /// Converts signed lateral wind into a stable 0..1 flex amount.
   static double wingFlexStrengthForForce(double lateralForce) =>
       (lateralForce.abs() / wingFlexForceForFullStrength)
           .clamp(0.0, 1.0)
           .toDouble();
-
-  // ── Paper-Wing Fold on Finger Tap / Hold / Release ───────────────────────
-  /// Spring stiffness while the finger is held (px/s² per unit fold). The
-  /// fold is driven by a critically-damped spring so the wings pinch in
-  /// smoothly the moment the screen is touched, without a hard snap.
-  static const double wingFoldPressStiffness = 700.0;
-  static const double wingFoldPressDamping = 50.0;
-
-  /// Spring stiffness when the finger is released — a touch gentler so the
-  /// wings spring back open with a soft, paper-like settle.
-  static const double wingFoldReleaseStiffness = 260.0;
-  static const double wingFoldReleaseDamping = 20.0;
-
-  /// Damped flutter the wings do after springing open on release, so the
-  /// paper settles like a real dart instead of snapping rigid.
-  static const double wingReleaseFlutterDuration = 0.45;
-  static const double wingReleaseFlutterFrequency = 5.0; // Hz
-  static const double wingReleaseFlutterAmplitude = 0.06;
-
-  /// How far past flat the wings may bow during the release flutter.
-  static const double wingFoldOpenOvershoot = 0.12;
-
-  // ── Wing Sweep (Forward-Thrust Pose) ──────────────────────────────────────
-  /// While the pilot holds the screen, the wings sweep back toward the tail to
-  /// sell forward thrust. This is the maximum backward shift (px) of a wingtip
-  /// at full sweep. The shift scales with distance from the fuselage centreline
-  /// so the body never moves — the plane reads as accelerating, not turning.
-  static const double wingSweepMaxShiftPixels = 7.0;
 
   // ── Micro-biome Turbulence Pockets ───────────────────────────────────────
   /// Natural pockets persist long enough to be read and corrected for, rather
