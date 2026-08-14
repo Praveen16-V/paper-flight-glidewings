@@ -78,6 +78,10 @@ class ObstacleSpawner extends Component {
   ObstacleType? _pendingChosen;
   double _combinationCooldown = 0.0;
 
+  /// Boss passes own the whole screen; this cooldown stops two dragon
+  /// encounters from ever chaining back-to-back.
+  double _paperDragonCooldown = 0.0;
+
   static const double _reactionWindowSeconds = 1.15;
   static const double _corridorHalfWidth = 54.0;
 
@@ -216,6 +220,9 @@ class ObstacleSpawner extends Component {
           .clamp(0.0, GameConfig.obstacleCombinationCooldown)
           .toDouble();
     }
+    if (_paperDragonCooldown > 0) {
+      _paperDragonCooldown -= dt;
+    }
     if (!spawnEnabled) return;
 
     _spawnTimer += dt;
@@ -232,6 +239,7 @@ class ObstacleSpawner extends Component {
     _safeCorridorX = GameConfig.designWidth * 0.5;
     _pendingChosen = null;
     _combinationCooldown = 0.0;
+    _paperDragonCooldown = 0.0;
     for (final obs in List.of(_active)) {
       _recycleObstacle(obs);
     }
@@ -296,7 +304,9 @@ class ObstacleSpawner extends Component {
     final weights = types
         .map(
           (type) => game.biomeManager.obstacleWeight(type) *
-              game.dynamicDifficultySystem.obstacleWeightMultiplier(type),
+              game.dynamicDifficultySystem.obstacleWeightMultiplier(type) *
+              // A boss stays out of the roll while its cooldown runs.
+              (type.isBoss && _paperDragonCooldown > 0 ? 0.0 : 1.0),
         )
         .toList();
 
@@ -319,6 +329,9 @@ class ObstacleSpawner extends Component {
     _planSafeCorridor();
     final spawnX = _pickSpawnX(chosen);
     _lastSpawnX = spawnX;
+    if (chosen.isBoss) {
+      _paperDragonCooldown = GameConfig.paperDragonSpawnCooldown;
+    }
 
     _activateObstacle(
       chosen,
@@ -366,7 +379,15 @@ class ObstacleSpawner extends Component {
         : null;
   }
 
-  bool _canStartCombination() => _active.isEmpty;
+  bool _canStartCombination() {
+    // A curated pair reserves the sky ahead of the plane for its pattern.
+    // Obstacles that have already passed the plane row no longer contest that
+    // space, so they do not veto a fresh combination — only live threats
+    // still above the plane do. (The previous `isEmpty` rule starved pairs at
+    // low scroll speeds, where cleared hazards linger on-screen for seconds.)
+    final clearLine = game.plane.position.y + 60.0;
+    return !_active.any((o) => o.position.y < clearLine);
+  }
 
   bool _spawnCombination(ObstacleCombination combination) {
     if (!_canStartCombination()) return false;
@@ -485,6 +506,16 @@ class ObstacleSpawner extends Component {
     if (_active.any((obstacle) => obstacle.type.isBoss)) return false;
     if (_active.any((obstacle) => obstacle.isCombinationMember)) return false;
     if (proposed.isBoss) return _active.isEmpty;
+
+    // Enforce the minimum vertical gap around the spawn line so consecutive
+    // hazards never stack into an unreadable wall at the top of the screen.
+    // Early-warning spawns approaching from above count too while they are
+    // still within one gap of the spawn line.
+    final gapCeiling = GameConfig.obstacleSpawnY - GameConfig.obstacleMinGap;
+    final gapFloor = GameConfig.obstacleSpawnY + GameConfig.obstacleMinGap;
+    if (_active.any((o) => o.position.y > gapCeiling && o.position.y < gapFloor)) {
+      return false;
+    }
 
     final isGate = proposed == ObstacleType.powerLine ||
         proposed == ObstacleType.building ||

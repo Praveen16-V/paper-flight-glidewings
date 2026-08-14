@@ -92,8 +92,7 @@ class ScoringSystem extends Component {
     // Distance-based score accumulates continuously — Dart gets distance bonus (+15%..+25%).
     var distScore = (game.distanceMeters * GameConfig.scorePerMeter).toInt();
     try {
-      final session = game.ref.read(gameSessionProvider);
-      if (session.activePowerUps.contains(PowerUpType.doubleScore)) {
+      if (game.powerUpState.doubleScoreActive) {
         distScore *= 2; // Double Score power-up: 2x distance meters score!
       }
       if (game.plane.planeType == PlaneType.dart) {

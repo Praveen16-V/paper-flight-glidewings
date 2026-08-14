@@ -816,7 +816,11 @@ class _PowerUpIcon extends StatelessWidget {
   }
 
   double _duration(PowerUpType type) {
-    if (type.isChargeBased) return GameConfig.chargePowerUpBurstDuration;
+    // Match the game loop's single source of truth so the radial countdown
+    // divides by the same duration the burst was actually given.
+    if (type.isChargeBased) {
+      return GameConfig.powerUpActiveDuration(type, empowered: false);
+    }
     return 1.0;
   }
 

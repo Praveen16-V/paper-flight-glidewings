@@ -6,7 +6,6 @@ import 'package:flutter/painting.dart';
 
 import '../../../core/constants/game_config.dart';
 import '../../../core/enums/game_enums.dart';
-import '../../../providers/game_session_provider.dart';
 import '../../paper_flight_game.dart';
 
 /// Screen-space-style compositing for the most perception-altering power-ups.
@@ -29,11 +28,10 @@ class PowerUpScreenEffectComponent extends PositionComponent
 
   @override
   void render(Canvas canvas) {
-    final session = gameRef.ref.read(gameSessionProvider);
-    final active = session.activePowerUps;
-    if (active.contains(PowerUpType.ghost)) _drawGhostAberration(canvas);
-    if (active.contains(PowerUpType.slowMo)) _drawSlowMoTimeField(canvas);
-    if (active.contains(PowerUpType.blackHole)) _drawBlackHoleLensing(canvas);
+    final powerUps = gameRef.powerUpState;
+    if (powerUps.ghostActive) _drawGhostAberration(canvas);
+    if (powerUps.slowMoActive) _drawSlowMoTimeField(canvas);
+    if (powerUps.blackHoleActive) _drawBlackHoleLensing(canvas);
   }
 
   void _drawGhostAberration(Canvas canvas) {

@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/game_config.dart';
 import '../../../core/enums/game_enums.dart';
 import '../../../core/utils/math_utils.dart';
-import '../../../providers/game_session_provider.dart';
 import '../../../providers/save_data_provider.dart';
 import '../../paper_flight_game.dart';
 import '../effects/coin_feedback.dart';
@@ -19,6 +18,41 @@ enum CollectibleVariant {
   stack5x,      // 5x gold coin stack (+50 pts / 5 coins)
   gem3D,        // 3D Isometric Blue Gem (+1 Gem)
   letterTile,   // Origami Letter Tile (Word Bonus progress)
+}
+
+/// Shared glyph painters — coins are rendered in bulk, so their text is laid
+/// out once here instead of per frame in every pooled component.
+final TextPainter _stack5xBadge = TextPainter(
+  text: const TextSpan(
+    text: '5X',
+    style: TextStyle(
+      fontSize: 9.5,
+      fontWeight: FontWeight.w900,
+      color: Color(0xFF5D4037),
+    ),
+  ),
+  textDirection: TextDirection.ltr,
+)..layout();
+
+/// One cached painter per letter tile glyph (the spawner only ever uses the
+/// letters of PAPERFLIGHT).
+final Map<String, TextPainter> _letterTileGlyphs = {};
+
+TextPainter _letterTilePainter(String letter) {
+  return _letterTileGlyphs.putIfAbsent(
+    letter,
+    () => TextPainter(
+      text: TextSpan(
+        text: letter,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w900,
+          color: Color(0xFF880E4F),
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout(),
+  );
 }
 
 /// A collectible pickup (Coins, 5x Stacks, 3D Gems, Origami Letters).
@@ -82,14 +116,13 @@ class CoinComponent extends CircleComponent
 
     position.y += math.sin(_bobPhase) * 0.4;
 
-    // Magnet pull. Cursed Magnet overrides normal plane drawbacks and pulls
-    // every collectible harder, while its obstacle pull creates the danger.
-    final session = gameRef.ref.read(gameSessionProvider);
+    // Coin attraction. All live power-up flags come from the game's
+    // once-per-frame cache — no provider reads in the coin hot path.
+    final powerUps = gameRef.powerUpState;
     final plane = gameRef.plane;
-    final cursedMagnet = gameRef.hasCorruptedPowerUp(
-      CorruptedPowerUpType.cursedMagnet,
-    );
-    if (cursedMagnet) {
+    if (powerUps.cursedMagnetActive) {
+      // Cursed Magnet overrides normal plane drawbacks and pulls every
+      // collectible harder, while its obstacle pull creates the danger.
       final dist = MathUtils.distance(
         position.x, position.y,
         plane.position.x, plane.position.y,
@@ -98,12 +131,27 @@ class CoinComponent extends CircleComponent
         final dir = (plane.position - position).normalized();
         position += dir * (GameConfig.cursedMagnetCoinPullSpeed * dt);
       }
+    } else if (powerUps.blackHoleActive) {
+      // Black Hole vacuum: the widest, hardest pull in the game. Collectibles
+      // are swallowed once they reach the vortex core — even gems, which a
+      // plain Magnet Lv2 would only auto-collect with its own radius.
+      final dist = MathUtils.distance(
+        position.x, position.y,
+        plane.position.x, plane.position.y,
+      );
+      if (dist < GameConfig.blackHoleCoinPullRadius) {
+        if (dist <= GameConfig.blackHoleCoinCollectDistance) {
+          _collect();
+          return;
+        }
+        final dir = (plane.position - position).normalized();
+        position += dir * (GameConfig.blackHoleCoinPullSpeed * dt);
+      }
     } else if (plane.planeType == PlaneType.interceptor) {
       // Interceptor downside: no coin attraction
-    } else if (session.activePowerUps.contains(PowerUpType.magnet)) {
-      final magnetLevel = gameRef.powerUpLevel(PowerUpType.magnet);
-      final empowered = session.activeEmpoweredPowerUps
-          .contains(PowerUpType.magnet);
+    } else if (powerUps.magnetActive) {
+      final magnetLevel = powerUps.magnetLevel;
+      final empowered = powerUps.magnetEmpowered;
       final radius = empowered
           ? GameConfig.empoweredMagnetRadius
           : (magnetLevel >= 2
@@ -120,7 +168,8 @@ class CoinComponent extends CircleComponent
       );
       if (variant == CollectibleVariant.gem3D &&
           (magnetLevel >= 2 || empowered) &&
-          dist < GameConfig.magnetLevel2GemAutoCollectRadius) {        _collect();
+          dist < GameConfig.magnetLevel2GemAutoCollectRadius) {
+        _collect();
         return;
       }
       if (dist < radius) {
@@ -304,18 +353,10 @@ class CoinComponent extends CircleComponent
     canvas.drawCircle(const Offset(-4, -6), 2.2, goldHi);
 
     // "5X" Badge stamp
-    final tp = TextPainter(
-      text: const TextSpan(
-        text: '5X',
-        style: TextStyle(
-          fontSize: 9.5,
-          fontWeight: FontWeight.w900,
-          color: Color(0xFF5D4037),
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2 - 4));
+    _stack5xBadge.paint(
+      canvas,
+      Offset(-_stack5xBadge.width / 2, -_stack5xBadge.height / 2 - 4),
+    );
   }
 
   void _draw3dBlueGem(Canvas canvas) {
@@ -419,17 +460,7 @@ class CoinComponent extends CircleComponent
     );
 
     // Letter Glyph
-    final tp = TextPainter(
-      text: TextSpan(
-        text: letter,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w900,
-          color: Color(0xFF880E4F),
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    final tp = _letterTilePainter(letter);
     tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
   }
 }

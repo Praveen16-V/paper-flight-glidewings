@@ -35,6 +35,33 @@ class PowerUpComponent extends PositionComponent
 
   static const double _pickupAnimationDuration = 0.22;
 
+  /// Static icon glyphs, laid out once for the whole pool — render never
+  /// rebuilds a TextPainter per frame.
+  static final TextPainter _coinRushGlyph = TextPainter(
+    text: const TextSpan(
+      text: '\$',
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w900,
+        color: Color(0xFF5D4037),
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+
+  static final TextPainter _doubleScoreGlyph = TextPainter(
+    text: const TextSpan(
+      text: '2X',
+      style: TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w900,
+        color: Colors.white,
+        fontFamily: 'monospace',
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+
   void activate({
     required Vector2 spawnPosition,
     CorruptedPowerUpType? corruptedType,
@@ -383,34 +410,20 @@ class PowerUpComponent extends PositionComponent
         // Scalloped coin rim with "$" currency symbol
         canvas.drawCircle(Offset(cx, cy), 8.5, paint);
         canvas.drawCircle(Offset(cx, cy), 8.5, Paint()..color = const Color(0xFFFFD54F)..style = PaintingStyle.stroke..strokeWidth = 1.2);
-        final textP = TextPainter(
-          text: const TextSpan(
-            text: '\$',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF5D4037),
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        textP.paint(canvas, Offset(cx - textP.width / 2, cy - textP.height / 2));
+        _coinRushGlyph.paint(
+          canvas,
+          Offset(cx - _coinRushGlyph.width / 2, cy - _coinRushGlyph.height / 2),
+        );
 
       case PowerUpType.doubleScore:
         // "2X" energy symbol
-        final textP = TextPainter(
-          text: const TextSpan(
-            text: '2X',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-              fontFamily: 'monospace',
-            ),
+        _doubleScoreGlyph.paint(
+          canvas,
+          Offset(
+            cx - _doubleScoreGlyph.width / 2,
+            cy - _doubleScoreGlyph.height / 2,
           ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        textP.paint(canvas, Offset(cx - textP.width / 2, cy - textP.height / 2));
+        );
 
       case PowerUpType.shrink:
         // Inward compression arrows
