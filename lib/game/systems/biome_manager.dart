@@ -95,7 +95,9 @@ class BiomeManager extends Component {
           ObstacleType.stormCloud: 0.0,
           ObstacleType.fireworks: 0.0,
           ObstacleType.weatherBalloon: 0.0,
-          ObstacleType.flockMigration: 0.32,
+          // The backyard is the calm opening lesson — a 10–20 bird V crossing
+          // the whole screen only appears as a rare spice here.
+          ObstacleType.flockMigration: 0.08,
         }[type] ?? 0.0;
       case Biome.city:
         return const {

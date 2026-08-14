@@ -6,7 +6,6 @@ import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../core/utils/noise.dart';
 import '../../models/trial_definition.dart';
-import '../../providers/game_session_provider.dart';
 import '../paper_flight_game.dart';
 
 class LaneWind {
@@ -158,8 +157,7 @@ class WindSystem extends Component with HasGameRef<PaperFlightGame> {
     }
 
     try {
-      final session = gameRef.ref.read(gameSessionProvider);
-      if (session.activePowerUps.contains(PowerUpType.windCaller)) {
+      if (gameRef.powerUpState.windCallerActive) {
         // Wind Caller power-up: disables adverse wind lanes, creates calm
         // updrafts, and also suppresses pocket samples in [turbulenceAt].
         return const LaneWind(
@@ -436,10 +434,7 @@ class WindSystem extends Component with HasGameRef<PaperFlightGame> {
 
   bool get _isWindCallerActive {
     try {
-      return gameRef.ref
-          .read(gameSessionProvider)
-          .activePowerUps
-          .contains(PowerUpType.windCaller);
+      return gameRef.powerUpState.windCallerActive;
     } catch (_) {
       return false;
     }

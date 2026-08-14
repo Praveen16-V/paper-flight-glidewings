@@ -8,7 +8,6 @@ import 'package:flutter/painting.dart';
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../core/utils/math_utils.dart';
-import '../../providers/game_session_provider.dart';
 import '../paper_flight_game.dart';
 import 'plane_component.dart';
 
@@ -69,11 +68,11 @@ class PlaneTrailComponent extends Component
     final hasPetalTrail =
         pc?.skinSynergy.trailEffect == SkinTrailEffect.petals;
 
-    final session = gameRef.ref.read(gameSessionProvider);
-    final bool isTurboDash = session.activePowerUps.contains(PowerUpType.turboDash);
-    final bool isGhost = session.activePowerUps.contains(PowerUpType.ghost);
-    final bool isDoubleScore = session.activePowerUps.contains(PowerUpType.doubleScore);
-    final bool isCoinRush = session.activePowerUps.contains(PowerUpType.coinRush);
+    final powerUps = gameRef.powerUpState;
+    final bool isTurboDash = powerUps.turboDashActive;
+    final bool isGhost = powerUps.ghostActive;
+    final bool isDoubleScore = powerUps.doubleScoreActive;
+    final bool isCoinRush = powerUps.coinRushActive;
 
     canvas.save();
 

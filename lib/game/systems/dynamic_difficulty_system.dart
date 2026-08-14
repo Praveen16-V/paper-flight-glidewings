@@ -8,11 +8,16 @@ import '../paper_flight_game.dart';
 
 /// Adapts obstacle pacing to how confidently the current flight is going.
 ///
-/// This intentionally works only inside a single Classic/Daily run: it rewards
+/// This intentionally works only inside a single Classic run: it rewards
 /// demonstrated control (combos and near-misses) without quietly converting a
 /// player's lifetime save data into a permanent punishment. Shield/decoy/Crane
 /// saves produce temporary relief, while normal distance progression still
 /// ensures a long successful flight earns a livelier sky.
+///
+/// Daily Seeded Flights are deliberately excluded: the daily board promises
+/// every player the identical run, so its layout must come from the seed
+/// alone — skill-based spawn pacing would silently diverge the course per
+/// player and corrupt the shared leaderboard.
 class DynamicDifficultySystem extends Component {
   DynamicDifficultySystem({required this.game}) {
     _nearMissSubscription = game.gameplayEvents.on<NearMissGameplayEvent>(
@@ -37,8 +42,7 @@ class DynamicDifficultySystem extends Component {
   double get nearMissMomentum => _nearMissMomentum;
   double get safetyRelief => _safetyRelief;
 
-  bool get isAdaptiveMode =>
-      game.mode == GameMode.classic || game.mode == GameMode.daily;
+  bool get isAdaptiveMode => game.mode == GameMode.classic;
 
   /// Multiplies ordinary obstacle intervals. Skilled, composed runs shrink the
   /// interval; a recent safety intervention grants a temporary wider gap.

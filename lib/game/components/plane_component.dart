@@ -2609,9 +2609,13 @@ class PlaneComponent extends PositionComponent
       _playSnapBurstEffect();
     }
 
-    // Turbo Dash upward glide assist
+    // Turbo Dash upward glide assist — keeps the surge level.
     if (_turboDashActive) {
-      _velocityY = MathUtils.lerp(_velocityY, -60.0, dt * 5.0);
+      _velocityY = MathUtils.lerp(
+        _velocityY,
+        GameConfig.turboDashUpwardGlideTarget,
+        dt * 5.0,
+      );
     }
 
     // Thermal lift comes from a real, visible column inside a favourable lane

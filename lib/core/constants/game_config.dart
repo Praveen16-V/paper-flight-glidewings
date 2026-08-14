@@ -33,7 +33,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-obstacles-13';
+  static const String balanceVersion = '2026.08-balance-14';
 
   /// Maximum retained trace entries for replay/soak validation. The full
   /// fingerprint still covers every layout event after this ring buffer wraps.
@@ -192,10 +192,6 @@ abstract class GameConfig {
   /// Rate for easing the current vertical velocity toward the hold target.
   /// Lowered so the climb begins and ends without any visible jerk on hold.
   static const double liftKickDecayRate = 1.5;
-
-  /// Retained for tuning compatibility. Release now preserves velocity fully,
-  /// avoiding the visible speed change that occurred at finger-up.
-  static const double glideArcPreservation = 1.0;
 
   /// Gravity multiplier during the glide arc phase (lighter than full gravity).
   /// Gives the "coast" feel before the natural dive takes over.
@@ -367,6 +363,18 @@ abstract class GameConfig {
   /// Minimum spawn interval floor.
   static const double obstacleMinSpawnInterval = 0.55;
 
+  /// Seconds during which the Paper Dragon cannot be rolled again after a
+  /// boss pass starts — two serpentine encounters may never chain directly.
+  static const double paperDragonSpawnCooldown = 45.0;
+
+  /// Elite variant rates — tuned so an elite stays a readable surprise
+  /// instead of a routine spawn.
+  static const double goldenBirdEliteChance = 0.10;
+  static const double thicketBranchEliteChance = 0.25;
+  static const double armedDroneEliteChance = 0.25;
+  static const double orbitingDroneChance = 0.20;
+  static const double birdMiniFlockChance = 0.22;
+
   // ── Pool Lifecycle / Capacity Tuning ────────────────────────────────────
   /// Idle component caps bound memory after spike-heavy encounters while each
   /// pool still expands transiently when a run genuinely needs more live items.
@@ -535,9 +543,6 @@ abstract class GameConfig {
   static const int kiteTetherSnapRewardCoinCount = 3;
   static const double kiteTetherSnapRewardCoinSpacing = 26.0;
 
-  /// Upper-third Y threshold (fraction) for hazard density bias.
-  static const double upperHazardBiasThreshold = 0.33;
-
   // ── Coins ────────────────────────────────────────────────────────────────
   static const double coinSpawnY = -40.0;
   static const double coinRecycleY = 920.0;
@@ -621,8 +626,32 @@ abstract class GameConfig {
   static const double doubleScoreDuration = 6.0; // seconds — 2x distance score
   static const double shrinkDuration = 5.0; // seconds — 0.35 hitbox
   static const double windCallerDuration = 8.0; // seconds — calm wind & thermals
-  static const double blackHoleDuration = 1.5; // seconds — cosmic vacuum
+  static const double blackHoleDuration = 2.5; // seconds — cosmic vacuum
   static const double turboDashDuration = 2.0; // seconds — invincible thrust dash
+
+  /// Returns the intended active duration of a timed power-up. Banked charge
+  /// bursts are deliberately shorter than the "world pickup" durations above so
+  /// firing a stored charge stays a quick tactical beat; Empowered bursts are
+  /// longer than either. This is the single source of truth used by the game
+  /// loop — per-type durations can no longer drift out of sync with gameplay.
+  static double powerUpActiveDuration(PowerUpType type, {required bool empowered}) {
+    if (empowered) return empoweredPowerUpBurstDuration;
+    final base = switch (type) {
+      PowerUpType.shield => shieldDuration,
+      PowerUpType.magnet => magnetDuration,
+      PowerUpType.ghost => ghostDuration,
+      PowerUpType.slowMo => slowMoDuration,
+      PowerUpType.coinRush => coinRushDuration,
+      PowerUpType.doubleScore => doubleScoreDuration,
+      PowerUpType.shrink => shrinkDuration,
+      PowerUpType.windCaller => windCallerDuration,
+      PowerUpType.decoyClone => 0.0, // charge-free, consumed on hit
+      PowerUpType.blackHole => blackHoleDuration,
+      PowerUpType.turboDash => turboDashDuration,
+    };
+    // Charge bursts stay snappy even where the raw duration is a long ride.
+    return base > chargePowerUpBurstDuration ? chargePowerUpBurstDuration : base;
+  }
 
   // Timed pickups are banked, then tapped deliberately instead of starting
   // their countdown at an inconvenient moment.
@@ -647,6 +676,12 @@ abstract class GameConfig {
 
   // ── Corrupted Power-Ups ───────────────────────────────────────────────────
   static const double corruptedPowerUpSpawnChance = 0.12;
+
+  /// Risk/reward bargains only start appearing once a pilot has cleared the
+  /// opening biome and understands ordinary pickups — a Cursed Magnet that
+  /// drags obstacles at the plane is brutal during onboarding.
+  static const double corruptedPowerUpStartMeters =
+      biomeCityEnd; // 800 m — Storm Front and beyond
   static const double corruptedPowerUpDuration = 3.0;
   static const double cursedMagnetRadius = 235.0;
   static const double cursedMagnetCoinPullSpeed = 390.0;
@@ -660,6 +695,35 @@ abstract class GameConfig {
 
   /// Coin score multiplier while Coin Rush is active.
   static const double coinRushValueMultiplier = 2.0;
+
+  // ── Black Hole Vacuum ──────────────────────────────────────────────────────
+  /// The cosmic vacuum drags coins in hard from a wide radius and collects
+  /// them once they reach the vortex core.
+  static const double blackHoleCoinPullRadius = 260.0;
+  static const double blackHoleCoinPullSpeed = 640.0;
+  static const double blackHoleCoinCollectDistance = 30.0;
+
+  /// Small hazards are vacuumed in and swallowed harmlessly before they can
+  /// touch the plane — the Black Hole's defensive clear. Gates and boss-class
+  /// obstacles are immune (see ObstacleType.isBlackHoleVacuumable).
+  static const double blackHoleObstaclePullRadius = 240.0;
+  static const double blackHoleObstaclePullSpeed = 230.0;
+  static const double blackHoleSwallowDistance = 60.0;
+
+  // ── Turbo Dash Thrust ──────────────────────────────────────────────────────
+  /// In a vertical scroller the plane's "forward" is the world scroll itself,
+  /// so the dash is a short world-speed surge on top of the invulnerability
+  /// window — distance accrues faster while the blaze is burning.
+  static const double turboDashWorldSpeedMultiplier = 1.60;
+
+  /// The dash keeps the plane level: vertical velocity eases toward this
+  /// gentle climb target for the duration of the burst.
+  static const double turboDashUpwardGlideTarget = -60.0;
+
+  // ── Shield Stacking ────────────────────────────────────────────────────────
+  /// A world Shield pickup adds one absorbing charge on top of any existing
+  /// shield, capped here so shields stay a lifeline rather than a wall.
+  static const int shieldMaxStackedCharges = 3;
 
   // ── Stacked Power-Up Combos ───────────────────────────────────────────────
   /// Magnet + Coin Rush upgrades coin value to a Gold Vortex multiplier.

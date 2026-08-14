@@ -13,7 +13,6 @@ import '../../core/enums/game_enums.dart';
 import '../../core/utils/audio_synth.dart';
 import '../../core/utils/math_utils.dart';
 import '../../models/settings_model.dart';
-import '../../providers/game_session_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../paper_flight_game.dart';
 
@@ -191,8 +190,7 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
   void _updateStreakOverlay(double dt, bool playing) {
     double target = 0;
     if (playing) {
-      final session = gameRef.ref.read(gameSessionProvider);
-      final coinRush = session.activePowerUps.contains(PowerUpType.coinRush);
+      final coinRush = gameRef.powerUpState.coinRushActive;
       final speedFactor = ((gameRef.scrollSpeed - 300) /
               (GameConfig.maxScrollSpeed - 300))
           .clamp(0.0, 1.0)
@@ -274,8 +272,7 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
   }
 
   void _updateShieldHum(double dt, bool playing) {
-    final shieldActive = playing &&
-        gameRef.ref.read(gameSessionProvider).shieldActive;
+    final shieldActive = playing && gameRef.powerUpState.shieldActive;
     if (!shieldActive) {
       _shieldHumTimer = 0;
       return;

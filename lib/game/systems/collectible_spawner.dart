@@ -192,14 +192,21 @@ class CollectibleSpawner extends Component {
     }
   }
 
-  /// Rains a short vertical column of coins down at a random X.
+  /// Rains a short vertical column of coins down. Most showers fall near the
+  /// plane's own lane so the Coin Rush window reads as "steer into the gold"
+  /// instead of a random scatter the player cannot reach in time.
   void spawnCoinShower() {
-    final x = GameConfig.horizontalEdgeMargin +
-        25 +
-        random.nextDouble() *
-            (GameConfig.designWidth -
-                GameConfig.horizontalEdgeMargin * 2 -
-                50);
+    final minX = GameConfig.horizontalEdgeMargin + 25;
+    final maxX =
+        GameConfig.designWidth - GameConfig.horizontalEdgeMargin - 25;
+    final double x;
+    if (random.nextDouble() < 0.65) {
+      x = (game.plane.position.x + random.nextDouble() * 80.0 - 40.0)
+          .clamp(minX, maxX)
+          .toDouble();
+    } else {
+      x = minX + random.nextDouble() * (maxX - minX);
+    }
     final count = random.nextInt(4) + 5;
     for (int i = 0; i < count; i++) {
       spawnCoinAt(Vector2(x, GameConfig.coinSpawnY - i * 30.0));

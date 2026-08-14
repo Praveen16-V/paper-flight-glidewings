@@ -25,6 +25,7 @@ import '../services/daily_leaderboard_service.dart';
 import '../services/daily_seed_service.dart';
 import 'diagnostics/runtime_diagnostics.dart';
 import 'events/gameplay_event_bus.dart';
+import 'live_powerup_state.dart';
 import 'replay/run_replay_trace.dart';
 import 'components/background/parallax_background.dart';
 import 'components/effects/coin_feedback.dart';
@@ -74,6 +75,12 @@ class PaperFlightGame extends FlameGame
   /// game instead of being global so a torn-down GameWidget cannot leave stale
   /// listeners attached to the next run.
   final GameplayEventBus gameplayEvents = GameplayEventBus();
+
+  /// Once-per-frame cache of the session's live power-up flags. The game reads
+  /// the Riverpod session exactly once per tick and mirrors it here; coins,
+  /// obstacles and wind systems read these booleans instead of hitting the
+  /// provider from the frame hot path.
+  final LivePowerUpState powerUpState = LivePowerUpState();
 
   // ── Game Mode (Task 8) ────────────────────────────────────────────────────
 
@@ -431,6 +438,9 @@ class PaperFlightGame extends FlameGame
     }
 
     final session = ref.read(gameSessionProvider);
+    // Mirror the session's live power-up flags for the frame. Every component
+    // below reads this cache instead of the provider — one read per tick.
+    powerUpState.syncFrom(session);
     final scaledDt = dt * _timeScale;
 
     if (_phase != GamePhase.playing) {
@@ -438,7 +448,10 @@ class PaperFlightGame extends FlameGame
       return;
     }
 
-    _powerUpTimerAccumulator += scaledDt;
+    // Timed bursts expire on a wall-clock Future.delayed, so the published
+    // HUD countdown must drain in real time too — draining it by scaledDt
+    // made the ring lag behind the real expiry during Slow-Mo.
+    _powerUpTimerAccumulator += dt;
     if (_powerUpTimerAccumulator >= GameConfig.hudUpdateIntervalSeconds) {
       final elapsed = _powerUpTimerAccumulator;
       _powerUpTimerAccumulator = 0;
@@ -483,8 +496,9 @@ class PaperFlightGame extends FlameGame
       }
     }
 
-    // Apply slow-mo speed override (drives this frame's motion and the
-    // distance it travels).
+    // Apply power-up world-speed overrides (they drive this frame's motion
+    // and the distance it travels). Time Dash owns the stack when Slow-Mo and
+    // Turbo Dash are both live; otherwise each acts alone.
     double effectiveSpeed = _scrollSpeed;
     final activeCombos = session.activePowerUpCombos;
     if (activeCombos.contains(PowerUpCombo.timeDash)) {
@@ -497,6 +511,9 @@ class PaperFlightGame extends FlameGame
               .contains(PowerUpType.slowMo)
           ? GameConfig.empoweredSlowMoMultiplier
           : GameConfig.slowMoPowerUpMultiplier;
+    } else if (session.activePowerUps.contains(PowerUpType.turboDash)) {
+      // The dash itself: an invulnerable world-speed surge.
+      effectiveSpeed *= GameConfig.turboDashWorldSpeedMultiplier;
     }
 
     // Accumulate distance from this frame's effective speed.
@@ -587,6 +604,9 @@ class PaperFlightGame extends FlameGame
         patternBase64: save.customSkinPatternBase64,
       );
       if (pLvl != plane.planeLevel) plane.syncLevel(pLvl);
+      // Hangar evolutions are save data — refresh the cached magnet level on
+      // the slow sync cadence instead of per frame in every coin.
+      powerUpState.magnetLevel = powerUpLevel(PowerUpType.magnet);
     } catch (_) {}
   }
 
@@ -746,18 +766,13 @@ class PaperFlightGame extends FlameGame
         math.Random(_runRandom.nextEntitySeed('spawner.powerups'));
 
     // Spawner activity per mode: trials are fully scripted; zen keeps
-    // obstacles + coins but no power-ups; classic/daily run everything.
-    // The Paper Dart is the pure basic flight — no power-ups spawn at all.
+    // obstacles + coins but no power-ups; classic/daily run everything for
+    // every airframe — the Paper Dart is the starter plane new players learn
+    // on, so it must meet the power-up system, not be locked out of it.
     obstacleSpawner.spawnEnabled = mode != GameMode.trial;
     collectibleSpawner.autoSpawn = mode != GameMode.trial;
-    final equippedPlaneType = PlaneType.values[ref
-        .read(saveDataProvider)
-        .equippedPlaneIndex
-        .clamp(0, PlaneType.values.length - 1)
-        .toInt()];
     powerUpSpawner.autoSpawn =
-        (mode == GameMode.classic || mode == GameMode.daily) &&
-            equippedPlaneType != PlaneType.dart;
+        mode == GameMode.classic || mode == GameMode.daily;
 
     // Trials: attach the course director + scripted wind.
     trialDirector?.removeFromParent();
@@ -829,6 +844,12 @@ class PaperFlightGame extends FlameGame
     thermalColumnSystem.reset();
     wingmanSystem.reset();
     gameFeelSystem.reset();
+
+    // Fresh run, fresh cache — no stale power-up flag may leak across runs.
+    powerUpState.reset();
+    try {
+      powerUpState.magnetLevel = powerUpLevel(PowerUpType.magnet);
+    } catch (_) {}
 
     // Zen Flight: gentle ambient pad from the first flap.
     if (mode == GameMode.zen) {
@@ -941,7 +962,10 @@ class PaperFlightGame extends FlameGame
       return;
     }
 
-    // Origami Crane: free brush-off against tree branches (organic)
+    // Origami Crane: free brush-off against tree branches (organic). The
+    // branch is brushed *away* — recycled through the pool-safe interaction
+    // path so it can never re-collide mid-overlap — and a genuinely free perk
+    // does not clip the combo.
     if (obstacleType != null &&
         obstacleType.isOrganic &&
         plane.planeType == PlaneType.crane &&
@@ -949,11 +973,13 @@ class PaperFlightGame extends FlameGame
       _craneChargesRemaining--;
       plane.playBranchBrushAnimation();
       gameFeelSystem.onShieldBreak();
-      // Remove or recycle the obstacle so it doesn't immediately re-collide
-      // We mark its near-miss as awarded and recycle it via spawner knowledge.
-      // Simplest: let it continue but add brief ghost immunity via shield hit?
-      // We give a tiny scale pulse and keep flying.
-      scoringSystem.onObstacleHit(); // slight combo penalty but not crash
+      if (obstacle != null) {
+        world.add(ColoredBurst(
+          position: plane.position.clone(),
+          color: const Color(0xFF81C784),
+        ));
+        obstacle.recycleAfterInteraction();
+      }
       gameplayEvents.emit(const DefensiveSaveGameplayEvent(
         source: DefensiveSaveSource.craneBrushOff,
         severity: .50,
@@ -1205,8 +1231,13 @@ class PaperFlightGame extends FlameGame
     ref.read(gameSessionProvider.notifier).resume();
   }
 
-  void applySlowMo(double duration) {
-    _timeScale = GameConfig.slowMoPowerUpMultiplier;
+  void applySlowMo(double duration, {bool empowered = false}) {
+    // The timescale slows the whole simulation. An Empowered burst uses the
+    // deeper multiplier so entities and world scroll agree — otherwise planes
+    // and hazards would run at normal pace inside a slowed world.
+    _timeScale = empowered
+        ? GameConfig.empoweredSlowMoMultiplier
+        : GameConfig.slowMoPowerUpMultiplier;
     Future.delayed(Duration(milliseconds: (duration * 1000).toInt()), () {
       if (_disposed) return;
       _timeScale = 1.0;
@@ -1322,15 +1353,21 @@ class PaperFlightGame extends FlameGame
     _powerUpsUsedThisRun++;
 
     final notifier = ref.read(gameSessionProvider.notifier);
-    final burstDuration = empowered
-        ? GameConfig.empoweredPowerUpBurstDuration
-        : GameConfig.chargePowerUpBurstDuration;
+    // Per-type durations keep every power-up distinct; charge bursts are
+    // capped at the quick tactical length by the config helper itself.
+    final burstDuration =
+        GameConfig.powerUpActiveDuration(type, empowered: empowered);
     gameFeelSystem.onPowerUpActivated(type, empowered: empowered);
     switch (type) {
       case PowerUpType.shield:
-        // Absorbs hits — no timer; consumed on impact.
+        // Absorbs hits — no timer; consumed on impact. A world Shield pickup
+        // adds one absorbing charge on top of whatever is already carried
+        // (Bomber starts with 2–3), capped so shields stay a lifeline.
         notifier.activatePowerUp(PowerUpType.shield);
-        _shieldChargesRemaining = math.max(_shieldChargesRemaining, 1);
+        _shieldChargesRemaining =
+            (_shieldChargesRemaining + 1) > GameConfig.shieldMaxStackedCharges
+                ? GameConfig.shieldMaxStackedCharges
+                : _shieldChargesRemaining + 1;
       case PowerUpType.magnet:
         notifier.activatePowerUp(PowerUpType.magnet, empowered: empowered);
         notifier.setPowerUpTimer(PowerUpType.magnet, burstDuration);
@@ -1354,7 +1391,7 @@ class PaperFlightGame extends FlameGame
       case PowerUpType.slowMo:
         notifier.activatePowerUp(PowerUpType.slowMo, empowered: empowered);
         notifier.setPowerUpTimer(PowerUpType.slowMo, burstDuration);
-        applySlowMo(burstDuration);
+        applySlowMo(burstDuration, empowered: empowered);
       case PowerUpType.coinRush:
         // 2× coin value for the duration, plus an immediate coin shower.
         notifier.activatePowerUp(PowerUpType.coinRush, empowered: empowered);

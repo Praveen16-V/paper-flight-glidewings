@@ -106,7 +106,8 @@ lib/
 │   │   ├── background/
 │   │   │   └── parallax_background.dart  # 3-layer parallax, biome sky gradients
 │   │   ├── obstacles/
-│   │   │   └── obstacle_component.dart   # Base + 5 concrete types (pooled)
+│   │   │   ├── obstacle_component.dart   # Base class + `part` library shell
+│   │   │   └── obstacle_*_part.dart      # 20 concrete families split into focused parts (pooled)
 │   │   ├── collectibles/
 │   │   │   └── coin_component.dart       # Coin with magnet + combo integration
 │   │   ├── effects/
@@ -118,7 +119,7 @@ lib/
 │   │   │   ├── reactive_paper_skin_painter.dart # Event-driven skin reactions
 │   │   │   └── weathered_paper_skin_painter.dart # Pristine → veteran texture blend
 │   │   └── powerups/
-│   │       └── powerup_component.dart    # 5 power-up types, Canvas icons
+│   │       └── powerup_component.dart    # 11 power-up types, Canvas icons
 │   ├── systems/
 │   │   ├── wind_system.dart        # Lane-based FBM weather + turbulence
 │   │   ├── thermal_column_system.dart # Local visible updraft placement + sampling
@@ -128,8 +129,9 @@ lib/
 │   │   ├── biome_manager.dart      # Distance → biome + per-biome obstacle weights
 │   │   ├── obstacle_spawner.dart   # Interval spawn, object pools, recycle
 │   │   ├── collectible_spawner.dart # Coin patterns: single/line/arc
-│   │   ├── powerup_spawner.dart    # Weighted spawn, periodic timer
+│   │   ├── powerup_spawner.dart    # Weighted map spawn, distance pacing, corrupted gate
 │   │   └── trial_director.dart     # Task 8 — scripted trial course playback
+│   ├── live_powerup_state.dart      # Per-frame power-up cache (no Riverpod in hot path)
 │   └── overlays/
 │       └── hud_overlay.dart        # Flutter HUD: score, combo, power-ups, pause
 │
@@ -205,9 +207,12 @@ Key knobs to adjust during playtesting:
 - `CustomSkinManager.maxPatternBytes` — workshop image-import size guard
 - `PaperSkin.rarity` — common → mythic Hangar/list treatment
 - `goldVortexCoinValueMultiplier` / `timeDashWorldSpeedMultiplier` — stacked power-up combo strength
-- `chargePowerUpMaxCharges` / `chargePowerUpBurstDuration` — banked timed-power-up bursts
+- `chargePowerUpMaxCharges` / `chargePowerUpBurstDuration` — banked timed-power-up bursts; `powerUpActiveDuration(...)` is the single source of truth for every per-type burst length
+- `blackHoleCoinPullRadius` / `blackHoleObstaclePullRadius` / `blackHoleSwallowDistance` — the cosmic vacuum now genuinely pulls coins in and swallows small hazards
+- `turboDashWorldSpeedMultiplier` / `turboDashUpwardGlideTarget` — the dash is a real invulnerable world-speed surge, not just flame visuals
+- `shieldMaxStackedCharges` — world Shield pickups now add a charge on top of Bomber/Biplane starting shields
 - `magnetLevel2Radius` / `shieldEvolutionLevel2Cost` — Hangar power-up evolution tuning
-- `corruptedPowerUpSpawnChance` / `unstableGhostTeleportInterval` — risk/reward pickup tuning
+- `corruptedPowerUpSpawnChance` / `unstableGhostTeleportInterval` — risk/reward pickup tuning; `corruptedPowerUpStartMeters` gates bargains behind the opening biomes
 - `empoweredPowerUpBurstDuration` / `empoweredMagnetRadius` — three-charge crafting reward strength
 - `PowerUpScreenEffectComponent` — Ghost, Slow-Mo, and Black Hole screen-space visual treatment
 - `powerUpStatusRingRadius` / `powerUpStatusRingStrokeWidth` — in-flight radial effect readability
@@ -218,10 +223,10 @@ Key knobs to adjust during playtesting:
 - Environmental hazards: Lightning Strike, Meteor Shower, and Tornado are biome-weighted in Storm/Atmosphere
 - Flock Migration adds 10–20 dynamically hitboxed birds in a cross-screen V formation
 - Moonlit Ocean introduces slow Whale Breach hazards, sea spray, and a progression step before Atmosphere
-- Paper Dragon is a telegraphed, single-pass serpentine boss with 11 moving segment hitboxes across Night, Ocean, and Atmosphere
+- Paper Dragon is a telegraphed, single-pass serpentine boss with 11 moving segment hitboxes across Night, Ocean, and Atmosphere; `paperDragonSpawnCooldown` keeps two passes from chaining back-to-back
 - Interactive Kite Tethers advertise a cyan SNAP window; a precise paper-snap severs one nearby kite, refunds the charge, extends combo, and releases coins
 - Curated Obstacle Combinations reserve a safe corridor for readable two-part City Traffic, Storm Crossfire, Rotor Run, and Kite Relay encounters
-- Dynamic Difficulty adapts density, pressure-hazard weighting, and combination frequency to current-run distance, combo discipline, near-miss skill, and recent defensive saves
+- Dynamic Difficulty adapts density, pressure-hazard weighting, and combination frequency to current-run distance, combo discipline, near-miss skill, and recent defensive saves. It is Classic-only: Daily Seeded runs stay purely seed-driven so every player faces the identical course
 - Telegraphy 2.0 adds arrival countdown dials, intent projections for lanes/areas/trajectories/formations, and generated safe-gap guides for gate obstacles
 - Destructible drones, hot-air/weather balloons, and fireworks expose visible integrity; well-timed paper-snaps crack or break them for a charge refund, combo extension, and coin reward
 - Obstacle Synergies turn close complementary hazards into readable linked states: Storm Charge, Drone Traffic Link, Rotor Wake, and Wind Tether

@@ -298,6 +298,17 @@ extension ObstacleLabel on ObstacleType {
       this == ObstacleType.fireworks ||
       this == ObstacleType.weatherBalloon ||
       this == ObstacleType.hotAirBalloon;
+
+  /// Small, individual hazards the Black Hole vacuum can drag in and swallow.
+  /// Full-width gates, bosses and oncoming traffic stay immune so the vortex
+  /// remains a tactical clear instead of an unconditional screen wipe.
+  bool get isBlackHoleVacuumable =>
+      this == ObstacleType.bird ||
+      this == ObstacleType.drone ||
+      this == ObstacleType.kite ||
+      this == ObstacleType.fireworks ||
+      this == ObstacleType.weatherBalloon ||
+      this == ObstacleType.hotAirBalloon;
 }
 
 /// A hand-authored, readable two-obstacle encounter. These are not random
