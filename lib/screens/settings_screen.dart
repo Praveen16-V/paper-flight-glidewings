@@ -8,6 +8,7 @@ import '../core/constants/app_typography.dart';
 import '../core/enums/game_enums.dart';
 import '../core/widgets/how_to_play_dialog.dart';
 import '../core/widgets/paper_card.dart';
+import '../core/widgets/screen_backdrop.dart';
 import '../providers/settings_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -20,14 +21,7 @@ class SettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppColors.surfaceAlt, AppColors.background],
-          ),
-        ),
+      body: ScreenBackdrop(
         child: SafeArea(
           child: Column(
             children: [

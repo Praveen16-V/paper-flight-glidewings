@@ -67,14 +67,14 @@ class AppTypography {
   static const TextStyle bodyMedium = TextStyle(
     fontFamily: body,
     fontSize: 14,
-    fontWeight: FontWeight.w600,
+    fontWeight: FontWeight.w500,
     color: AppColors.textLight,
   );
 
   static const TextStyle caption = TextStyle(
     fontFamily: body,
     fontSize: 13,
-    fontWeight: FontWeight.w600,
+    fontWeight: FontWeight.w500,
     color: AppColors.textMuted,
     height: 1.35,
   );
@@ -82,7 +82,7 @@ class AppTypography {
   static const TextStyle overline = TextStyle(
     fontFamily: body,
     fontSize: 12,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     letterSpacing: 1.6,
     color: AppColors.textMuted,
   );
@@ -119,5 +119,30 @@ class AppTypography {
     fontWeight: FontWeight.w600,
     letterSpacing: 0.4,
     color: AppColors.textLight,
+  );
+
+  // ── On-paper surfaces (cream / kraft sheets) ─────────────────────────────
+  static const TextStyle titleOnPaper = TextStyle(
+    fontFamily: display,
+    fontSize: 19,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 0.15,
+    color: AppColors.paperInk,
+  );
+
+  static const TextStyle bodyOnPaper = TextStyle(
+    fontFamily: body,
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+    color: AppColors.paperInk,
+    height: 1.45,
+  );
+
+  static const TextStyle captionOnPaper = TextStyle(
+    fontFamily: body,
+    fontSize: 12,
+    fontWeight: FontWeight.w500,
+    color: AppColors.paperInkSoft,
+    height: 1.35,
   );
 }

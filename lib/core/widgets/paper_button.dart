@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
+import '../constants/app_spacing.dart';
 import '../constants/app_typography.dart';
+import 'paper_effects.dart';
 
 /// A chunky paper-cut button.
 ///
@@ -48,10 +50,6 @@ class _PaperButtonState extends State<PaperButton> {
     final color = widget.color ?? AppColors.accent;
     final enabled = widget.onPressed != null;
     final effective = enabled ? color : color.withOpacity(0.45);
-    final edge = HSLColor.fromColor(color)
-        .withLightness((HSLColor.fromColor(color).lightness - 0.22)
-            .clamp(0.0, 1.0))
-        .toColor();
     final textColor = widget.textColor ?? AppColors.paperInk;
 
     final double minimumHeight = widget.compact ? 48 : 56;
@@ -80,28 +78,15 @@ class _PaperButtonState extends State<PaperButton> {
             width: widget.expand ? double.infinity : null,
             transform: Matrix4.translationValues(0, _pressed ? 5 : 0, 0),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(AppRadius.button),
               boxShadow: enabled
-                  ? [
-                      BoxShadow(
-                        color: edge,
-                        offset: Offset(0, _pressed ? 1 : 6),
-                        blurRadius: 0,
-                      ),
-                      if (!_pressed)
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          offset: const Offset(0, 8),
-                          blurRadius: 8,
-                          spreadRadius: -3,
-                        ),
-                    ]
+                  ? PaperShadows.buttonEdge(color, pressed: _pressed)
                   : null,
             ),
             child: Container(
               decoration: BoxDecoration(
                 color: effective,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppRadius.button),
                 border: Border.all(
                   color: Colors.black.withOpacity(0.08),
                   width: 1,

@@ -6,10 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
 import '../core/constants/app_typography.dart';
+import '../core/constants/app_spacing.dart';
 import '../core/enums/game_enums.dart';
+import '../core/widgets/mode_card.dart';
 import '../core/widgets/paper_card.dart';
-import '../core/widgets/paper_effects.dart';
 import '../core/widgets/paper_icons.dart';
+import '../core/widgets/screen_backdrop.dart';
 import '../models/trial_definition.dart';
 import '../providers/save_data_provider.dart';
 import '../services/analytics_service.dart';
@@ -72,14 +74,7 @@ class _ModesScreenState extends ConsumerState<ModesScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppColors.surfaceAlt, AppColors.background],
-          ),
-        ),
+      body: ScreenBackdrop(
         child: SafeArea(
           child: Column(
             children: [
@@ -188,7 +183,7 @@ class _ClassicModeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const accent = AppColors.accent;
+    const accent = AppColors.modeClassic;
     const mode = GameMode.classic;
 
     return PaperCard(
@@ -209,7 +204,7 @@ class _ClassicModeCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _Medallion(icon: mode.paperIcon, accent: accent),
+              ModeMedallion(icon: mode.paperIcon, accent: accent, size: 52, iconSize: 28, radius: AppRadius.md),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -218,7 +213,7 @@ class _ClassicModeCard extends StatelessWidget {
                     Text(
                       mode.displayName,
                       style: AppTypography.title.copyWith(
-                        color: _edgeOf(accent),
+                        color: darkenModeColor(accent),
                         fontSize: 18,
                       ),
                     ),
@@ -274,7 +269,7 @@ class _OrangeRibbonBadge extends StatelessWidget {
             style: AppTypography.caption.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.w800,
-              fontSize: 10.5,
+              fontSize: 11,
               letterSpacing: 0.6,
             ),
           ),
@@ -290,7 +285,7 @@ class _ZenModeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const accent = AppColors.success;
+    const accent = AppColors.modeZen;
     const mode = GameMode.zen;
 
     return PaperCard(
@@ -318,7 +313,7 @@ class _ZenModeCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          _Medallion(icon: mode.paperIcon, accent: accent),
+          ModeMedallion(icon: mode.paperIcon, accent: accent, size: 52, iconSize: 28, radius: AppRadius.md),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -330,7 +325,7 @@ class _ZenModeCard extends StatelessWidget {
                       child: Text(
                         mode.displayName,
                         style: AppTypography.title.copyWith(
-                          color: _edgeOf(accent),
+                          color: darkenModeColor(accent),
                           fontSize: 18,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -358,9 +353,9 @@ class _ZenModeCard extends StatelessWidget {
                           Text(
                             'NO CRASHES',
                             style: AppTypography.caption.copyWith(
-                              color: const Color(0xFF2E7D32),
+                              color: darkenModeColor(AppColors.modeZen, 0.25),
                               fontWeight: FontWeight.w800,
-                              fontSize: 9.5,
+                              fontSize: 11,
                               letterSpacing: 0.8,
                             ),
                           ),
@@ -400,7 +395,7 @@ class _DailyModeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const accent = AppColors.accentAlt;
+    const accent = AppColors.modeDaily;
     const mode = GameMode.daily;
 
     return PaperCard(
@@ -422,7 +417,7 @@ class _DailyModeCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _Medallion(icon: mode.paperIcon, accent: accent),
+              ModeMedallion(icon: mode.paperIcon, accent: accent, size: 52, iconSize: 28, radius: AppRadius.md),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -434,7 +429,7 @@ class _DailyModeCard extends StatelessWidget {
                           child: Text(
                             mode.displayName,
                             style: AppTypography.title.copyWith(
-                              color: _edgeOf(accent),
+                              color: darkenModeColor(accent),
                               fontSize: 18,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -464,7 +459,7 @@ class _DailyModeCard extends StatelessWidget {
                                 style: AppTypography.caption.copyWith(
                                   color: AppColors.gemBlueDeep,
                                   fontWeight: FontWeight.w800,
-                                  fontSize: 10,
+                                  fontSize: 11,
                                   letterSpacing: 0.4,
                                 ),
                               ),
@@ -524,7 +519,7 @@ class _TrialModeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const accent = AppColors.danger;
+    const accent = AppColors.modeTrial;
     const mode = GameMode.trial;
 
     // Motivational context text
@@ -556,7 +551,7 @@ class _TrialModeCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          _Medallion(icon: mode.paperIcon, accent: accent),
+          ModeMedallion(icon: mode.paperIcon, accent: accent, size: 52, iconSize: 28, radius: AppRadius.md),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -565,7 +560,7 @@ class _TrialModeCard extends StatelessWidget {
                 Text(
                   mode.displayName,
                   style: AppTypography.title.copyWith(
-                    color: _edgeOf(accent),
+                    color: darkenModeColor(accent),
                     fontSize: 18,
                   ),
                 ),
@@ -622,44 +617,4 @@ class _TrialModeCard extends StatelessWidget {
       ),
     );
   }
-}
-
-class _Medallion extends StatelessWidget {
-  const _Medallion({required this.icon, required this.accent});
-  final PaperIconData icon;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(
-        color: accent,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.black.withOpacity(0.12),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: _edgeOf(accent),
-            offset: const Offset(0, 3),
-            blurRadius: 0,
-          ),
-          ...PaperShadows.stack(color: AppColors.paperInk, elevation: 0.5),
-        ],
-      ),
-      child: Center(
-        child: PaperIcon(icon, size: 28, color: Colors.white),
-      ),
-    );
-  }
-}
-
-Color _edgeOf(Color c) {
-  final hsl = HSLColor.fromColor(c);
-  return hsl
-      .withLightness((hsl.lightness - 0.18).clamp(0.0, 1.0))
-      .toColor();
 }

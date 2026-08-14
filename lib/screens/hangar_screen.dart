@@ -7,11 +7,13 @@ import '../core/constants/app_colors.dart';
 import '../core/constants/app_typography.dart';
 import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
+import '../core/widgets/currency_badge.dart';
 import '../core/widgets/currency_chip.dart';
 import '../core/widgets/custom_skin_workshop_dialog.dart';
 import '../core/widgets/paper_button.dart';
 import '../core/widgets/paper_card.dart';
 import '../core/widgets/paper_icons.dart';
+import '../core/widgets/screen_backdrop.dart';
 import '../providers/save_data_provider.dart';
 import '../services/analytics_service.dart';
 
@@ -32,7 +34,7 @@ class HangarScreen extends ConsumerWidget {
       child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
-          backgroundColor: AppColors.background,
+          backgroundColor: Colors.transparent,
           foregroundColor: AppColors.textLight,
           elevation: 0,
           title: Text('Hangar',
@@ -40,13 +42,13 @@ class HangarScreen extends ConsumerWidget {
           actions: [
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: Row(
-                children: [
-                  CoinChip(save.coins, iconSize: 16, fontSize: 14),
-                  const SizedBox(width: 10),
-                  GemChip(save.gems, iconSize: 14, fontSize: 13),
-                  const SizedBox(width: 6),
-                ],
+              child: CurrencyBadgeRow(
+                coins: save.coins,
+                gems: save.gems,
+                coinIconSize: 16,
+                coinFontSize: 14,
+                gemIconSize: 14,
+                gemFontSize: 13,
               ),
             ),
           ],
@@ -63,12 +65,14 @@ class HangarScreen extends ConsumerWidget {
             ],
           ),
         ),
-        body: const TabBarView(
-          children: [
-            _PlanesTab(),
-            _SkinsTab(),
-            _PowerUpsTab(),
-          ],
+        body: ScreenBackdrop(
+          child: const TabBarView(
+            children: [
+              _PlanesTab(),
+              _SkinsTab(),
+              _PowerUpsTab(),
+            ],
+          ),
         ),
       ),
     );
@@ -496,7 +500,7 @@ class _PlaneCard extends StatelessWidget {
     final borderColor = equipped
         ? AppColors.success
         : (selected ? AppColors.accent.withOpacity(0.7) : null);
-    final bg = equipped ? const Color(0xFFE9F7EE) : AppColors.paper;
+    final bg = equipped ? AppColors.paperEquipped : AppColors.paper;
 
     return PaperCard(
       onTap: onSelect,
@@ -1000,7 +1004,7 @@ class _SkinCard extends StatelessWidget {
             ? AppColors.accent.withOpacity(0.7)
             : rarity.color
                 .withOpacity(rarity == SkinRarity.common ? .35 : .72));
-    final bg = equipped ? const Color(0xFFE9F7EE) : AppColors.paper;
+    final bg = equipped ? AppColors.paperEquipped : AppColors.paper;
 
     return PaperCard(
       onTap: onSelect,

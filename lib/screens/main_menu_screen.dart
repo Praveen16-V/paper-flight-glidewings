@@ -3,11 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_routes.dart';
+import '../core/constants/app_spacing.dart';
 import '../core/constants/app_typography.dart';
 import '../core/enums/game_enums.dart';
+import '../core/widgets/currency_badge.dart';
 import '../core/widgets/currency_chip.dart';
 import '../core/widgets/how_to_play_dialog.dart';
+import '../core/widgets/mode_card.dart';
 import '../core/widgets/paper_button.dart';
+import '../core/widgets/paper_effects.dart';
 import '../core/widgets/paper_icons.dart';
 import '../core/widgets/sky_backdrop.dart';
 import '../l10n/app_localizations.dart';
@@ -125,21 +129,23 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              _GlassCurrencyBadge(
+                              CurrencyBadge(
                                 glowColor: AppColors.coinGold,
                                 child: CoinChip(
                                   save.coins,
                                   iconSize: 18,
                                   fontSize: 15,
+                                  color: AppColors.coinGoldDeep,
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              _GlassCurrencyBadge(
+                              CurrencyBadge(
                                 glowColor: AppColors.gemBlue,
                                 child: GemChip(
                                   save.gems,
                                   iconSize: 16,
                                   fontSize: 14,
+                                  color: AppColors.gemBlueDeep,
                                 ),
                               ),
                             ],
@@ -263,7 +269,7 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
                                 Text(
                                   strings.text('menu.allModesHint'),
                                   style: AppTypography.caption.copyWith(
-                                    color: const Color(0xFFC4CDE0),
+                                    color: AppColors.textSubtle,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -418,64 +424,10 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
   }
 }
 
-// ── Glassmorphic Currency Badge ────────────────────────────────────────────────
-
-/// Glassmorphic badge for the currency display. Semi-transparent dark backdrop
-/// with a subtle inner border and a soft glow around the icon colour.
-class _GlassCurrencyBadge extends StatelessWidget {
-  const _GlassCurrencyBadge({
-    required this.child,
-    required this.glowColor,
-  });
-
-  final Widget child;
-  final Color glowColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-      decoration: BoxDecoration(
-        // Semi-transparent dark glass
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.surface.withOpacity(0.75),
-            AppColors.background.withOpacity(0.65),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(22),
-        // 1px inner border (light stroke to simulate glass edge)
-        border: Border.all(
-          color: Colors.white.withOpacity(0.12),
-          width: 1,
-        ),
-        // Outer glow in the colour of the icon
-        boxShadow: [
-          BoxShadow(
-            color: glowColor.withOpacity(0.25),
-            blurRadius: 10,
-            spreadRadius: -1,
-          ),
-          // Subtle inner highlight
-          BoxShadow(
-            color: Colors.white.withOpacity(0.04),
-            blurRadius: 0,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
-}
-
 // ── Mode Preview Card ──────────────────────────────────────────────────────────
 
 /// Interactive miniature mode selector that displays the currently selected
-/// mode's name, paper-craft icon, tagline, and personal best score. Arrow
-/// buttons cycle through modes; tapping the centre opens the full Modes screen.
+/// mode's name, paper-craft icon, tagline, and personal best score.
 class _ModePreviewCard extends StatelessWidget {
   const _ModePreviewCard({
     required this.selectedIndex,
@@ -491,35 +443,7 @@ class _ModePreviewCard extends StatelessWidget {
   final VoidCallback onTapRight;
   final VoidCallback onTapCenter;
 
-  /// The four game modes in display order.
-  static const modeCount = 4;
-
-  static const _modes = <_ModeInfo>[
-    _ModeInfo(
-      nameKey: 'mode.classic',
-      iconData: PaperIconData.glider,
-      accent: AppColors.accent,
-      paperColor: AppColors.paperGold,
-    ),
-    _ModeInfo(
-      nameKey: 'mode.zen',
-      iconData: PaperIconData.leaf,
-      accent: AppColors.success,
-      paperColor: AppColors.paperGreen,
-    ),
-    _ModeInfo(
-      nameKey: 'mode.daily',
-      iconData: PaperIconData.calendar,
-      accent: AppColors.accentAlt,
-      paperColor: AppColors.paperBlue,
-    ),
-    _ModeInfo(
-      nameKey: 'mode.trial',
-      iconData: PaperIconData.bullseye,
-      accent: AppColors.danger,
-      paperColor: AppColors.paperRose,
-    ),
-  ];
+  static int get modeCount => ModePresentation.all.length;
 
   String _bestScoreText(BuildContext context, int index) {
     final strings = context.l10n;
@@ -554,9 +478,9 @@ class _ModePreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mode = _modes[selectedIndex];
+    final presentation = ModePresentation.atIndex(selectedIndex);
     final strings = context.l10n;
-    final modeName = strings.text(mode.nameKey);
+    final modeName = strings.text(presentation.nameKey);
     final availableWidth = MediaQuery.sizeOf(context).width - 24;
 
     return SizedBox(
@@ -579,7 +503,7 @@ class _ModePreviewCard extends StatelessWidget {
                       : Colors.transparent,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
               ),
               icon: const Icon(Icons.chevron_left_rounded, size: 24),
@@ -588,105 +512,27 @@ class _ModePreviewCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 4),
-
-          // ── Centre: mode info card ──────────────────────────────────────
           Expanded(
-            child: GestureDetector(
-              onTap: onTapCenter,
-              behavior: HitTestBehavior.opaque,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                transitionBuilder: (child, animation) => FadeTransition(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              transitionBuilder: (child, animation) {
+                return FadeTransition(
                   opacity: animation,
-                  child: child,
-                ),
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.04, 0),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
+                  ),
+                );
+              },
+              child: ModePreviewCard(
                 key: ValueKey(selectedIndex),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: mode.paperColor,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: mode.accent.withOpacity(0.5),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      // Paper fold shadow beneath
-                      BoxShadow(
-                        color: _darken(mode.accent, 0.2),
-                        offset: const Offset(0, 4),
-                        blurRadius: 0,
-                      ),
-                      BoxShadow(
-                        color: mode.accent.withOpacity(0.2),
-                        blurRadius: 8,
-                        spreadRadius: -2,
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      // Mode icon medallion
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: mode.accent,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: _darken(mode.accent, 0.3),
-                              offset: const Offset(0, 2),
-                              blurRadius: 0,
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: PaperIcon(
-                            mode.iconData,
-                            size: 24,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              modeName,
-                              style: AppTypography.bodyMedium.copyWith(
-                                color: _darken(mode.accent, 0.3),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 1),
-                            Text(
-                              _bestScoreText(context, selectedIndex),
-                              style: AppTypography.caption.copyWith(
-                                color: AppColors.paperInkSoft,
-                                fontSize: 10,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        Icons.chevron_right,
-                        color: _darken(mode.accent, 0.2),
-                        size: 18,
-                      ),
-                    ],
-                  ),
-                ),
+                presentation: presentation,
+                title: modeName,
+                subtitle: _bestScoreText(context, selectedIndex),
+                onTap: onTapCenter,
               ),
             ),
           ),
@@ -708,7 +554,7 @@ class _ModePreviewCard extends StatelessWidget {
                       : Colors.transparent,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
               ),
               icon: const Icon(Icons.chevron_right_rounded, size: 24),
@@ -720,28 +566,6 @@ class _ModePreviewCard extends StatelessWidget {
       ),
     );
   }
-
-  Color _darken(Color c, double amount) {
-    final hsl = HSLColor.fromColor(c);
-    return hsl
-        .withLightness((hsl.lightness - amount).clamp(0.0, 1.0))
-        .toColor();
-  }
-}
-
-/// Immutable mode descriptor for the preview card.
-class _ModeInfo {
-  final String nameKey;
-  final PaperIconData iconData;
-  final Color accent;
-  final Color paperColor;
-
-  const _ModeInfo({
-    required this.nameKey,
-    required this.iconData,
-    required this.accent,
-    required this.paperColor,
-  });
 }
 
 // ── Play Button (unchanged) ────────────────────────────────────────────────────
@@ -797,7 +621,7 @@ class _PlayButtonState extends State<_PlayButton>
         label: widget.label,
         semanticLabel: widget.label,
         onPressed: widget.onTap,
-        color: const Color(0xFFF5A623),
+        color: AppColors.accent,
       ),
     );
   }
@@ -840,22 +664,16 @@ class _NavIcon extends StatelessWidget {
                 height: 48,
                 decoration: BoxDecoration(
                   color: isActive ? AppColors.accent : AppColors.paper,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: isActive
-                          ? AppColors.accentDeep
-                          : const Color(0xFFB89E6E),
-                      offset: const Offset(0, 4),
-                      blurRadius: 0,
-                    ),
-                    if (isActive)
-                      BoxShadow(
-                        color: AppColors.accent.withOpacity(0.35),
-                        blurRadius: 10,
-                        spreadRadius: -2,
-                      ),
-                  ],
+                  borderRadius: BorderRadius.circular(AppRadius.button),
+                  boxShadow: isActive
+                      ? [
+                          ...PaperShadows.buttonEdge(AppColors.accentDeep, dy: 4),
+                          ...PaperShadows.accentGlow(AppColors.accent),
+                        ]
+                      : PaperShadows.buttonEdge(
+                          AppColors.paperShadowWarm,
+                          dy: 4,
+                        ),
                 ),
                 child: Icon(
                   icon,
@@ -872,7 +690,7 @@ class _NavIcon extends StatelessWidget {
                 style: AppTypography.caption.copyWith(
                   color: isActive
                       ? AppColors.accent
-                      : const Color(0xFFC4CDE0),
+                      : AppColors.textSubtle,
                   fontSize: 11.5,
                   fontWeight: isActive ? FontWeight.w800 : FontWeight.w700,
                 ),
@@ -887,13 +705,7 @@ class _NavIcon extends StatelessWidget {
                   color: isActive ? AppColors.accent : Colors.transparent,
                   borderRadius: BorderRadius.circular(2),
                   boxShadow: isActive
-                      ? [
-                          BoxShadow(
-                            color: AppColors.accent.withOpacity(0.5),
-                            blurRadius: 4,
-                            spreadRadius: -1,
-                          ),
-                        ]
+                      ? PaperShadows.accentGlow(AppColors.accent, blur: 4)
                       : null,
                 ),
               ),

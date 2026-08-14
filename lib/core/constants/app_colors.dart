@@ -43,6 +43,22 @@ abstract class AppColors {
   // ── Text ─────────────────────────────────────────────────────────────────
   static const Color textLight = Color(0xFFF7F9FC);
   static const Color textMuted = Color(0xFF8A9BB8);
+  /// Lighter secondary text on dark sky backgrounds (nav labels, hints).
+  static const Color textSubtle = Color(0xFFC4CDE0);
+
+  // ── Paper state tints ────────────────────────────────────────────────────
+  /// Soft green tint for equipped / selected items on paper sheets.
+  static const Color paperEquipped = Color(0xFFE9F7EE);
+  /// Warm kraft shadow beneath inactive paper nav icons.
+  static const Color paperShadowWarm = Color(0xFFB89E6E);
+  /// Faint ink divider on cream paper surfaces.
+  static const Color paperDivider = Color(0x242A3354);
+
+  // ── Mode identity ────────────────────────────────────────────────────────
+  static const Color modeClassic = accent;
+  static const Color modeZen = success;
+  static const Color modeDaily = accentAlt;
+  static const Color modeTrial = danger;
 
   // ── Collectibles ─────────────────────────────────────────────────────────
   static const Color coinGold = Color(0xFFFFC83D);
@@ -59,8 +75,19 @@ abstract class AppColors {
 
   // ── HUD ──────────────────────────────────────────────────────────────────
   static const Color hudBackground = Color(0xBB000000); // semi-transparent
+  /// Cream paper strip at ~85 % opacity for in-game HUD elements.
+  static const Color hudPaper = Color(0xD9F6EEDC);
+  /// Calmer green-tinted paper for Zen mode HUD.
+  static const Color hudPaperZen = Color(0xCCD9EDD6);
   static const Color shieldBlue = Color(0xFF64B5F6);
   static const Color nearMissGlow = Color(0xFFFFEB3B);
+
+  // ── Guide / power-up icon tints (paper-aligned) ──────────────────────────
+  static const Color guideShield = shieldBlue;
+  static const Color guideMagnet = Color(0xFF7B4FA0);
+  static const Color guideGhost = Color(0xFF2A9DAB);
+  static const Color guideSlowMo = Color(0xFF3D8B7A);
+  static const Color guideCoinRush = accentDeep;
 
   // ── Sky gradient ─────────────────────────────────────────────────────────
   /// Deeper, richer gradient used by splash + screen bodies.

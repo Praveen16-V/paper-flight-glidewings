@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
+import '../constants/app_spacing.dart';
 import 'paper_effects.dart';
 
 /// A sheet of folded paper — the core surface of the design system.
@@ -13,11 +14,11 @@ class PaperCard extends StatelessWidget {
   const PaperCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(18),
+    this.padding = const EdgeInsets.all(AppSpacing.cardPadding),
     this.margin,
     this.color,
     this.edgeColor,
-    this.radius = 20,
+    this.radius = AppRadius.lg,
     this.elevation = 1.0,
     this.textureOpacity = 0.55,
     this.onTap,

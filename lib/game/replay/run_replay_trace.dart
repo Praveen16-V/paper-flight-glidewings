@@ -4,7 +4,6 @@ import '../../core/utils/run_random.dart';
 enum ReplayTraceKind {
   obstacleSpawn,
   collectibleSpawn,
-  tunnelRingSpawn,
   powerUpSpawn,
 }
 

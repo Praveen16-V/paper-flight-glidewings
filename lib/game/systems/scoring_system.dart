@@ -164,7 +164,7 @@ class ScoringSystem extends Component {
     return points;
   }
 
-  /// Restores [notches] to the decaying combo gauge (e.g. from a Tunnel Ring pass).
+  /// Restores [notches] to the decaying combo gauge.
   void awardComboNotches(double notches) {
     _comboGauge = (_comboGauge + notches)
         .clamp(0.0, GameConfig.comboMax.toDouble())

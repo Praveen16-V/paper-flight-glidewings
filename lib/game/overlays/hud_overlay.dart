@@ -5,9 +5,11 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_spacing.dart';
 import '../../core/constants/app_typography.dart';
 import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
+import '../../core/widgets/mode_card.dart';
 import '../../core/widgets/paper_icons.dart';
 import '../../providers/game_session_provider.dart';
 import '../../providers/settings_provider.dart';
@@ -66,7 +68,7 @@ class HudOverlay extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   if (session.mode == GameMode.zen)
-                    const _ModeTag(label: 'ZEN', color: Color(0xFF66BB6A))
+                    const _ModeTag(label: 'ZEN', color: AppColors.modeZen)
                   else if (session.mode == GameMode.daily)
                     _ModeTag(
                       label: DailySeedService.label(game.dailySeed),
@@ -200,6 +202,45 @@ class HudOverlay extends ConsumerWidget {
 
 // ── Sub-widgets ───────────────────────────────────────────────────────────────
 
+/// Compact cream paper strip for HUD readouts (bridges menu aesthetic).
+class _HudPaperStrip extends StatelessWidget {
+  const _HudPaperStrip({
+    required this.child,
+    this.calm = false,
+    this.padding = const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    this.radius = AppRadius.lg,
+  });
+
+  final Widget child;
+  final bool calm;
+  final EdgeInsetsGeometry padding;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: calm ? AppColors.hudPaperZen : AppColors.hudPaper,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(
+          color: AppColors.paperInk.withOpacity(0.08),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.paperInk.withOpacity(0.12),
+            offset: const Offset(0, 2),
+            blurRadius: 4,
+            spreadRadius: -1,
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
 class _ScoreDisplay extends StatelessWidget {
   const _ScoreDisplay({required this.score, required this.isNew});
   final int score;
@@ -207,12 +248,7 @@ class _ScoreDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.hudBackground,
-        borderRadius: BorderRadius.circular(20),
-      ),
+    return _HudPaperStrip(
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -222,7 +258,7 @@ class _ScoreDisplay extends StatelessWidget {
             _formatScore(score),
             style: const TextStyle(
               fontFamily: AppTypography.mono,
-              color: AppColors.textLight,
+              color: AppColors.paperInk,
               fontSize: 22,
               fontWeight: FontWeight.w700,
               fontFeatures: [FontFeature.tabularFigures()],
@@ -246,22 +282,18 @@ class _CoinDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return _HudPaperStrip(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.hudBackground,
-        borderRadius: BorderRadius.circular(20),
-      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          PaperIcon(PaperIconData.coin, size: 16, color: AppColors.coinGold),
+          PaperIcon(PaperIconData.coin, size: 16, color: AppColors.coinGoldDeep),
           const SizedBox(width: 6),
           Text(
             '$coins',
             style: const TextStyle(
               fontFamily: AppTypography.mono,
-              color: AppColors.coinGold,
+              color: AppColors.coinGoldDeep,
               fontSize: 16,
               fontWeight: FontWeight.w700,
               fontFeatures: [FontFeature.tabularFigures()],
@@ -283,20 +315,17 @@ class _DistanceDisplay extends StatelessWidget {
     return Semantics(
       label: 'Distance $label',
       child: ExcludeSemantics(
-        child: Container(
+        child: _HudPaperStrip(
+          calm: true,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: AppColors.hudBackground,
-            borderRadius: BorderRadius.circular(14),
-          ),
+          radius: AppRadius.button,
           child: Text(
             label,
             style: const TextStyle(
-              color: Color(0xFFE3EAF5),
+              color: AppColors.paperInkSoft,
               fontSize: 14,
               fontWeight: FontWeight.w700,
               letterSpacing: 1,
-              shadows: [Shadow(color: Colors.black54, blurRadius: 3)],
             ),
           ),
         ),
@@ -317,16 +346,16 @@ class _ModeTag extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 220),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.hudBackground,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.6), width: 1),
+        color: AppColors.hudPaper,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: color.withOpacity(0.45), width: 1),
       ),
       child: Text(
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: color,
+          color: darkenModeColor(color, 0.15),
           fontSize: 12,
           fontWeight: FontWeight.w800,
           letterSpacing: 1,
@@ -346,33 +375,36 @@ class _ZenStatusDisplay extends StatelessWidget {
   Widget build(BuildContext context) {
     final minutes = seconds ~/ 60;
     final secs = (seconds % 60).toStringAsFixed(0).padLeft(2, '0');
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          '${meters.toStringAsFixed(0)} m',
-          style: const TextStyle(
-            fontFamily: AppTypography.mono,
-            fontFeatures: [FontFeature.tabularFigures()],
-            color: AppColors.textLight,
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
+    return _HudPaperStrip(
+      calm: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${meters.toStringAsFixed(0)} m',
+            style: const TextStyle(
+              fontFamily: AppTypography.mono,
+              fontFeatures: [FontFeature.tabularFigures()],
+              color: AppColors.paperInk,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
           ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          '$minutes:$secs',
-          style: const TextStyle(
-            fontFamily: AppTypography.mono,
-            fontFeatures: [FontFeature.tabularFigures()],
-            color: AppColors.textMuted,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.5,
+          const SizedBox(height: 2),
+          Text(
+            '$minutes:$secs',
+            style: const TextStyle(
+              fontFamily: AppTypography.mono,
+              fontFeatures: [FontFeature.tabularFigures()],
+              color: AppColors.paperInkSoft,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 1.5,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -491,7 +523,7 @@ class _ComboDisplay extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFFFF6B35), Color(0xFFF5A623)],
+                colors: [AppColors.danger, AppColors.accent],
               ),
               borderRadius: BorderRadius.circular(20),
             ),
@@ -523,7 +555,7 @@ class _ComboDisplay extends StatelessWidget {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: gaugeFraction > 0.3
-                        ? const [Color(0xFFFF6B35), Color(0xFFF5A623)]
+                        ? [AppColors.danger, AppColors.accent]
                         : const [Color(0xFFFF1744), Color(0xFFFF6B35)],
                   ),
                 ),

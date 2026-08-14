@@ -13,7 +13,6 @@ class RuntimeDiagnosticsSnapshot {
     required this.pools,
     required this.activeObstacles,
     required this.activeCoins,
-    required this.activeRings,
     required this.activePowerUps,
     required this.dynamicDifficulty,
   });
@@ -23,7 +22,6 @@ class RuntimeDiagnosticsSnapshot {
   final List<ObjectPoolDiagnostics> pools;
   final int activeObstacles;
   final int activeCoins;
-  final int activeRings;
   final int activePowerUps;
   final double dynamicDifficulty;
 
@@ -39,5 +37,5 @@ class RuntimeDiagnosticsSnapshot {
       pools.fold(0, (total, diagnostics) => total + diagnostics.peakInUse);
 
   int get activeEntityCount =>
-      activeObstacles + activeCoins + activeRings + activePowerUps;
+      activeObstacles + activeCoins + activePowerUps;
 }

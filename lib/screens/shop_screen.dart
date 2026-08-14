@@ -7,10 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_typography.dart';
 import '../core/enums/game_enums.dart';
-import '../core/widgets/currency_chip.dart';
+import '../core/widgets/currency_badge.dart';
 import '../core/widgets/paper_button.dart';
 import '../core/widgets/paper_card.dart';
 import '../core/widgets/paper_icons.dart';
+import '../core/widgets/screen_backdrop.dart';
 import '../models/save_data.dart';
 import '../providers/save_data_provider.dart';
 import '../services/ad_service.dart';
@@ -129,14 +130,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppColors.surfaceAlt, AppColors.background],
-          ),
-        ),
+      body: ScreenBackdrop(
         child: SafeArea(
           child: Column(
             children: [
@@ -205,7 +199,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                             description: '500 coins + 25 gems + Remove Ads. One-time offer.',
                             sheet: AppColors.paperGold,
                             priceLabel: _priceFor(IapProductIds.starterPack),
-                            ribbon: const _RibbonTag(label: 'STARTER PACK', color: Color(0xFFF5A623)),
+                              ribbon: const _RibbonTag(label: 'STARTER PACK', color: AppColors.accent),
                             illustration: const _IllustratedChest(kind: ChestKind.starter, accent: AppColors.warning),
                             onTap: () => _buy(IapProductIds.starterPack),
                           ),
@@ -349,9 +343,14 @@ class _TitleBar extends StatelessWidget {
             onPressed: () => Navigator.of(context).pop(),
           ),
           Expanded(child: Text('Shop', style: AppTypography.headline, textAlign: TextAlign.center)),
-          CoinChip(coins, iconSize: 16, fontSize: 14),
-          const SizedBox(width: 10),
-          GemChip(gems, iconSize: 14, fontSize: 13),
+          CurrencyBadgeRow(
+            coins: coins,
+            gems: gems,
+            coinIconSize: 16,
+            coinFontSize: 14,
+            gemIconSize: 14,
+            gemFontSize: 13,
+          ),
         ],
       ),
     );

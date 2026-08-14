@@ -567,7 +567,7 @@ class InputManager extends Component {
     }
   }
 
-  /// Instantly restores [count] snap charges (e.g. from passing through a Tunnel Ring).
+  /// Instantly restores [count] snap charges.
   void restoreSnapCharge([int count = 1]) {
     final maxC = (game.plane.planeType == PlaneType.stuntFold && game.plane.planeLevel >= 3)
         ? 3

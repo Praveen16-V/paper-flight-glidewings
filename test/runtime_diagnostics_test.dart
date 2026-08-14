@@ -44,7 +44,6 @@ void main() {
       ],
       activeObstacles: 2,
       activeCoins: 4,
-      activeRings: 1,
       activePowerUps: 1,
       dynamicDifficulty: .47,
     );
@@ -55,6 +54,6 @@ void main() {
     expect(snapshot.poolDiscarded, 3);
     expect(snapshot.poolRejectedReleases, 1);
     expect(snapshot.poolPeakInUse, 14);
-    expect(snapshot.activeEntityCount, 8);
+    expect(snapshot.activeEntityCount, 7);
   });
 }

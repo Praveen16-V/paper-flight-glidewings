@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/constants/app_colors.dart';
 import 'core/constants/app_routes.dart';
+import 'core/constants/app_spacing.dart';
 import 'core/constants/app_typography.dart';
 import 'l10n/app_localizations.dart';
 import 'services/analytics_service.dart';
@@ -113,10 +114,10 @@ class _PaperFlightAppState extends ConsumerState<PaperFlightApp>
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.accent,
-          foregroundColor: AppColors.textLight,
+          foregroundColor: AppColors.paperInk,
           minimumSize: const Size(200, 52),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppRadius.button),
           ),
           textStyle: const TextStyle(
             fontSize: 18,

@@ -64,6 +64,46 @@ class PaperShadows {
           blurRadius: 0,
         ),
       ];
+
+  /// Chunky folded-edge shadow for buttons and medallions.
+  static List<BoxShadow> buttonEdge(
+    Color baseColor, {
+    bool pressed = false,
+    double dy = 4,
+  }) {
+    final edge = HSLColor.fromColor(baseColor)
+        .withLightness(
+            (HSLColor.fromColor(baseColor).lightness - 0.22).clamp(0.0, 1.0))
+        .toColor();
+    return [
+      BoxShadow(
+        color: edge,
+        offset: Offset(0, pressed ? 1 : dy),
+        blurRadius: 0,
+      ),
+      if (!pressed)
+        BoxShadow(
+          color: Colors.black.withOpacity(0.2),
+          offset: Offset(0, dy + 2),
+          blurRadius: 6,
+          spreadRadius: -2,
+        ),
+    ];
+  }
+
+  /// Soft coloured glow for active nav items and currency badges.
+  static List<BoxShadow> accentGlow(
+    Color accent, {
+    double intensity = 0.35,
+    double blur = 10,
+  }) =>
+      [
+        BoxShadow(
+          color: accent.withOpacity(intensity),
+          blurRadius: blur,
+          spreadRadius: -2,
+        ),
+      ];
 }
 
 /// A low-opacity paper-grain / crease overlay.

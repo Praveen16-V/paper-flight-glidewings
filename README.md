@@ -225,7 +225,6 @@ Key knobs to adjust during playtesting:
 - Telegraphy 2.0 adds arrival countdown dials, intent projections for lanes/areas/trajectories/formations, and generated safe-gap guides for gate obstacles
 - Destructible drones, hot-air/weather balloons, and fireworks expose visible integrity; well-timed paper-snaps crack or break them for a charge refund, combo extension, and coin reward
 - Obstacle Synergies turn close complementary hazards into readable linked states: Storm Charge, Drone Traffic Link, Rotor Wake, and Wind Tether
-- Tunnel Ring Runs introduce precision and drifting gates plus linked ring chains; fully centered runs grant a completion boost, combo extension, and coins
 - `nearMissCloseShaveDistance` / `nearMissHairThinDistance` / `nearMissDeathDefyingDistance` — tiered near-miss clearance thresholds
 - `nearMissCloseShavePoints` / `nearMissHairThinPoints` / `nearMissDeathDefyingPoints` — tier payouts
 - `comboDrainDuration` / `comboHitRetentionFraction` — combo decay gauge pace & shield-hit penalty

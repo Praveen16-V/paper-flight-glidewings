@@ -166,7 +166,6 @@ class PaperFlightGame extends FlameGame
         pools: List<ObjectPoolDiagnostics>.unmodifiable(poolDiagnostics),
         activeObstacles: obstacleSpawner.activeCount,
         activeCoins: collectibleSpawner.activeCoinCount,
-        activeRings: collectibleSpawner.activeRingCount,
         activePowerUps: powerUpSpawner.activeCount,
         dynamicDifficulty: dynamicDifficultySystem.intensity,
       );

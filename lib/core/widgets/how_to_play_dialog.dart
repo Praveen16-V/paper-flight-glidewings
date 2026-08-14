@@ -117,7 +117,7 @@ class _HowToPlayDialogState extends ConsumerState<_HowToPlayDialog> {
                   firstRun: widget.firstRun,
                   onClose: () => Navigator.of(context).pop(true),
                 ),
-                const Divider(height: 1, color: Color(0x242A3354)),
+                const Divider(height: 1, color: AppColors.paperDivider),
                 Expanded(
                   child: PageView(
                     controller: _controller,
@@ -139,7 +139,7 @@ class _HowToPlayDialogState extends ConsumerState<_HowToPlayDialog> {
                     ],
                   ),
                 ),
-                const Divider(height: 1, color: Color(0x242A3354)),
+                const Divider(height: 1, color: AppColors.paperDivider),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   child: Row(
@@ -479,31 +479,31 @@ class _PowerUpWrap extends StatelessWidget {
           icon: Icons.shield_rounded,
           titleKey: 'guide.shield',
           bodyKey: 'guide.shieldBody',
-          color: Color(0xFF1565C0),
+          color: AppColors.guideShield,
         ),
         _PowerUpTile(
           icon: Icons.my_location_rounded,
           titleKey: 'guide.magnet',
           bodyKey: 'guide.magnetBody',
-          color: Color(0xFF6A1B9A),
+          color: AppColors.guideMagnet,
         ),
         _PowerUpTile(
           icon: Icons.visibility_off_rounded,
           titleKey: 'guide.ghost',
           bodyKey: 'guide.ghostBody',
-          color: Color(0xFF00838F),
+          color: AppColors.guideGhost,
         ),
         _PowerUpTile(
           icon: Icons.timer_rounded,
           titleKey: 'guide.slowMo',
           bodyKey: 'guide.slowMoBody',
-          color: Color(0xFF00695C),
+          color: AppColors.guideSlowMo,
         ),
         _PowerUpTile(
           icon: Icons.monetization_on_rounded,
           titleKey: 'guide.coinRush',
           bodyKey: 'guide.coinRushBody',
-          color: Color(0xFFC77800),
+          color: AppColors.guideCoinRush,
         ),
       ],
     );
