@@ -41,6 +41,7 @@ import 'systems/obstacle_synergy_system.dart';
 import 'systems/collectible_spawner.dart';
 import 'systems/powerup_spawner.dart';
 import 'systems/scoring_system.dart';
+import 'systems/blast_system.dart';
 import 'systems/dynamic_difficulty_system.dart';
 import 'systems/streak_system.dart';
 import 'systems/trial_director.dart';
@@ -157,6 +158,7 @@ class PaperFlightGame extends FlameGame
   late final ObstacleSynergySystem obstacleSynergySystem;
   late final CollectibleSpawner collectibleSpawner;
   late final PowerUpSpawner powerUpSpawner;
+  late final BlastSystem blastSystem;
 
   /// Snapshot-only pool diagnostics for a debug overlay, automated soak test,
   /// or post-run memory capture. Do not query this from the frame hot path.
@@ -304,11 +306,14 @@ class PaperFlightGame extends FlameGame
     obstacleSynergySystem = ObstacleSynergySystem(game: this);
     collectibleSpawner = CollectibleSpawner(game: this);
     powerUpSpawner = PowerUpSpawner(game: this);
+    // Runs after the spawner so it targets this frame's obstacle positions.
+    blastSystem = BlastSystem(game: this);
 
     world.add(obstacleSpawner);
     world.add(obstacleSynergySystem);
     world.add(collectibleSpawner);
     world.add(powerUpSpawner);
+    world.add(blastSystem);
 
     // Plane — added last so it renders on top of obstacles (z-order by add).
     final save = ref.read(saveDataProvider);
@@ -816,6 +821,7 @@ class PaperFlightGame extends FlameGame
     obstacleSynergySystem.reset();
     collectibleSpawner.reset();
     powerUpSpawner.reset();
+    blastSystem.reset();
     scoringSystem.reset();
     dynamicDifficultySystem.reset();
     streakSystem.reset();
@@ -1368,6 +1374,7 @@ class PaperFlightGame extends FlameGame
       case PowerUpType.shrink:
       case PowerUpType.blackHole:
       case PowerUpType.giant:
+      case PowerUpType.blast:
         // Purely state-driven for their duration — no entry side effect.
         // Giant Mode's growth is read straight off the session flag by the
         // plane's scale and hitbox, so there is nothing to kick off here.
@@ -1403,6 +1410,7 @@ class PaperFlightGame extends FlameGame
       case PowerUpType.shrink:
       case PowerUpType.blackHole:
       case PowerUpType.giant:
+      case PowerUpType.blast:
         break;
     }
   }

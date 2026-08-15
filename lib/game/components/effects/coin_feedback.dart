@@ -161,6 +161,8 @@ Color _powerUpColor(PowerUpType type) {
       return const Color(0xFF7C4DFF); // deep violet
     case PowerUpType.giant:
       return const Color(0xFFFFB300); // amber
+    case PowerUpType.blast:
+      return const Color(0xFFFF1744); // laser red
   }
 }
 

@@ -45,6 +45,8 @@ class PowerUpArt {
         return const Color(0xFF311B92);
       case PowerUpType.giant:
         return const Color(0xFFE65100);
+      case PowerUpType.blast:
+        return const Color(0xFFB71C1C);
     }
   }
 
@@ -140,6 +142,8 @@ class PowerUpArt {
         _blackHole(canvas, r, phase);
       case PowerUpType.giant:
         _giant(canvas, r, phase);
+      case PowerUpType.blast:
+        _blast(canvas, r, phase);
     }
   }
 
@@ -751,5 +755,65 @@ class PowerUpArt {
         spark..color = const Color(0xFFFFF176).withOpacity(1 - t),
       );
     }
+  }
+
+  // ── Blast Mode — a crosshair split by firing laser beams ──────────────────
+
+  static void _blast(Canvas canvas, double r, double phase) {
+    // Two beams firing upward and outward, pulsing on the fire cadence.
+    final fire = (math.sin(phase * 7.0) * 0.5 + 0.5);
+    for (final dir in const [-1.0, 1.0]) {
+      final path = Path()
+        ..moveTo(dir * r * 0.20, r * 0.78)
+        ..lineTo(dir * r * 0.62, -r * 1.05)
+        ..lineTo(dir * r * 0.30, -r * 1.05)
+        ..lineTo(dir * r * 0.02, r * 0.78)
+        ..close();
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = const Color(0xFFFF1744).withOpacity(0.40 + fire * 0.45)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+      );
+      canvas.drawPath(
+        path,
+        Paint()..color = Colors.white.withOpacity(0.55 + fire * 0.40),
+      );
+    }
+
+    // Emitter core.
+    canvas.drawCircle(
+      Offset(0, r * 0.42),
+      r * 0.30,
+      Paint()
+        ..shader = const RadialGradient(
+          colors: [Color(0xFFFFFFFF), Color(0xFFFF1744), Color(0xFF8E0000)],
+        ).createShader(
+          Rect.fromCircle(center: Offset(0, r * 0.42), radius: r * 0.30),
+        ),
+    );
+
+    // Target reticle on the thing about to be destroyed.
+    final reticle = Paint()
+      ..color = const Color(0xFFFF5252)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = r * 0.09
+      ..strokeCap = StrokeCap.round;
+    final ry = -r * 0.58;
+    final rr = r * 0.40 * (1.0 - fire * 0.10);
+    canvas.drawCircle(Offset(0, ry), rr, reticle);
+    for (int i = 0; i < 4; i++) {
+      final a = i * math.pi / 2 + math.pi / 4;
+      canvas.drawLine(
+        Offset(math.cos(a) * rr * 0.55, ry + math.sin(a) * rr * 0.55),
+        Offset(math.cos(a) * rr * 1.45, ry + math.sin(a) * rr * 1.45),
+        reticle,
+      );
+    }
+    canvas.drawCircle(
+      Offset(0, ry),
+      r * 0.09,
+      Paint()..color = Colors.white,
+    );
   }
 }

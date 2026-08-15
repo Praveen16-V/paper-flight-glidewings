@@ -29,6 +29,9 @@ class LivePowerUpState {
   /// Giant Mode — the plane is oversized and smashes hazards it touches.
   bool giantActive = false;
 
+  /// Blast Mode — lasers automatically shoot down hazards ahead.
+  bool blastActive = false;
+
   /// Slow-Mo — the world and simulation run at reduced timescale.
   bool slowMoActive = false;
 
@@ -51,6 +54,7 @@ class LivePowerUpState {
     shieldActive = session.shieldActive;
     blackHoleActive = active.contains(PowerUpType.blackHole);
     giantActive = active.contains(PowerUpType.giant);
+    blastActive = active.contains(PowerUpType.blast);
     slowMoActive = active.contains(PowerUpType.slowMo);
     coinRushActive = active.contains(PowerUpType.coinRush);
     doubleScoreActive = active.contains(PowerUpType.doubleScore);
@@ -67,6 +71,7 @@ class LivePowerUpState {
     shieldActive = false;
     blackHoleActive = false;
     giantActive = false;
+    blastActive = false;
     slowMoActive = false;
     coinRushActive = false;
     doubleScoreActive = false;

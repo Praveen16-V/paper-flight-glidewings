@@ -630,6 +630,7 @@ abstract class GameConfig {
   static const double shrinkDuration = 5.0; // seconds — 0.35 hitbox
   static const double blackHoleDuration = 2.5; // seconds — cosmic vacuum
   static const double giantDuration = 6.0; // seconds — smash through hazards
+  static const double blastDuration = 6.0; // seconds — auto-firing lasers
 
   /// The full, declared lifetime of a power-up — the duration a world pickup
   /// grants. Every type has one: nothing in the game is untimed any more.
@@ -644,6 +645,7 @@ abstract class GameConfig {
       PowerUpType.shrink => shrinkDuration,
       PowerUpType.blackHole => blackHoleDuration,
       PowerUpType.giant => giantDuration,
+      PowerUpType.blast => blastDuration,
     };
   }
 
@@ -724,6 +726,26 @@ abstract class GameConfig {
   /// Points awarded per hazard smashed — a small bounty that rewards flying
   /// *through* traffic rather than around it while Giant Mode is up.
   static const int giantSmashPoints = 25;
+
+  // ── Blast Mode ────────────────────────────────────────────────────────────
+  /// Seconds between automatic shots. Fast enough to feel like a weapon,
+  /// slow enough that each kill reads as a distinct event.
+  static const double blastFireInterval = 0.28;
+
+  /// How far ahead of the plane the lasers acquire targets (px). Limited so
+  /// the player still has to fly toward danger rather than watching the whole
+  /// screen clear itself.
+  static const double blastRange = 520.0;
+
+  /// Half-width of the firing cone around the plane's column (px). Hazards
+  /// outside this corridor are ignored, keeping the fantasy directional.
+  static const double blastAimHalfWidth = 150.0;
+
+  /// How long a laser bolt stays visible (seconds).
+  static const double blastBoltLifetime = 0.14;
+
+  /// Points awarded per hazard shot down.
+  static const int blastKillPoints = 20;
 
   // ── Shield ────────────────────────────────────────────────────────────────
   /// Absorbing hits granted by one Shield pickup. Collecting a Shield always

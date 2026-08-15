@@ -335,6 +335,8 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
         _playSynth(AudioSynth.voidPulse(volume: .52), volume: volume);
       case PowerUpType.giant:
         _playSynth(AudioSynth.turboSpool(volume: .62), volume: volume);
+      case PowerUpType.blast:
+        _playSynth(AudioSynth.voidPulse(volume: .58), volume: volume);
     }
   }
 

@@ -34,6 +34,7 @@ void main() {
           'shrink',
           'blackHole',
           'giant',
+          'blast',
         ],
       );
     });

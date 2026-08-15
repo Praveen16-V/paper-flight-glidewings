@@ -487,6 +487,41 @@ abstract class ObstacleComponent extends PositionComponent
     return true;
   }
 
+  /// Destroys this hazard with a Blast Mode laser.
+  ///
+  /// Reuses the smash flight path so shot-down debris tumbles away exactly
+  /// like a Giant-Mode hit — one wreck behaviour, two ways to cause it.
+  /// Returns false when the hazard cannot be shot down or is already dying.
+  bool destroyByBlast(Vector2 impactPoint) {
+    if (!_active || _smashed) return false;
+    if (!type.isBlastDestructible) return false;
+
+    _smashed = true;
+    _nearMissAwarded = true;
+
+    // Shot from below, so the wreck is kicked upward and outward.
+    final centre = Vector2(position.x, position.y + size.y * .5);
+    var away = centre - impactPoint;
+    if (away.length < 1) {
+      away = Vector2(position.x < impactPoint.x ? -1 : 1, -1);
+    }
+    away.normalize();
+    away.y -= 0.9; // stronger upward kick than a body-check
+    away.normalize();
+
+    _smashVelocity = away * (GameConfig.giantSmashLaunchSpeed * 0.8);
+    _smashSpin = (away.x >= 0 ? 1 : -1) * GameConfig.giantSmashSpinSpeed;
+    _smashElapsed = 0;
+
+    removeAll(children.whereType<ShapeHitbox>().toList());
+    _cachedHitboxes = const [];
+
+    game.world.add(
+      ColoredBurst(position: centre.clone(), color: const Color(0xFFFF5252)),
+    );
+    return true;
+  }
+
   void _updateSmashFlight(double dt) {
     _smashElapsed += dt;
     position += _smashVelocity * dt;

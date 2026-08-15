@@ -319,6 +319,14 @@ extension ObstacleLabel on ObstacleType {
     }
   }
 
+  /// Hazards the Blast Mode lasers can shoot down.
+  ///
+  /// Shares Giant Mode's taxonomy: solid objects can be destroyed, the boss
+  /// resists, and the weather forces have nothing to shoot. Keeping the two
+  /// rules identical means a player only has to learn one idea — "the sky is
+  /// destructible except for storms and the dragon".
+  bool get isBlastDestructible => isGiantSmashable;
+
   /// Small, individual hazards the Black Hole vacuum can drag in and swallow.
   /// Full-width gates, bosses and oncoming traffic stay immune so the vortex
   /// remains a tactical clear instead of an unconditional screen wipe.
@@ -480,6 +488,7 @@ enum PowerUpType {
   shrink,      // compact micro-fold hitbox 0.35
   blackHole,   // cosmic vortex vacuums coins + small obstacles
   giant,       // oversized plane that smashes hazards out of the sky
+  blast,       // auto-firing lasers that destroy hazards ahead
 }
 
 extension PowerUpLabel on PowerUpType {
@@ -534,6 +543,8 @@ extension PowerUpLabel on PowerUpType {
         return const Color(0xFF7C4DFF);
       case PowerUpType.giant:
         return const Color(0xFFFFB300);
+      case PowerUpType.blast:
+        return const Color(0xFFFF1744);
     }
   }
 
@@ -557,6 +568,8 @@ extension PowerUpLabel on PowerUpType {
         return 'Black Hole';
       case PowerUpType.giant:
         return 'Giant Mode';
+      case PowerUpType.blast:
+        return 'Blast Mode';
     }
   }
 
@@ -580,6 +593,8 @@ extension PowerUpLabel on PowerUpType {
         return 'black_hole';
       case PowerUpType.giant:
         return 'giant';
+      case PowerUpType.blast:
+        return 'blast';
     }
   }
 
@@ -606,6 +621,8 @@ extension PowerUpLabel on PowerUpType {
         return 'Vacuums coins & hazards';
       case PowerUpType.giant:
         return 'Smash through hazards!';
+      case PowerUpType.blast:
+        return 'Lasers destroy hazards';
     }
   }
 }
