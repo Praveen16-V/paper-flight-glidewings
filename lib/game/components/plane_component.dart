@@ -1343,10 +1343,20 @@ class PlaneComponent extends PositionComponent
       ..strokeWidth = 0.5
       ..style = PaintingStyle.stroke;
 
+    // Short, parallel fibres preserve the handmade-paper texture without the
+    // previous crossing diagonals reading as X marks over the aircraft.
     for (double x = 4; x < w - 2; x += 6.5) {
-      canvas.drawLine(Offset(x, h * 0.2), Offset(x + 5, h * 0.8), fiberPaint);
+      final drift = math.sin(x * .37) * 1.2;
       canvas.drawLine(
-          Offset(x + 2, h * 0.3), Offset(x - 3, h * 0.7), fiberDark);
+        Offset(x, h * .31 + drift),
+        Offset(x + 4.2, h * .36 + drift),
+        fiberPaint,
+      );
+      canvas.drawLine(
+        Offset(x + 1.8, h * .64 - drift),
+        Offset(x + 5.2, h * .68 - drift),
+        fiberDark,
+      );
     }
 
     final specklePaint = Paint()
@@ -1848,14 +1858,16 @@ class PlaneComponent extends PositionComponent
           ..color = accent.withOpacity(.58)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.15;
+        // Two clean fuselage pinstripes replace the old crossed decoration,
+        // which could be mistaken for an X/status marker during flight.
         canvas.drawLine(
-          Offset(w * .18, h * .24),
-          Offset(w * .82, h * .76),
+          Offset(w * .20, h * .42),
+          Offset(w * .80, h * .42),
           accentPaint,
         );
         canvas.drawLine(
-          Offset(w * .18, h * .76),
-          Offset(w * .82, h * .24),
+          Offset(w * .24, h * .58),
+          Offset(w * .76, h * .58),
           accentPaint,
         );
         _drawCustomCraftStamp(

@@ -11,6 +11,7 @@ class ClotheslineObstacle extends ObstacleComponent {
 
   double _gapX = 120;
   double _gapWidth = 105;
+  double _flutterPhase = 0;
 
   @override
   Color get telegraphColor => const Color(0xFFFFB74D);
@@ -18,13 +19,31 @@ class ClotheslineObstacle extends ObstacleComponent {
   @override
   void onActivate(double scrollSpeed) {
     size = Vector2(GameConfig.designWidth, 48);
-    _gapWidth = rngRange(100, 130);
-    _gapX = rngRange(50, GameConfig.designWidth - _gapWidth - 50);
+    _gapWidth = script?.gapWidth ?? rngRange(106, 132);
+    _flutterPhase = rngRange(0, math.pi * 2);
+    final minGapX = GameConfig.horizontalEdgeMargin + 28;
+    final maxGapX =
+        GameConfig.designWidth - GameConfig.horizontalEdgeMargin - _gapWidth - 28;
+    final scriptedCenter = script?.gapCenterX;
+    _gapX = scriptedCenter != null
+        ? (scriptedCenter - _gapWidth * .5)
+            .clamp(minGapX, maxGapX)
+            .toDouble()
+        : safeCorridorX != null
+            ? (safeCorridorX! - _gapWidth * .5)
+                .clamp(minGapX, maxGapX)
+                .toDouble()
+            : rngRange(minGapX, maxGapX);
 
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(RectangleHitbox(size: Vector2(_gapX, 36), position: Vector2(0, 6)));
     final rStart = _gapX + _gapWidth;
     add(RectangleHitbox(size: Vector2(GameConfig.designWidth - rStart, 36), position: Vector2(rStart, 6)));
+  }
+
+  @override
+  void updateObstacle(double dt) {
+    _flutterPhase += dt * 4.2;
   }
 
   @override
@@ -78,38 +97,78 @@ class ClotheslineObstacle extends ObstacleComponent {
   }
 
   void _drawPaperDolls(Canvas canvas, double startX, double endX) {
-    final pinPaint = Paint()..color = const Color(0xFF4E342E)..style = PaintingStyle.fill;
+    final pinPaint = Paint()
+      ..color = const Color(0xFF4E342E)
+      ..style = PaintingStyle.fill;
+    const palettes = [
+      [Color(0xFFFFECB3), Color(0xFFFFC107), Color(0xFFB8860B)],
+      [Color(0xFFE1F5FE), Color(0xFF4FC3F7), Color(0xFF0277BD)],
+      [Color(0xFFFCE4EC), Color(0xFFF48FB1), Color(0xFFC2185B)],
+    ];
 
+    var index = 0;
     for (double x = startX + 15; x < endX - 15; x += 28) {
-      // Wooden clothespin.
-      canvas.drawRect(Rect.fromLTWH(x - 2, 8, 4, 4), pinPaint);
-      // Doll with a soft gradient (lit top, shadowed base) + drop shadow.
-      final dollRect = Rect.fromLTWH(x - 8, 12, 16, 22);
-      final doll = Path()..moveTo(x, 12)..lineTo(x + 8, 22)..lineTo(x + 5, 34)..lineTo(x - 5, 34)..lineTo(x - 8, 22)..close();
-      canvas.drawPath(
-        doll,
-        Paint()
-          ..color = const Color(0x22000000)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5)
-          ..style = PaintingStyle.fill,
+      // Wooden clothespin remains fixed while the paper below it catches the
+      // same breeze that drives the world wind.
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(x - 2.2, 8, 4.4, 5),
+          const Radius.circular(.8),
+        ),
+        pinPaint,
       );
+
+      final flutter = math.sin(_flutterPhase + x * .085) * .11;
+      final lift = math.cos(_flutterPhase * 1.3 + x * .04) * 1.4;
+      canvas.save();
+      canvas.translate(x, 12 + lift);
+      canvas.rotate(flutter);
+
+      final dollRect = const Rect.fromLTWH(-8, 0, 16, 22);
+      final doll = Path()
+        ..moveTo(0, 0)
+        ..lineTo(8, 10)
+        ..lineTo(5, 22)
+        ..lineTo(-5, 22)
+        ..lineTo(-8, 10)
+        ..close();
+      canvas.save();
+      canvas.translate(1.2, 1.8);
       canvas.drawPath(
         doll,
         Paint()
-          ..shader = const LinearGradient(
+          ..color = const Color(0x33000000)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5),
+      );
+      canvas.restore();
+
+      final palette = palettes[index % palettes.length];
+      canvas.drawPath(
+        doll,
+        Paint()
+          ..shader = LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFFFECB3), Color(0xFFFFC107), Color(0xFFB8860B)],
+            colors: palette,
             stops: const [0.0, .55, 1.0],
           ).createShader(dollRect),
       );
+      canvas.drawLine(
+        const Offset(-5.5, 10),
+        const Offset(5.5, 10),
+        Paint()
+          ..color = Colors.white.withOpacity(.34)
+          ..strokeWidth = .8,
+      );
       canvas.drawPath(
         doll,
         Paint()
-          ..color = const Color(0x66855C00)
+          ..color = palette.last.withOpacity(.68)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = .7,
+          ..strokeWidth = .8,
       );
+      canvas.restore();
+      index++;
     }
   }
 }
@@ -122,6 +181,8 @@ class WindSockObstacle extends ObstacleComponent {
   WindSockObstacle() : super(type: ObstacleType.windsock);
 
   bool _kiteLinked = false;
+  double _flutterPhase = 0;
+  double _windDirection = 1;
 
   @override
   Color get telegraphColor => const Color(0xFFFF6D00);
@@ -130,6 +191,8 @@ class WindSockObstacle extends ObstacleComponent {
   void onActivate(double scrollSpeed) {
     size = Vector2(48, 54);
     _kiteLinked = false;
+    _flutterPhase = rngRange(0, math.pi * 2);
+    _windDirection = rngBool() ? 1 : -1;
     removeAll(children.whereType<ShapeHitbox>().toList());
     add(RectangleHitbox(size: Vector2(36, 40), position: Vector2(6, 6)));
   }
@@ -140,57 +203,98 @@ class WindSockObstacle extends ObstacleComponent {
   }
 
   @override
+  void updateObstacle(double dt) {
+    _flutterPhase += dt * (_kiteLinked ? 7.4 : 5.2);
+    final force = game.windSystem.currentForceAt(position.x);
+    if (force.abs() > 4) _windDirection = force.sign;
+  }
+
+  @override
   void render(Canvas canvas) {
     final cx = size.x * 0.5;
-    // Steel mast with a specular edge.
-    canvas.drawRect(Rect.fromLTWH(cx - 1.2, 0, 2.4, 54),
-        Paint()..shader = const LinearGradient(
+    // Steel mast with a specular edge and a grounded foot, so the obstacle
+    // remains readable against both pale morning skies and dark storm biomes.
+    final mastRect = Rect.fromLTWH(cx - 1.4, 0, 2.8, 54);
+    canvas.drawRect(
+      mastRect,
+      Paint()
+        ..shader = const LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
-          colors: [Color(0xFFB0BEC5), Color(0xFF607D8B), Color(0xFF37474F)],
-        ).createShader(Rect.fromLTWH(cx - 1.2, 0, 2.4, 54)));
-    canvas.drawRect(Rect.fromLTWH(cx - 1, 0, 1, 54),
-        Paint()..color = const Color(0x55FFFFFF));
+          colors: [Color(0xFFCFD8DC), Color(0xFF607D8B), Color(0xFF263238)],
+        ).createShader(mastRect),
+    );
+    canvas.drawRect(Rect.fromLTWH(cx - 1, 0, .8, 54),
+        Paint()..color = const Color(0x66FFFFFF));
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(center: Offset(cx, 51), width: 14, height: 5),
+        const Radius.circular(2),
+      ),
+      Paint()..color = const Color(0xFF37474F),
+    );
 
-    // Striped windsock cone with a lit upper surface and shaded underside.
+    // Mirror around the mast when the real local wind changes direction. The
+    // tip also ripples vertically, making this a live wind instrument rather
+    // than a static cone pasted over the playfield.
+    canvas.save();
+    canvas.translate(cx, 0);
+    canvas.scale(_windDirection, 1);
+    canvas.translate(-cx, 0);
+    final tipWave = math.sin(_flutterPhase) * 3.1;
+    final midWave = math.sin(_flutterPhase * .78 + 1.2) * 1.8;
     final sock = Path()
       ..moveTo(cx, 8)
-      ..lineTo(cx + 24, 14)
-      ..lineTo(cx + 22, 28)
-      ..lineTo(cx, 24)
+      ..quadraticBezierTo(cx + 12, 10 + midWave, cx + 24, 14 + tipWave)
+      ..lineTo(cx + 22, 27 + tipWave)
+      ..quadraticBezierTo(cx + 11, 24 - midWave, cx, 24)
       ..close();
+    final bounds = sock.getBounds();
+
+    canvas.save();
+    canvas.clipPath(sock);
+    canvas.drawRect(
+      bounds,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFFFAB91), Color(0xFFD84315), Color(0xFF6D1200)],
+          stops: [0.0, .56, 1.0],
+        ).createShader(bounds),
+    );
+    final whiteStripe = Paint()..color = const Color(0xFFFBE9E7);
+    canvas.drawRect(Rect.fromLTWH(cx + 6, 7, 5.5, 24), whiteStripe);
+    canvas.drawRect(Rect.fromLTWH(cx + 15, 8, 4.8, 24), whiteStripe);
+    canvas.drawRect(
+      Rect.fromLTWH(cx, 8, 24, 4.2),
+      Paint()..color = const Color(0x38FFFFFF),
+    );
+    canvas.restore();
     canvas.drawPath(
       sock,
       Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: const [Color(0xFFFF8A65), Color(0xFFD84315), Color(0xFF6D1200)],
-          stops: const [0.0, .55, 1.0],
-        ).createShader(sock.getBounds()),
+        ..color = const Color(0xFF7F230C)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.1,
     );
 
-    // White stripes clipped to the cone (darker at the shaded base).
-    final whiteStripes = Paint()..color = const Color(0xFFFBE9E7);
-    canvas.drawRect(Rect.fromLTWH(cx + 6, 9.5, 6, 15), whiteStripes);
-    canvas.drawRect(Rect.fromLTWH(cx + 15, 12, 5, 13), whiteStripes);
-    canvas.drawRect(Rect.fromLTWH(cx + 3, 10, 3, 13),
-        Paint()..color = const Color(0xFFFFCCBC));
-    // Top highlight along the cone.
-    canvas.drawPath(
-      Path()..moveTo(cx, 8)..lineTo(cx + 24, 14)..lineTo(cx + 22, 15)..lineTo(cx, 10)..close(),
-      Paint()..color = const Color(0x33FFFFFF),
-    );
     if (_kiteLinked) {
       final windPaint = Paint()
         ..color = ObstacleSynergy.windTether.color.withOpacity(.70)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.25;
+        ..strokeWidth = 1.25
+        ..strokeCap = StrokeCap.round;
       for (var i = 0; i < 3; i++) {
-        final y = 12.0 + i * 8.0;
-        canvas.drawLine(Offset(cx + 24, y), Offset(cx + 38, y - 2), windPaint);
+        final y = 11.0 + i * 8.0 + math.sin(_flutterPhase + i) * 1.5;
+        canvas.drawLine(
+          Offset(cx + 26, y),
+          Offset(cx + 38, y - 2),
+          windPaint,
+        );
       }
     }
+    canvas.restore();
 
     renderTelegraph(canvas);
   }

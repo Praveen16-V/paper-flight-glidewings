@@ -76,6 +76,18 @@ class ObstacleSpawner extends Component {
   double _safeCorridorX = GameConfig.designWidth * 0.5;
 
   ObstacleType? _pendingChosen;
+
+  /// Distance milestones are queued rather than spawned immediately. This lets
+  /// the normal reaction-window and active-threat checks choose the first safe
+  /// frame, while still guaranteeing that the newly unlocked family is the
+  /// next procedural encounter.
+  final List<ObstacleType> _pendingMilestoneObstacles = [];
+  int _nextMilestoneIndex = 0;
+
+  /// A tiny history reduces same-family repetition without banning a valid
+  /// fallback in biomes with a deliberately narrow obstacle palette.
+  final List<ObstacleType> _recentTypes = [];
+
   double _combinationCooldown = 0.0;
 
   /// Boss passes own the whole screen; this cooldown stops two dragon
@@ -225,6 +237,7 @@ class ObstacleSpawner extends Component {
     }
     if (!spawnEnabled) return;
 
+    _queueReachedMilestones();
     _spawnTimer += dt;
 
     final interval = _currentSpawnInterval();
@@ -238,6 +251,9 @@ class ObstacleSpawner extends Component {
     _lastSpawnX = GameConfig.designWidth * 0.5;
     _safeCorridorX = GameConfig.designWidth * 0.5;
     _pendingChosen = null;
+    _pendingMilestoneObstacles.clear();
+    _nextMilestoneIndex = 0;
+    _recentTypes.clear();
     _combinationCooldown = 0.0;
     _paperDragonCooldown = 0.0;
     for (final obs in List.of(_active)) {
@@ -270,6 +286,48 @@ class ObstacleSpawner extends Component {
 
   // ── Internals ─────────────────────────────────────────────────────────────
 
+  void _queueReachedMilestones() {
+    // Zen keeps its intentionally calm biome palette and Precision Trials are
+    // fully authored. Both still use the unlock filter for ordinary procedural
+    // rolls where applicable, but only Classic/Daily guarantee introductions.
+    if (game.mode == GameMode.trial || game.mode == GameMode.zen) return;
+
+    final progression = GameConfig.obstacleMilestoneProgression;
+    while (_nextMilestoneIndex < progression.length) {
+      final type = progression[_nextMilestoneIndex];
+      if (game.distanceMeters < GameConfig.obstacleUnlockDistance(type)) break;
+      _pendingMilestoneObstacles.add(type);
+      _nextMilestoneIndex++;
+    }
+  }
+
+  int get _activeThreatCount {
+    final clearLine = game.plane.position.y + 60.0;
+    return _active.where((obstacle) => obstacle.position.y < clearLine).length;
+  }
+
+  bool _hasThreatCapacity(int incoming) =>
+      _activeThreatCount + incoming <=
+      GameConfig.obstacleActiveCapForDistance(game.distanceMeters);
+
+  double _repeatWeightMultiplier(ObstacleType type) {
+    if (_recentTypes.isEmpty) return 1.0;
+    if (_recentTypes.last == type) {
+      return GameConfig.obstacleImmediateRepeatWeightMultiplier;
+    }
+    if (_recentTypes.contains(type)) {
+      return GameConfig.obstacleRecentRepeatWeightMultiplier;
+    }
+    return 1.0;
+  }
+
+  void _rememberSpawnedType(ObstacleType type) {
+    _recentTypes.add(type);
+    while (_recentTypes.length > GameConfig.obstacleRecentTypeMemory) {
+      _recentTypes.removeAt(0);
+    }
+  }
+
   double _currentSpawnInterval() {
     final speedFraction = (game.scrollSpeed - GameConfig.baseScrollSpeed) /
         (GameConfig.maxScrollSpeed - GameConfig.baseScrollSpeed);
@@ -293,9 +351,18 @@ class ObstacleSpawner extends Component {
   }
 
   bool _spawnObstacle() {
+    if (!_hasThreatCapacity(1)) return false;
+
+    final milestone = _pendingMilestoneObstacles.isEmpty
+        ? null
+        : _pendingMilestoneObstacles.first;
+
     // Curated pairs only begin on a naturally clear sky. They never pre-empt a
-    // deferred normal hazard or turn a busy run into an artificial spawn pause.
-    if (_pendingChosen == null && _canStartCombination()) {
+    // deferred normal hazard or a newly unlocked family, and they must fit the
+    // same active-threat budget as independent spawns.
+    if (milestone == null &&
+        _pendingChosen == null &&
+        _canStartCombination()) {
       final combination = _pickObstacleCombination();
       if (combination != null) return _spawnCombination(combination);
     }
@@ -303,8 +370,13 @@ class ObstacleSpawner extends Component {
     final types = ObstacleType.values;
     final weights = types
         .map(
-          (type) => game.biomeManager.obstacleWeight(type) *
+          (type) =>
+              (GameConfig.isObstacleUnlocked(type, game.distanceMeters)
+                  ? 1.0
+                  : 0.0) *
+              game.biomeManager.obstacleWeight(type) *
               game.dynamicDifficultySystem.obstacleWeightMultiplier(type) *
+              _repeatWeightMultiplier(type) *
               // A boss stays out of the roll while its cooldown runs.
               (type.isBoss && _paperDragonCooldown > 0 ? 0.0 : 1.0),
         )
@@ -313,19 +385,30 @@ class ObstacleSpawner extends Component {
     final totalWeight = weights.fold<double>(0, (sum, weight) => sum + weight);
     final ObstacleType chosen;
     final pending = _pendingChosen;
-    if (pending != null) {
+    if (milestone != null) {
+      chosen = milestone;
+    } else if (pending != null) {
       chosen = pending;
+    } else if (totalWeight > 0) {
+      chosen = _weightedPick(types, weights);
     } else {
-      chosen = totalWeight > 0
-          ? _weightedPick(types, weights)
-          : ObstacleType.bird;
+      // Every biome currently includes Bird, but retaining an unlocked fallback
+      // makes progression edits fail gracefully instead of stalling the course.
+      chosen = types.firstWhere(
+        (type) => GameConfig.isObstacleUnlocked(type, game.distanceMeters),
+        orElse: () => ObstacleType.bird,
+      );
     }
 
     if (!_hasSafeReactionWindow(chosen)) {
-      _pendingChosen = chosen;
+      if (milestone == null) _pendingChosen = chosen;
       return false;
     }
-    _pendingChosen = null;
+    if (milestone != null) {
+      _pendingMilestoneObstacles.removeAt(0);
+    } else {
+      _pendingChosen = null;
+    }
     _planSafeCorridor();
     final spawnX = _pickSpawnX(chosen);
     _lastSpawnX = spawnX;
@@ -369,7 +452,16 @@ class ObstacleSpawner extends Component {
         .toDouble();
     if (random.nextDouble() > combinationChance) return null;
 
-    final combinations = ObstacleCombination.values;
+    final combinations = ObstacleCombination.values
+        .where(
+          (combination) => combination.members.every(
+            (type) =>
+                GameConfig.isObstacleUnlocked(type, game.distanceMeters),
+          ),
+        )
+        .toList(growable: false);
+    if (combinations.isEmpty) return null;
+
     final weights = combinations
         .map(game.biomeManager.obstacleCombinationWeight)
         .toList();
@@ -380,6 +472,8 @@ class ObstacleSpawner extends Component {
   }
 
   bool _canStartCombination() {
+    if (!_hasThreatCapacity(2)) return false;
+
     // A curated pair reserves the sky ahead of the plane for its pattern.
     // Obstacles that have already passed the plane row no longer contest that
     // space, so they do not veto a fresh combination — only live threats
@@ -467,6 +561,7 @@ class ObstacleSpawner extends Component {
     }
     game.world.add(obstacle);
     _active.add(obstacle);
+    _rememberSpawnedType(type);
     game.replayTrace.record(
       ReplayTraceKind.obstacleSpawn,
       primary: type.index,

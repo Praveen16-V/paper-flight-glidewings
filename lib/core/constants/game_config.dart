@@ -33,7 +33,7 @@ abstract class GameConfig {
   /// Stable identifier attached to gameplay, economy, ad, and performance
   /// telemetry. Increment this whenever a tuning cohort changes so dashboards
   /// never compare unlike balance curves as if they were one population.
-  static const String balanceVersion = '2026.08-balance-14';
+  static const String balanceVersion = '2026.08-balance-15';
 
   /// Maximum retained trace entries for replay/soak validation. The full
   /// fingerprint still covers every layout event after this ring buffer wraps.
@@ -234,19 +234,19 @@ abstract class GameConfig {
   // ── Plane Trail ───────────────────────────────────────────────────────────
 
   /// Number of position samples kept in the trail history.
-  static const int trailLength = 18;
+  static const int trailLength = 22;
 
   /// Seconds between trail position samples.
   static const double trailSampleInterval = 0.030;
 
-  /// Maximum alpha of the trail at its head (0.0–1.0).
-  static const double trailHeadAlpha = 0.38;
+  /// Maximum alpha of the layered trail at its head (0.0–1.0).
+  static const double trailHeadAlpha = 0.46;
 
-  /// Stroke width at the trail head (px).
-  static const double trailHeadWidth = 2.6;
+  /// Stroke width at the trail head (px), before the soft outer halo.
+  static const double trailHeadWidth = 3.1;
 
   /// Stroke width at the trail tail (px).
-  static const double trailTailWidth = 0.5;
+  static const double trailTailWidth = 0.35;
 
   // ── Wind ────────────────────────────────────────────────────────────────
   /// Number of wind column lanes across screen width.
@@ -362,6 +362,82 @@ abstract class GameConfig {
 
   /// Minimum spawn interval floor.
   static const double obstacleMinSpawnInterval = 0.55;
+
+  /// Obstacles enter the procedural course in a deliberate distance-based
+  /// progression. The opening set teaches one hazard language at a time; from
+  /// 500 m onward exactly one new family is introduced at each 500 m marker.
+  /// Scripted Precision Trials bypass this table because their course author is
+  /// responsible for every encounter.
+  static const double obstacleUnlockIntervalMeters = 500.0;
+  static const Map<ObstacleType, double> obstacleUnlockMeters = {
+    ObstacleType.treeBranch: 0.0,
+    ObstacleType.clothesline: 0.0,
+    ObstacleType.bird: 0.0,
+    ObstacleType.kite: 0.0,
+    ObstacleType.windsock: 0.0,
+    ObstacleType.powerLine: 0.0,
+    ObstacleType.building: 500.0,
+    ObstacleType.stormCloud: 1000.0,
+    ObstacleType.windTurbine: 1500.0,
+    ObstacleType.flockMigration: 2000.0,
+    ObstacleType.drone: 2500.0,
+    ObstacleType.fireworks: 3000.0,
+    ObstacleType.trafficPlane: 3500.0,
+    ObstacleType.whaleBreach: 4000.0,
+    ObstacleType.paperDragon: 4500.0,
+    ObstacleType.weatherBalloon: 5000.0,
+    ObstacleType.meteorShower: 5500.0,
+    ObstacleType.tornado: 6000.0,
+    ObstacleType.hotAirBalloon: 6500.0,
+    ObstacleType.lightningStrike: 7000.0,
+  };
+
+  /// Positive-distance introductions in milestone order. The spawner uses this
+  /// list to guarantee a readable first encounter shortly after each marker;
+  /// normal biome weighting takes over after that introduction.
+  static const List<ObstacleType> obstacleMilestoneProgression = [
+    ObstacleType.building,
+    ObstacleType.stormCloud,
+    ObstacleType.windTurbine,
+    ObstacleType.flockMigration,
+    ObstacleType.drone,
+    ObstacleType.fireworks,
+    ObstacleType.trafficPlane,
+    ObstacleType.whaleBreach,
+    ObstacleType.paperDragon,
+    ObstacleType.weatherBalloon,
+    ObstacleType.meteorShower,
+    ObstacleType.tornado,
+    ObstacleType.hotAirBalloon,
+    ObstacleType.lightningStrike,
+  ];
+
+  static double obstacleUnlockDistance(ObstacleType type) =>
+      obstacleUnlockMeters[type] ?? double.infinity;
+
+  static bool isObstacleUnlocked(ObstacleType type, double meters) =>
+      meters >= obstacleUnlockDistance(type);
+
+  /// Concurrent threats are capped separately from object-pool capacity. The
+  /// opening never presents more than four live decisions; one extra slot is
+  /// earned at 1,500 m and another at 3,000 m. Obstacles already safely below
+  /// the plane do not consume this readability budget.
+  static const int obstacleOpeningMaxActive = 4;
+  static const int obstacleFullMaxActive = 6;
+  static const double obstacleActiveCapStepMeters = 1500.0;
+  static int obstacleActiveCapForDistance(double meters) =>
+      (obstacleOpeningMaxActive +
+              (meters.clamp(0.0, double.infinity) /
+                      obstacleActiveCapStepMeters)
+                  .floor())
+          .clamp(obstacleOpeningMaxActive, obstacleFullMaxActive)
+          .toInt();
+
+  /// Recent-family memory softens immediate repeats without making a sparse
+  /// biome stall when only one suitable type is currently available.
+  static const int obstacleRecentTypeMemory = 2;
+  static const double obstacleImmediateRepeatWeightMultiplier = 0.10;
+  static const double obstacleRecentRepeatWeightMultiplier = 0.48;
 
   /// Seconds during which the Paper Dragon cannot be rolled again after a
   /// boss pass starts — two serpentine encounters may never chain directly.
