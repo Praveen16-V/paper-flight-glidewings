@@ -632,6 +632,40 @@ abstract class GameConfig {
   static const double giantDuration = 6.0; // seconds — smash through hazards
   static const double blastDuration = 6.0; // seconds — auto-firing lasers
 
+  // ── Power-Up Recharge ──────────────────────────────────────────────────────
+  /// After a power-up ends, that type goes on cooldown for this long before
+  /// another of the same kind can take effect.
+  ///
+  /// Without this, a run that happened to drop three Ghosts in a row could be
+  /// flown almost entirely inside one effect. A per-type cooldown keeps each
+  /// power-up a punctuation mark rather than a state the player lives in,
+  /// while still letting a *different* power-up be picked up immediately.
+  static const double powerUpRechargeSeconds = 12.0;
+
+  /// Per-type overrides. The strongest, most run-defining effects wait longer
+  /// than the ordinary ones.
+  static double powerUpRechargeFor(PowerUpType type) {
+    switch (type) {
+      case PowerUpType.giant:
+      case PowerUpType.blast:
+        // The two destroyers trivialise hazards while up, so they earn the
+        // longest wait.
+        return 20.0;
+      case PowerUpType.shield:
+      case PowerUpType.ghost:
+        // Defensive lifelines: frequent enough to save a run, not so frequent
+        // that the sky stops mattering.
+        return 15.0;
+      case PowerUpType.blackHole:
+      case PowerUpType.slowMo:
+      case PowerUpType.magnet:
+      case PowerUpType.coinRush:
+      case PowerUpType.doubleScore:
+      case PowerUpType.shrink:
+        return powerUpRechargeSeconds;
+    }
+  }
+
   /// The full, declared lifetime of a power-up — the duration a world pickup
   /// grants. Every type has one: nothing in the game is untimed any more.
   static double powerUpFullDuration(PowerUpType type) {
@@ -802,8 +836,11 @@ abstract class GameConfig {
   /// tilt so thumb steering feels responsive.
   static const double joystickMaxSteerSpeed = 170.0;
 
-  // ── Snap Burst (Paper-Snap) ───────────────────────────────────────────────
-  static const int snapMaxCharges = 2;
+  // ── Snap Burst (Paper-Snap / BOOST) ───────────────────────────────────────
+  /// The basic flight has exactly one boost. Holding a second charge let the
+  /// player double-boost out of trouble, which blunted the decision; with a
+  /// single charge, spending it is a real commitment.
+  static const int snapMaxCharges = 1;
   /// Snap burst velocity (px/s upward, negative).
   static const double snapBurstVelocity = -252.0; // 1.8 × liftSnapKick
 
@@ -812,8 +849,13 @@ abstract class GameConfig {
   static const double snapFlickMaxDurationMs = 220.0; // ms
   static const double snapFlickMinVelocity = 320.0; // px/s upward
 
-  /// Distance (meters) to recharge one snap charge.
-  static const double snapRechargeMeters = 200.0;
+  /// Seconds to recharge the boost after it is spent.
+  ///
+  /// Deliberately wall-clock rather than distance-based: a fixed 30s is a
+  /// promise the player can learn and plan around, whereas a distance cost
+  /// silently recharged faster the further into a run they got (scroll speed
+  /// ramps with distance), which is exactly backwards.
+  static const double snapRechargeSeconds = 30.0;
 
   // ── Snap Charge Ring ─────────────────────────────────────────────────────
   static const double snapRingRadius = 32.0;

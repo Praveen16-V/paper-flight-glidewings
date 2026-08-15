@@ -1329,7 +1329,30 @@ class PaperFlightGame extends FlameGame
   /// Collecting a type that is already running refreshes its timer back to
   /// full rather than stacking a second copy, so a power-up is always worth
   /// grabbing but can never compound into a runaway advantage.
-  void collectPowerUp(PowerUpType type) => applyPowerUp(type);
+  void collectPowerUp(PowerUpType type) {
+    final session = ref.read(gameSessionProvider);
+    // Refreshing something already running is always allowed — that is the
+    // Item 3 rule. But a type that has ended and is still recharging cannot
+    // be restarted yet, so the pickup is politely declined instead of
+    // silently doing nothing.
+    if (!session.activePowerUps.contains(type) && session.isRecharging(type)) {
+      _announceRecharging(type);
+      return;
+    }
+    applyPowerUp(type);
+  }
+
+  /// Feedback for touching a pickup whose effect is still recharging. Without
+  /// this the pickup would just vanish with no explanation.
+  void _announceRecharging(PowerUpType type) {
+    final left = ref.read(gameSessionProvider).powerUpCooldowns[type] ?? 0;
+    world.add(FloatingScoreText(
+      position: plane.position.clone(),
+      text: 'RECHARGING ${left.ceil()}s',
+      color: const Color(0xFF90A4AE),
+      fontSize: 14,
+    ));
+  }
 
   /// Starts (or refreshes) a power-up and its countdown. Shared by world
   /// pickups and gesture-triggered plane signature power-ups.
@@ -1448,9 +1471,14 @@ class PaperFlightGame extends FlameGame
       // Already running — no-op so repeated flicks can't stack timers.
       return;
     }
+    // The signature action is free to trigger, so without a cooldown a player
+    // could hold their effect up permanently by flicking. It obeys the same
+    // recharge as a world pickup.
+    if (session.isRecharging(type)) {
+      _announceRecharging(type);
+      return;
+    }
 
-    // Item 10 will gate this behind a per-power-up recharge timer; for now the
-    // signature action fires its effect directly.
     spawnPowerUpFeedback(this, plane.position, type);
     applyPowerUp(type);
   }

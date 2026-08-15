@@ -153,6 +153,7 @@ class HudOverlay extends ConsumerWidget {
               activeCombos: session.activePowerUpCombos,
               activeCorrupted: session.activeCorruptedPowerUps,
               remaining: session.powerUpRemaining,
+              cooldowns: session.powerUpCooldowns,
             ),
           ),
 
@@ -593,15 +594,19 @@ class _PowerUpBar extends StatelessWidget {
     required this.activeCombos,
     required this.activeCorrupted,
     required this.remaining,
+    required this.cooldowns,
   });
   final Set<PowerUpType> activePowerUps;
   final Set<PowerUpCombo> activeCombos;
   final Set<CorruptedPowerUpType> activeCorrupted;
   final Map<PowerUpType, double> remaining;
+  final Map<PowerUpType, double> cooldowns;
 
   @override
   Widget build(BuildContext context) {
-    if (activePowerUps.isEmpty && activeCorrupted.isEmpty) {
+    if (activePowerUps.isEmpty &&
+        activeCorrupted.isEmpty &&
+        cooldowns.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -630,6 +635,18 @@ class _PowerUpBar extends StatelessWidget {
             child: _PowerUpIcon(type: type, remaining: remaining[type]),
           );
         }),
+        // Recharging types are shown dimmed beneath the live ones, so the
+        // player can see a pickup will be declined *before* they chase it.
+        ...(PowerUpType.values.where(cooldowns.containsKey).map((type) {
+          return Padding(
+            key: ValueKey('cooldown.${type.name}'),
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _PowerUpCooldownIcon(
+              type: type,
+              remaining: cooldowns[type]!,
+            ),
+          );
+        })),
       ],
     );
   }
@@ -837,6 +854,99 @@ class _CorruptedPowerUpPill extends StatelessWidget {
           color: Colors.white,
           fontSize: 8,
           letterSpacing: .55,
+        ),
+      ),
+    );
+  }
+}
+
+/// A power-up that has ended and is still recharging.
+///
+/// Deliberately muted: it is information, not a call to action. Showing it at
+/// all means the player can tell the difference between "there is no Ghost
+/// right now" and "the Ghost I just used is coming back in 6 seconds".
+class _PowerUpCooldownIcon extends StatelessWidget {
+  const _PowerUpCooldownIcon({
+    required this.type,
+    required this.remaining,
+  });
+
+  final PowerUpType type;
+  final double remaining;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = GameConfig.powerUpRechargeFor(type);
+    // Fills up as the wait shortens: a progress bar toward being ready reads
+    // better than a countdown draining toward nothing.
+    final progress = total <= 0
+        ? 1.0
+        : (1 - (remaining / total)).clamp(0.0, 1.0);
+    final seconds = remaining.ceil();
+
+    return Semantics(
+      label: '${type.displayName} recharging, '
+          '$seconds second${seconds == 1 ? '' : 's'} remaining',
+      child: Opacity(
+        opacity: .55,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFF0B1520).withOpacity(.72),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: Colors.white.withOpacity(.18),
+              width: 1,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(5, 4, 9, 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Greyscale-ish emblem: recognisable, clearly not available.
+                ColorFiltered(
+                  colorFilter: const ColorFilter.matrix(<double>[
+                    0.2126, 0.7152, 0.0722, 0, 0,
+                    0.2126, 0.7152, 0.0722, 0, 0,
+                    0.2126, 0.7152, 0.0722, 0, 0,
+                    0, 0, 0, 1, 0,
+                  ]),
+                  child: PowerUpEmblem(type: type, size: 22),
+                ),
+                const SizedBox(width: 7),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${seconds}s',
+                      style: AppTypography.overline.copyWith(
+                        color: Colors.white,
+                        fontSize: 8.5,
+                        letterSpacing: .6,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    SizedBox(
+                      width: 44,
+                      height: 3,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          backgroundColor: Colors.white.withOpacity(.14),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            _PowerUpIcon.colorForType(type).withOpacity(.85),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1137,6 +1247,10 @@ class _BoostButtonState extends State<_BoostButton>
     final progress = widget.game.inputManager.snapRechargeFraction;
     final hasCharges = charges > 0;
     final isPlaying = widget.game.phase == GamePhase.playing;
+    // With a single charge the wait is the whole story, so the button states
+    // it in seconds rather than making the player read a ring.
+    final secondsLeft =
+        widget.game.inputManager.snapRechargeSecondsRemaining.ceil();
 
     void activate() {
       final fired = widget.game.triggerSnapBoost();
@@ -1149,8 +1263,9 @@ class _BoostButtonState extends State<_BoostButton>
       button: true,
       enabled: isPlaying && hasCharges,
       label: hasCharges
-          ? 'Boost, $charges ${charges == 1 ? 'charge' : 'charges'} available'
-          : 'Boost recharging, ${(progress * 100).round()} percent',
+          ? 'Boost ready'
+          : 'Boost recharging, $secondsLeft second'
+              '${secondsLeft == 1 ? '' : 's'} remaining',
       onTap: isPlaying && hasCharges ? activate : null,
       excludeSemantics: true,
       child: Opacity(
@@ -1207,41 +1322,17 @@ class _BoostButtonState extends State<_BoostButton>
                     ),
                     const SizedBox(height: 1),
                     Text(
-                      hasCharges ? 'BOOST' : 'WAIT',
+                      // Naming the remaining seconds turns dead time into a
+                      // plan: the player knows exactly when to expect it back.
+                      hasCharges ? 'BOOST' : '${secondsLeft}s',
                       style: TextStyle(
                         color: hasCharges ? Colors.white : const Color(0xFFD5DCE9),
-                        fontSize: 9,
+                        fontSize: hasCharges ? 9 : 11,
                         fontWeight: FontWeight.w900,
-                        letterSpacing: 1.0,
+                        letterSpacing: hasCharges ? 1.0 : 0.4,
                       ),
                     ),
                   ],
-                ),
-              ),
-              // Charge dots
-              Positioned(
-                bottom: 0,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: List.generate(GameConfig.snapMaxCharges, (i) {
-                    final filled = i < charges;
-                    // Next charge is recharging partially
-                    final isRecharging = i == charges && !filled && progress > 0.02;
-                    return Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 2),
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: filled
-                            ? const Color(0xFFF5A623)
-                            : isRecharging
-                                ? const Color(0xFFF5A623).withOpacity(0.35 + 0.4 * progress)
-                                : Colors.white24,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white24, width: 0.8),
-                      ),
-                    );
-                  }),
                 ),
               ),
             ],

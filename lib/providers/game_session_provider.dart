@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
 import '../models/run_result.dart';
 
@@ -82,6 +83,7 @@ class GameSessionState {
     this.corruptedPowerUpRemaining = const {},
     this.shieldActive = false,
     this.powerUpRemaining = const {},
+    this.powerUpCooldowns = const {},
     this.pickupAnnouncement,
     this.lastRunResult,
     this.canRevive = true, // one free revive attempt per run
@@ -124,6 +126,14 @@ class GameSessionState {
   final bool shieldActive;
   final Map<PowerUpType, double> powerUpRemaining;
 
+  /// Seconds left before each type can take effect again. A type present here
+  /// is recharging; absent means ready.
+  final Map<PowerUpType, double> powerUpCooldowns;
+
+  /// True when [type] cannot be activated yet because it is still recharging.
+  bool isRecharging(PowerUpType type) =>
+      (powerUpCooldowns[type] ?? 0) > 0;
+
   /// The most recent power-up pickup, surfaced so the HUD can announce it to
   /// the player. Cleared once the banner has had its moment on screen.
   final PickupAnnouncement? pickupAnnouncement;
@@ -157,6 +167,7 @@ class GameSessionState {
     Map<CorruptedPowerUpType, double>? corruptedPowerUpRemaining,
     bool? shieldActive,
     Map<PowerUpType, double>? powerUpRemaining,
+    Map<PowerUpType, double>? powerUpCooldowns,
     PickupAnnouncement? pickupAnnouncement,
     bool clearPickupAnnouncement = false,
     RunResult? lastRunResult,
@@ -184,6 +195,7 @@ class GameSessionState {
           corruptedPowerUpRemaining ?? this.corruptedPowerUpRemaining,
       shieldActive: shieldActive ?? this.shieldActive,
       powerUpRemaining: powerUpRemaining ?? this.powerUpRemaining,
+      powerUpCooldowns: powerUpCooldowns ?? this.powerUpCooldowns,
       pickupAnnouncement: clearPickupAnnouncement
           ? null
           : (pickupAnnouncement ?? this.pickupAnnouncement),
@@ -270,12 +282,29 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
   /// power-ups end because their timer ran out, never because some unrelated
   /// wall-clock callback happened to fire.
   ///
+  /// Also drains per-type recharge timers, so a power-up that has ended
+  /// cannot be re-activated until its cooldown clears.
+  ///
   /// Returns the set of types that expired on this tick so the game loop can
-  /// unwind their side effects (timescale, decoy charges, shield charges).
+  /// unwind their side effects (timescale, shield charges).
   Set<PowerUpType> tickPowerUpTimers(double elapsed) {
     if (elapsed <= 0) return const {};
-    if (state.activePowerUps.isEmpty && state.activeCorruptedPowerUps.isEmpty) {
+    if (state.activePowerUps.isEmpty &&
+        state.activeCorruptedPowerUps.isEmpty &&
+        state.powerUpCooldowns.isEmpty) {
       return const {};
+    }
+
+    // Drain recharge timers first: a type whose cooldown ends this tick is
+    // ready again immediately, rather than a frame late.
+    var cooldowns = state.powerUpCooldowns;
+    if (cooldowns.isNotEmpty) {
+      final next = <PowerUpType, double>{};
+      for (final entry in cooldowns.entries) {
+        final left = entry.value - elapsed;
+        if (left > 0) next[entry.key] = left;
+      }
+      cooldowns = next;
     }
 
     final timers = Map<PowerUpType, double>.from(state.powerUpRemaining);
@@ -311,8 +340,15 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
       state = state.copyWith(
         powerUpRemaining: timers,
         corruptedPowerUpRemaining: corruptedRemaining,
+        powerUpCooldowns: cooldowns,
       );
       return const {};
+    }
+
+    // An effect that just ended starts recharging.
+    final withCooldowns = Map<PowerUpType, double>.from(cooldowns);
+    for (final type in expired) {
+      withCooldowns[type] = GameConfig.powerUpRechargeFor(type);
     }
 
     final active = Set<PowerUpType>.from(state.activePowerUps)
@@ -326,6 +362,7 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
       activeCorruptedPowerUps: activeCorrupted,
       powerUpRemaining: timers,
       corruptedPowerUpRemaining: corruptedRemaining,
+      powerUpCooldowns: withCooldowns,
       shieldActive:
           expired.contains(PowerUpType.shield) ? false : state.shieldActive,
     );
@@ -417,6 +454,11 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
       shieldActive: false,
       powerUpRemaining: Map<PowerUpType, double>.from(state.powerUpRemaining)
         ..remove(PowerUpType.shield),
+      // Spending the shield on an impact ends it, so it recharges just as if
+      // its timer had run out.
+      powerUpCooldowns: Map<PowerUpType, double>.from(state.powerUpCooldowns)
+        ..[PowerUpType.shield] =
+            GameConfig.powerUpRechargeFor(PowerUpType.shield),
     );
   }
 
@@ -431,6 +473,7 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
       activeCorruptedPowerUps: const {},
       powerUpRemaining: const {},
       corruptedPowerUpRemaining: const {},
+      powerUpCooldowns: const {},
       shieldActive: false,
       clearPickupAnnouncement: true,
     );
@@ -445,6 +488,7 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
       activeCorruptedPowerUps: const {},
       powerUpRemaining: const {},
       corruptedPowerUpRemaining: const {},
+      powerUpCooldowns: const {},
       shieldActive: false,
       clearPickupAnnouncement: true,
     );
@@ -460,6 +504,7 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
       activeCorruptedPowerUps: const {},
       powerUpRemaining: const {},
       corruptedPowerUpRemaining: const {},
+      powerUpCooldowns: const {},
       shieldActive: false,
       clearPickupAnnouncement: true,
     );
@@ -475,6 +520,7 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
       activeCorruptedPowerUps: const {},
       powerUpRemaining: const {},
       corruptedPowerUpRemaining: const {},
+      powerUpCooldowns: const {},
       shieldActive: false,
       clearPickupAnnouncement: true,
     );
@@ -490,6 +536,7 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
       activeCorruptedPowerUps: const {},
       powerUpRemaining: const {},
       corruptedPowerUpRemaining: const {},
+      powerUpCooldowns: const {},
       shieldActive: false,
       clearPickupAnnouncement: true,
     );
