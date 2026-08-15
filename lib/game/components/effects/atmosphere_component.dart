@@ -60,7 +60,7 @@ class AtmosphereComponent extends PositionComponent with HasGameRef<PaperFlightG
     _drawWindLanes(canvas);
     // Thermal lift is rendered by local ThermalColumnComponents rather than
     // as an ambiguous full-lane glow.
-    _drawTurbulence(canvas);
+    _drawTurbulenceGusts(canvas);
     _drawBiomeMotes(canvas, biome);
     if (biome == Biome.storm) _drawStorm(canvas);
     if (biome == Biome.ocean) _drawOceanSpray(canvas);
@@ -92,111 +92,75 @@ class AtmosphereComponent extends PositionComponent with HasGameRef<PaperFlightG
     }
   }
 
-  void _drawTurbulence(Canvas canvas) {
+  void _drawTurbulenceGusts(Canvas canvas) {
+    // Keep local turbulence readable without the former full-height oval,
+    // orbiting arcs, and floating dots. Short wind strokes communicate the
+    // actual force direction while leaving the background visually quiet.
     for (final pocket in gameRef.windSystem.turbulencePockets) {
-      final x = pocket.normX * size.x;
+      final centerX = pocket.normX * size.x;
       final radius = pocket.radius * size.x;
-      final forceFraction =
+      final direction =
+          pocket.lateralForce == 0 ? 1.0 : pocket.lateralForce.sign;
+      final life = pocket.lifeFraction;
+      final strength =
           (pocket.lateralForce.abs() / GameConfig.maxWindForce)
               .clamp(0.0, 1.0)
               .toDouble();
-      final direction = pocket.lateralForce == 0
-          ? 1.0
-          : pocket.lateralForce.sign;
-      final life = pocket.lifeFraction;
-      final pulse = .66 + sin(_time * pocket.shiftFrequency * pi + x) * .22;
-      final alpha = (0.10 + pocket.intensity * 0.18) * pulse * life;
-      final centerY = size.y * .54;
-
-      // A translucent local weather cell makes the gameplay boundary legible
-      // before the gust is felt. The cross-hatched swirls distinguish it from
-      // an ordinary lane wind without relying only on colour.
-      final field = Paint()
-        ..shader = RadialGradient(
-          colors: [
-            Color.fromRGBO(128, 222, 234, alpha.clamp(0.0, .34).toDouble()),
-            Color.fromRGBO(156, 39, 176, (alpha * .45).clamp(0.0, .16).toDouble()),
-            const Color(0x00000000),
-          ],
-          stops: const [0.0, 0.62, 1.0],
-        ).createShader(
-          Rect.fromCenter(
-            center: Offset(x, centerY),
-            width: radius * 3.1,
-            height: size.y * .92,
-          ),
-        );
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(x, centerY),
-          width: radius * 3.1,
-          height: size.y * .92,
-        ),
-        field,
-      );
-
-      final swirl = Paint()
+      final alpha = (.13 + pocket.intensity * .30) * life;
+      final paint = Paint()
         ..color = Color.fromRGBO(
           213,
           246,
           255,
-          (0.30 + pocket.intensity * .40) * life,
+          alpha.clamp(0.0, .48).toDouble(),
         )
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.25
+        ..strokeWidth = 1.1 + strength * .7
         ..strokeCap = StrokeCap.round;
-      final arrow = Paint()
+      final accent = Paint()
         ..color = Color.fromRGBO(
           255,
           241,
           118,
-          (0.38 + forceFraction * .45) * life,
+          (alpha * .82).clamp(0.0, .42).toDouble(),
         )
-        ..style = PaintingStyle.fill;
-
-      for (var i = 0; i < 4; i++) {
-        final y = centerY - 118 + i * 78;
-        final wave = sin(_time * 6.5 + i * 1.9) * 5;
-        final arcRadius = radius * (.42 + i * .12) + wave;
-        final start = direction > 0 ? 0.18 : pi + 0.18;
-        canvas.drawArc(
-          Rect.fromCenter(
-            center: Offset(x, y),
-            width: arcRadius * 2,
-            height: arcRadius * 1.18,
-          ),
-          start,
-          pi * 1.34,
-          false,
-          swirl,
-        );
-
-        // The chevron flips direction with the live physics force, so players
-        // can read each rapid wind reversal rather than treating it as random.
-        final progress = ((_time * (36 + pocket.shiftFrequency * 12) + i * 53) %
-                (radius * 1.7)) /
-            (radius * 1.7);
-        final arrowX = x + (progress - .5) * radius * 1.7 * direction;
-        final arrowPath = Path()
-          ..moveTo(arrowX + direction * 5, y)
-          ..lineTo(arrowX - direction * 3, y - 3.5)
-          ..lineTo(arrowX - direction * 3, y + 3.5)
-          ..close();
-        canvas.drawPath(arrowPath, arrow);
-      }
-
-      final boundary = Paint()
-        ..color = Color.fromRGBO(196, 228, 244, (.24 + alpha).clamp(0.0, .54).toDouble())
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.1;
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(x, centerY),
-          width: radius * 2.15,
-          height: size.y * .79,
-        ),
-        boundary,
-      );
+        ..strokeWidth = 1.2
+        ..strokeCap = StrokeCap.round;
+
+      for (var i = 0; i < 6; i++) {
+        final y = size.y * .35 + i * 45.0;
+        final phase = _time * (4.4 + pocket.shiftFrequency) + i * 1.7;
+        final sway = sin(phase) * 7.0;
+        final length = radius * (.55 + (i % 3) * .13);
+        final startX = centerX - direction * length * .5 + sway;
+        final endX = centerX + direction * length * .5 + sway;
+        final path = Path()
+          ..moveTo(startX, y)
+          ..cubicTo(
+            centerX - direction * length * .15,
+            y - 5,
+            centerX + direction * length * .15,
+            y + 5,
+            endX,
+            y,
+          );
+        canvas.drawPath(path, paint);
+
+        if (i.isEven) {
+          final tip = Offset(endX, y);
+          canvas.drawLine(
+            tip,
+            Offset(tip.dx - direction * 6, tip.dy - 3.5),
+            accent,
+          );
+          canvas.drawLine(
+            tip,
+            Offset(tip.dx - direction * 6, tip.dy + 3.5),
+            accent,
+          );
+        }
+      }
     }
   }
 

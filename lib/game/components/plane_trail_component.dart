@@ -28,11 +28,14 @@ class PlaneTrailComponent extends Component
   final PositionComponent plane;
 
   final Queue<Vector2> _positions = Queue<Vector2>();
+  final Queue<Vector2> _planePositions = Queue<Vector2>();
   double _sampleTimer = 0.0;
   double _animTime = 0.0;
 
-  /// Exposes recorded trail positions for Ghost after-image rendering.
-  List<Vector2> get recentPositions => _positions.toList();
+  /// Exposes aircraft-centre history for Ghost after-image rendering. Trail
+  /// geometry has a separate rear-fold emitter so these silhouettes stay
+  /// aligned with the actual prior flight path.
+  List<Vector2> get recentPositions => _planePositions.toList();
 
   @override
   void update(double dt) {
@@ -42,10 +45,21 @@ class PlaneTrailComponent extends Component
     _sampleTimer += dt;
     if (_sampleTimer >= GameConfig.trailSampleInterval) {
       _sampleTimer = 0.0;
-      _positions.addLast(plane.absolutePosition.clone());
+      // Emit from the rear fold rather than the component centre. This keeps
+      // the newest trail segment behind the paper body instead of painting a
+      // line across the aircraft when it banks sharply.
+      final center = plane.absolutePosition.clone();
+      final bank = plane.angle;
+      final rearDirection = Vector2(-math.sin(bank), math.cos(bank));
+      final emitter = center + rearDirection * (plane.size.y * .48);
+      _positions.addLast(emitter);
+      _planePositions.addLast(center);
 
       while (_positions.length > GameConfig.trailLength) {
         _positions.removeFirst();
+      }
+      while (_planePositions.length > GameConfig.trailLength) {
+        _planePositions.removeFirst();
       }
     }
   }
@@ -80,84 +94,83 @@ class PlaneTrailComponent extends Component
     canvas.translate(-halfW, -halfH);
     canvas.translate(-parentPos.x + halfW, -parentPos.y + halfH);
 
-    // ── 1. Glider Double Wingtip Vapor Trails ────────────────────────────────
+    // ── Layered aerodynamic ribbons ─────────────────────────────────────────
+    // Build wind-bent points once, then render each segment as a soft halo, a
+    // coloured paper ribbon, and a fine highlight. Rounded quadratic joins
+    // remove the old piecewise-straight, string-like appearance.
     if (pType == PlaneType.glider || pType == PlaneType.albatross) {
-      for (final wingOffset in [-16.0, 16.0]) {
-        for (int i = 1; i < count; i++) {
-          final headFraction = i / (count - 1);
-          final alpha = (GameConfig.trailHeadAlpha * 0.85 * headFraction).clamp(0.0, 1.0);
-          final wave = math.sin(_animTime * 6.0 + i * 0.4) * 2.0;
+      for (final wingOffset in const [-16.0, 16.0]) {
+        final adjusted = <Offset>[];
+        for (var i = 0; i < count; i++) {
+          final fraction = count <= 1 ? 1.0 : i / (count - 1);
+          final point = positions[i];
+          final wind = gameRef.windSystem.currentForceAt(point.x);
+          final drift = wind * (1.0 - fraction) * .20;
+          final wave = math.sin(_animTime * 5.4 + i * .42) * 2.1;
+          adjusted.add(Offset(
+            point.x + wingOffset + drift + wave,
+            point.y,
+          ));
+        }
 
-          // Trail wind interaction
-          final normX = (positions[i].x / GameConfig.designWidth).clamp(0.0, 1.0);
-          final lane = gameRef.windSystem.laneForNormX(normX);
-          final wind = gameRef.windSystem.windAt(lane);
-          final windDrift = wind.lateralForce * (1.0 - headFraction) * 0.20;
-
-          final Color segColor = isGhost
+        for (var i = 1; i < adjusted.length; i++) {
+          final fraction = i / (adjusted.length - 1);
+          final color = isGhost
               ? const Color(0xFF00E5FF)
-              : _getSegmentColor(skin, headFraction, i);
-
-          final paint = Paint()
-            ..color = segColor.withOpacity(alpha)
-            ..strokeWidth = MathUtils.lerp(0.4, 1.8, headFraction)
-            ..strokeCap = StrokeCap.round
-            ..style = PaintingStyle.stroke;
-
-          final p1 = Offset(positions[i - 1].x + wingOffset + wave + windDrift, positions[i - 1].y);
-          final p2 = Offset(positions[i].x + wingOffset + wave + windDrift, positions[i].y);
-          canvas.drawLine(p1, p2, paint);
+              : _getSegmentColor(skin, fraction, i);
+          _drawRibbonSegment(
+            canvas,
+            adjusted,
+            i,
+            color: color,
+            alpha: GameConfig.trailHeadAlpha * .88 * fraction,
+            width: MathUtils.lerp(.45, 1.95, fraction),
+          );
         }
       }
       canvas.restore();
       return;
     }
 
-    // ── 2. Standard & Stealth Jet Trail ──────────────────────────────────────
     final isStealth = pType == PlaneType.stealthJet;
+    final adjusted = <Offset>[];
+    for (var i = 0; i < count; i++) {
+      final fraction = count <= 1 ? 1.0 : i / (count - 1);
+      final point = positions[i];
+      final wind = gameRef.windSystem.currentForceAt(point.x);
+      final drift = wind * (1.0 - fraction) * .22;
+      adjusted.add(Offset(point.x + drift, point.y));
+    }
 
-    for (int i = 1; i < count; i++) {
-      if (isStealth && i % 2 == 0) continue;
-
-      final headFraction = i / (count - 1);
-      final alpha = (GameConfig.trailHeadAlpha * headFraction).clamp(0.0, 1.0);
-      final strokeWidth = isStealth
-          ? 1.4
-          : MathUtils.lerp(
-              GameConfig.trailTailWidth,
-              GameConfig.trailHeadWidth,
-              headFraction,
-            );
-
-      // Trail wind interaction
-      final normX = (positions[i].x / GameConfig.designWidth).clamp(0.0, 1.0);
-      final lane = gameRef.windSystem.laneForNormX(normX);
-      final wind = gameRef.windSystem.windAt(lane);
-      final windDrift = wind.lateralForce * (1.0 - headFraction) * 0.22;
-
-      final Color segColor;
+    for (var i = 1; i < adjusted.length; i++) {
+      if (isStealth && i.isEven) continue;
+      final fraction = i / (adjusted.length - 1);
+      final Color color;
       if (isGhost) {
-        segColor = const Color(0xFF00E5FF);
+        color = const Color(0xFF00E5FF);
       } else if (isDoubleScore) {
-        segColor = const Color(0xFFFF5722);
+        color = const Color(0xFFFF5722);
       } else if (isCoinRush) {
-        segColor = const Color(0xFFFFD700);
+        color = const Color(0xFFFFD700);
       } else if (isStealth) {
-        segColor = const Color(0xFF90A4AE);
+        color = const Color(0xFF90A4AE);
       } else {
-        segColor = _getSegmentColor(skin, headFraction, i);
+        color = _getSegmentColor(skin, fraction, i);
       }
-
-      final paint = Paint()
-        ..color = segColor.withOpacity(alpha)
-        ..strokeWidth = strokeWidth
-        ..strokeCap = StrokeCap.round
-        ..style = PaintingStyle.stroke;
-
-      canvas.drawLine(
-        Offset(positions[i - 1].x + windDrift, positions[i - 1].y),
-        Offset(positions[i].x + windDrift, positions[i].y),
-        paint,
+      _drawRibbonSegment(
+        canvas,
+        adjusted,
+        i,
+        color: color,
+        alpha: GameConfig.trailHeadAlpha * fraction,
+        width: isStealth
+            ? 1.35
+            : MathUtils.lerp(
+                GameConfig.trailTailWidth,
+                GameConfig.trailHeadWidth,
+                fraction,
+              ),
+        drawHighlight: !isStealth,
       );
     }
 
@@ -166,6 +179,65 @@ class PlaneTrailComponent extends Component
     }
 
     canvas.restore();
+  }
+
+  void _drawRibbonSegment(
+    Canvas canvas,
+    List<Offset> points,
+    int index, {
+    required Color color,
+    required double alpha,
+    required double width,
+    bool drawHighlight = true,
+  }) {
+    final previous = points[index - 1];
+    final current = points[index];
+    final start = index == 1
+        ? previous
+        : Offset(
+            (previous.dx + current.dx) * .5,
+            (previous.dy + current.dy) * .5,
+          );
+    final end = index == points.length - 1
+        ? current
+        : Offset(
+            (current.dx + points[index + 1].dx) * .5,
+            (current.dy + points[index + 1].dy) * .5,
+          );
+    final path = Path()
+      ..moveTo(start.dx, start.dy)
+      ..quadraticBezierTo(current.dx, current.dy, end.dx, end.dy);
+
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withOpacity((alpha * .24).clamp(0.0, 1.0))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width + 3.2
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.2),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withOpacity(alpha.clamp(0.0, 1.0))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+    if (drawHighlight && width > .8) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = const Color(0xFFFFFFFF)
+              .withOpacity((alpha * .34).clamp(0.0, .30))
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(.35, width * .24)
+          ..strokeCap = StrokeCap.round,
+      );
+    }
   }
 
   /// Butterfly + Cherry Blossom synergy: a handful of wind-carried petals
@@ -258,6 +330,7 @@ class PlaneTrailComponent extends Component
 
   void clear() {
     _positions.clear();
+    _planePositions.clear();
     _sampleTimer = 0.0;
   }
 }

@@ -287,25 +287,27 @@ class ThermalColumnComponent extends PositionComponent {
       ..style = PaintingStyle.fill;
     canvas.drawPath(columnPath, columnPaint);
 
-    final swirlPaint = Paint()
-      ..color = Color.fromRGBO(255, 238, 170, .38 * strength)
+    // Quiet heat-shimmer strokes replace the old spinning rings. They rise in
+    // the same direction as the lift and never form a full-height oval.
+    final wispPaint = Paint()
+      ..color = Color.fromRGBO(255, 238, 170, .30 * strength)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.15
+      ..strokeWidth = 1.05
       ..strokeCap = StrokeCap.round;
     for (var i = 0; i < 4; i++) {
-      final y = coreY + (i - 1.5) * 62;
-      final wobble = math.sin(_time * 3.2 + i * 1.7) * 5;
-      canvas.drawArc(
-        Rect.fromCenter(
-          center: Offset(_centerX + wobble, y),
-          width: _radius * (1.1 + i * .14),
-          height: 20 + i * 3.5,
-        ),
-        _time * 1.8 + i * .72,
-        math.pi * 1.35,
-        false,
-        swirlPaint,
-      );
+      final y = coreY + (i - 1.5) * 68;
+      final sway = math.sin(_time * 2.7 + i * 1.6) * _radius * .18;
+      final path = Path()
+        ..moveTo(_centerX + sway - 7, y + 18)
+        ..cubicTo(
+          _centerX - 12 + sway,
+          y + 8,
+          _centerX + 13 - sway,
+          y - 7,
+          _centerX + sway + 4,
+          y - 20,
+        );
+      canvas.drawPath(path, wispPaint);
     }
 
     final particlePaint = Paint()..style = PaintingStyle.fill;
@@ -321,69 +323,16 @@ class ThermalColumnComponent extends PositionComponent {
         194,
         alpha.clamp(0.0, 0.9).toDouble(),
       );
-      canvas.drawCircle(Offset(x, particle.y), particle.radius, particlePaint);
+      particlePaint.strokeWidth = .7 + particle.radius * .22;
+      particlePaint.strokeCap = StrokeCap.round;
       canvas.drawLine(
-        Offset(x, particle.y + particle.radius * 3.5),
-        Offset(x - math.sin(particle.xWobble) * 2, particle.y + particle.radius),
-        particlePaint..strokeWidth = .65,
+        Offset(x, particle.y + particle.radius * 4.2),
+        Offset(x - math.sin(particle.xWobble) * 2, particle.y),
+        particlePaint,
       );
     }
 
-    _drawSurfGuide(canvas, coreY, strength);
     super.render(canvas);
-  }
-
-  void _drawSurfGuide(Canvas canvas, double coreY, double strength) {
-    final guideRect = Rect.fromCenter(
-      center: Offset(_centerX, coreY),
-      width: _radius *
-          GameConfig.thermalSurfOrbitHorizontalRadiusMultiplier * 2,
-      height: GameConfig.thermalSurfOrbitVerticalRadius * 2,
-    );
-    final progress = surfProgress;
-    final guide = Paint()
-      ..color = Color.fromRGBO(255, 235, 130, (.14 + strength * .26))
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-    canvas.drawOval(guideRect, guide);
-
-    if (progress > 0) {
-      final progressPaint = Paint()
-        ..color = const Color(0xFFFFD54F)
-            .withOpacity(.46 + progress * .38)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0
-        ..strokeCap = StrokeCap.round;
-      canvas.drawArc(
-        guideRect,
-        -math.pi / 2,
-        math.pi * 2 * progress,
-        false,
-        progressPaint,
-      );
-    }
-
-    if (_bonusTimer > 0) {
-      final pulse = .72 + math.sin(_time * 9) * .20;
-      final bonusPaint = Paint()
-        ..color = Color.fromRGBO(
-          255,
-          249,
-          196,
-          pulse.clamp(0.0, 1.0).toDouble(),
-        )
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.4
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-      final elapsedBonusFraction =
-          (1.0 - _bonusTimer / GameConfig.thermalSurfBonusDuration)
-              .clamp(0.0, 1.0)
-              .toDouble();
-      canvas.drawOval(
-        guideRect.inflate(5.0 + elapsedBonusFraction * 9.0),
-        bonusPaint,
-      );
-    }
   }
 
   ThermalSurfUpdate _currentSurfUpdate() {
