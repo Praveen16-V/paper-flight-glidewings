@@ -158,6 +158,7 @@ class PlaneComponent extends PositionComponent
   bool _doubleScoreActive = false;
   bool _shrinkActive = false;
   bool _giantActive = false;
+  bool _blastActive = false;
   bool _blackHoleActive = false;
 
   // Stacked power-up synergy channels.
@@ -461,7 +462,30 @@ class PlaneComponent extends PositionComponent
     _drawSeasonalSkinParticles(canvas, w, h);
 
     // ── Active In-Flight Power-Up Visuals ────────────────────────────────────
-    _drawPowerUpOverlays(canvas, w, h);
+    //
+    // The plane silhouette is drawn inside a scale transform (Giant/Shrink),
+    // but these overlays run after that transform has been restored. Reapply
+    // the same scale about the centre so auras track the plane's actual
+    // on-screen size instead of floating at base scale — a Giant plane would
+    // otherwise wear a shield bubble far inside its wings.
+    final overlayScale = _giantActive
+        ? GameConfig.giantVisualScale
+        : (_shrinkActive ? GameConfig.shrinkVisualScale : 1.0);
+    if (overlayScale != 1.0) {
+      canvas.save();
+      canvas.translate(w / 2, h / 2);
+      canvas.scale(overlayScale, overlayScale);
+      canvas.translate(-w / 2, -h / 2);
+      _drawPowerUpOverlays(canvas, w, h);
+      canvas.restore();
+    } else {
+      _drawPowerUpOverlays(canvas, w, h);
+    }
+
+    // Countdown rings are UI, not part of the plane's mass: they are drawn
+    // unscaled and outermost so they stay a constant, readable size whether
+    // the plane is giant or shrunk, and nothing overdraws them.
+    _drawPowerUpStatusRings(canvas, w, h);
 
   }
 
@@ -1975,6 +1999,11 @@ class PlaneComponent extends PositionComponent
   // ── Active In-Flight Power-Up Overlays ──────────────────────────────────────
 
   void _drawPowerUpOverlays(Canvas canvas, double w, double h) {
+    // Giant draws first and largest so the others layer on top of its mass.
+    if (_giantActive) _drawGiantAura(canvas, w, h);
+    if (_blastActive) _drawBlastEmitters(canvas, w, h);
+    if (_slowMoActive) _drawSlowMoAura(canvas, w, h);
+    if (_shrinkActive) _drawShrinkAura(canvas, w, h);
     if (_ghostActive) _drawGhostShimmer(canvas, w, h);
     if (_magnetActive) _drawMagnetAura(canvas, w, h);
     if (_coinRushActive) _drawCoinRushGlow(canvas, w, h);
@@ -1987,13 +2016,18 @@ class PlaneComponent extends PositionComponent
     if (_cursedMagnetActive) _drawCursedMagnetOverlay(canvas, w, h);
     if (_unstableGhostActive) _drawUnstableGhostOverlay(canvas, w, h);
 
+
     // Stacking VFX: interlaced resonant aura if multiple active
     int activeCount = (_shieldActive ? 1 : 0) +
         (_ghostActive ? 1 : 0) +
         (_magnetActive ? 1 : 0) +
         (_coinRushActive ? 1 : 0) +
         (_doubleScoreActive ? 1 : 0) +
-        (_blackHoleActive ? 1 : 0);
+        (_blackHoleActive ? 1 : 0) +
+        (_giantActive ? 1 : 0) +
+        (_blastActive ? 1 : 0) +
+        (_slowMoActive ? 1 : 0) +
+        (_shrinkActive ? 1 : 0);
 
     if (activeCount >= 2) {
       _drawStackingAura(canvas, w, h);
@@ -2221,6 +2255,227 @@ class PlaneComponent extends PositionComponent
     canvas.drawCircle(center, r2, p2);
   }
 
+  // I. Giant Mode: Heavy Impact Mass
+  //
+  // The plane is already drawn 2.3x larger, so this adds the *weight* that
+  // scale alone cannot convey: a shockwave rim that pulses on contact
+  // cadence, and dust shed from the leading edge.
+  void _drawGiantAura(Canvas canvas, double w, double h) {
+    final center = Offset(w / 2, h / 2);
+    final pulse = math.sin(_animTime * 4.2) * .5 + .5;
+
+    // Heavy shockwave rim.
+    canvas.drawCircle(
+      center,
+      w * (.92 + pulse * .10),
+      Paint()
+        ..color = const Color(0xFFFFB300).withOpacity(.30 + pulse * .22)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.4,
+    );
+    canvas.drawCircle(
+      center,
+      w * .80,
+      Paint()
+        ..color = const Color(0xFFFFD54F).withOpacity(.16)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9),
+    );
+
+    // Displaced air shed off the leading edge.
+    final dust = Paint()..color = const Color(0xFFFFE082).withOpacity(.55);
+    for (var i = 0; i < 5; i++) {
+      final t = ((_animTime * 1.6) + i * .2) % 1.0;
+      final side = i.isEven ? -1.0 : 1.0;
+      canvas.drawCircle(
+        Offset(
+          center.dx + side * w * (.40 + t * .55),
+          center.dy + h * (.10 + t * .48),
+        ),
+        (1 - t) * 3.6,
+        dust,
+      );
+    }
+  }
+
+  // J. Blast Mode: Charged Laser Emitters
+  //
+  // The lasers themselves are world-space bolts fired by BlastSystem; this is
+  // the hardware that fires them, so the player can see *why* hazards are
+  // dying and roughly where the plane is aiming.
+  void _drawBlastEmitters(Canvas canvas, double w, double h) {
+    final charge = math.sin(_animTime * 14.0) * .5 + .5;
+    final emitterY = h * .40;
+
+    for (final side in const [-1.0, 1.0]) {
+      final ex = w / 2 + side * w * .30;
+
+      // Emitter pod.
+      canvas.drawCircle(
+        Offset(ex, emitterY),
+        3.6,
+        Paint()..color = const Color(0xFF7F0000),
+      );
+      canvas.drawCircle(
+        Offset(ex, emitterY),
+        2.2 + charge * 1.3,
+        Paint()..color = Color.lerp(
+            const Color(0xFFFF1744), Colors.white, charge)!,
+      );
+      // Charge bloom.
+      canvas.drawCircle(
+        Offset(ex, emitterY),
+        6.5 + charge * 3.0,
+        Paint()
+          ..color = const Color(0xFFFF1744).withOpacity(.30 + charge * .30)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+      );
+
+      // Short targeting tracer pointing up-range.
+      canvas.drawLine(
+        Offset(ex, emitterY - 4),
+        Offset(ex, emitterY - 16 - charge * 8),
+        Paint()
+          ..color = const Color(0xFFFF5252).withOpacity(.35 + charge * .35)
+          ..strokeWidth = 1.6
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  // K. Slow-Mo: Time Dilation Field
+  //
+  // Slow-Mo changes the whole world's pace, which is easy to miss as a
+  // *plane* state. Concentric ripples expanding outward at a deliberately
+  // lazy rate make the slowdown legible at the plane itself.
+  void _drawSlowMoAura(Canvas canvas, double w, double h) {
+    final center = Offset(w / 2, h / 2);
+    for (var i = 0; i < 3; i++) {
+      final t = ((_animTime * .45) + i / 3) % 1.0;
+      canvas.drawCircle(
+        center,
+        w * (.55 + t * .60),
+        Paint()
+          ..color = const Color(0xFF64FFDA).withOpacity((1 - t) * .45)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.8,
+      );
+    }
+    // Horizontal time-slice lines drifting downward, slowly.
+    final slice = Paint()
+      ..color = const Color(0xFF64FFDA).withOpacity(.30)
+      ..strokeWidth = 1.0;
+    for (var i = 0; i < 3; i++) {
+      final y = ((_animTime * 9.0) + i * h * .34) % (h * 1.05);
+      canvas.drawLine(Offset(w * .10, y), Offset(w * .90, y), slice);
+    }
+  }
+
+  // L. Shrink Fold: Compression Field
+  //
+  // Shrink already scales the plane down, but small can read as "far away".
+  // Inward-collapsing brackets say the size change is deliberate and active.
+  void _drawShrinkAura(Canvas canvas, double w, double h) {
+    final center = Offset(w / 2, h / 2);
+    final squeeze = math.sin(_animTime * 3.4) * .5 + .5;
+    final d = w * (.92 - squeeze * .16);
+
+    final bracket = Paint()
+      ..color = const Color(0xFFCE93D8).withOpacity(.75)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+
+    for (var i = 0; i < 4; i++) {
+      final a = math.pi / 4 + i * math.pi / 2;
+      final cx = center.dx + math.cos(a) * d;
+      final cy = center.dy + math.sin(a) * d;
+      final inx = -math.cos(a) * 5.5;
+      final iny = -math.sin(a) * 5.5;
+      canvas.drawLine(Offset(cx, cy), Offset(cx + inx, cy), bracket);
+      canvas.drawLine(Offset(cx, cy), Offset(cx, cy + iny), bracket);
+    }
+  }
+
+  // ── Active Power-Up Status Rings ────────────────────────────────────────────
+
+  /// Draws one thin countdown arc per active power-up, concentrically around
+  /// the plane.
+  ///
+  /// The HUD bar already lists active effects, but it lives in the bottom-left
+  /// corner while the player's eyes are on the plane. These rings put "what is
+  /// running and how much is left" exactly where attention already is, tinted
+  /// with each power-up's signature colour so the two readouts agree.
+  ///
+  /// Arcs drain clockwise from the top and turn red in the final stretch, so
+  /// an effect never simply vanishes without warning.
+  void _drawPowerUpStatusRings(Canvas canvas, double w, double h) {
+    if (_activePowerUps.isEmpty) return;
+
+    final center = Offset(w / 2, h / 2);
+    // Deterministic order, so a ring never jumps radius when an unrelated
+    // effect ends mid-flight.
+    final ordered = PowerUpType.values
+        .where(_activePowerUps.contains)
+        .toList(growable: false);
+
+    // Giant Mode draws the plane far wider than the base ring radius, which
+    // would bury the innermost arc inside the silhouette. Push the stack out
+    // to clear whatever size the plane is currently rendered at.
+    final silhouetteReach = (w / 2) *
+        (_giantActive ? GameConfig.giantVisualScale : 1.0) +
+        GameConfig.powerUpStatusRingStrokeWidth * 2;
+    final baseRadius = math.max(
+      GameConfig.powerUpStatusRingRadius,
+      silhouetteReach,
+    );
+
+    for (var i = 0; i < ordered.length; i++) {
+      final type = ordered[i];
+      final total = GameConfig.powerUpActiveDuration(type);
+      if (total <= 0) continue;
+      final remaining = _powerUpTimerSnapshot[type] ?? total;
+      final progress = (remaining / total).clamp(0.0, 1.0);
+
+      final radius =
+          baseRadius + i * (GameConfig.powerUpStatusRingStrokeWidth + 2.5);
+      final rect = Rect.fromCircle(center: center, radius: radius);
+      final expiring = remaining <= 1.5;
+      final tint = expiring
+          ? Color.lerp(
+              const Color(0xFFFF5252),
+              type.visualColor,
+              (math.sin(_animTime * 14) * .5 + .5) * .45,
+            )!
+          : type.visualColor;
+
+      // Unfilled remainder keeps the arc readable as a gauge.
+      canvas.drawArc(
+        rect,
+        0,
+        math.pi * 2,
+        false,
+        Paint()
+          ..color = Colors.white.withOpacity(.10)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = GameConfig.powerUpStatusRingStrokeWidth,
+      );
+
+      final sweep =
+          (math.pi * 2 - GameConfig.powerUpStatusRingGapRadians) * progress;
+      canvas.drawArc(
+        rect,
+        -math.pi / 2 + GameConfig.powerUpStatusRingGapRadians / 2,
+        sweep,
+        false,
+        Paint()
+          ..color = tint.withOpacity(expiring ? 1.0 : .88)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = GameConfig.powerUpStatusRingStrokeWidth
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
   // G. Double Score: Red-Orange Jet Exhaust Flames
   void _drawDoubleScoreFlame(Canvas canvas, double w, double h) {
     final flameFlicker = math.sin(_doubleScorePhase) * 0.3 + 0.7;
@@ -2392,6 +2647,7 @@ class PlaneComponent extends PositionComponent
         session.activePowerUps.contains(PowerUpType.doubleScore);
     _shrinkActive = session.activePowerUps.contains(PowerUpType.shrink);
     _giantActive = session.activePowerUps.contains(PowerUpType.giant);
+    _blastActive = session.activePowerUps.contains(PowerUpType.blast);
     _blackHoleActive = session.activePowerUps.contains(PowerUpType.blackHole);
     _activePowerUps = Set<PowerUpType>.from(session.activePowerUps);
     _powerUpTimerSnapshot =
@@ -2816,6 +3072,7 @@ class PlaneComponent extends PositionComponent
     _doubleScoreActive = false;
     _shrinkActive = false;
     _giantActive = false;
+    _blastActive = false;
     _blackHoleActive = false;
     _phaseShieldActive = false;
     _goldVortexActive = false;
