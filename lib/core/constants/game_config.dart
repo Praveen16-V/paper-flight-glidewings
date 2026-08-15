@@ -629,6 +629,7 @@ abstract class GameConfig {
   static const double doubleScoreDuration = 6.0; // seconds — 2x distance score
   static const double shrinkDuration = 5.0; // seconds — 0.35 hitbox
   static const double blackHoleDuration = 2.5; // seconds — cosmic vacuum
+  static const double giantDuration = 6.0; // seconds — smash through hazards
 
   /// The full, declared lifetime of a power-up — the duration a world pickup
   /// grants. Every type has one: nothing in the game is untimed any more.
@@ -642,6 +643,7 @@ abstract class GameConfig {
       PowerUpType.doubleScore => doubleScoreDuration,
       PowerUpType.shrink => shrinkDuration,
       PowerUpType.blackHole => blackHoleDuration,
+      PowerUpType.giant => giantDuration,
     };
   }
 
@@ -697,6 +699,31 @@ abstract class GameConfig {
   static const double blackHoleObstaclePullRadius = 240.0;
   static const double blackHoleObstaclePullSpeed = 230.0;
   static const double blackHoleSwallowDistance = 60.0;
+
+  // ── Giant Mode ────────────────────────────────────────────────────────────
+  /// How much larger the plane is drawn while Giant Mode runs. Big enough to
+  /// feel unmistakably powerful without swallowing the play area.
+  static const double giantVisualScale = 2.30;
+
+  /// The hitbox grows too — the fantasy is a plane that occupies real space,
+  /// so it must actually *reach* hazards to smash them. Kept slightly under
+  /// the visual scale so contact still looks like contact.
+  static const double giantHitboxScale = 2.05;
+
+  /// Speed the smashed hazard is thrown away from the impact point (px/s).
+  static const double giantSmashLaunchSpeed = 720.0;
+
+  /// Extra spin applied to a launched hazard (radians/s), so debris tumbles
+  /// rather than sliding flatly off screen.
+  static const double giantSmashSpinSpeed = 9.0;
+
+  /// Seconds a smashed hazard stays visible while it is flung away, before it
+  /// is recycled. Short: this is a reaction, not a physics toy.
+  static const double giantSmashFlightSeconds = 0.55;
+
+  /// Points awarded per hazard smashed — a small bounty that rewards flying
+  /// *through* traffic rather than around it while Giant Mode is up.
+  static const int giantSmashPoints = 25;
 
   // ── Shield ────────────────────────────────────────────────────────────────
   /// Absorbing hits granted by one Shield pickup. Collecting a Shield always

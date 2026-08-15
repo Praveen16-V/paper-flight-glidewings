@@ -21,7 +21,7 @@ void main() {
       }
     });
 
-    test('the roster is exactly the eight surviving power-ups', () {
+    test('the roster is exactly the surviving and newly added power-ups', () {
       expect(
         PowerUpType.values.map((t) => t.name).toList(),
         const [
@@ -33,6 +33,7 @@ void main() {
           'doubleScore',
           'shrink',
           'blackHole',
+          'giant',
         ],
       );
     });

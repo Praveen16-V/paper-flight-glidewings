@@ -978,6 +978,8 @@ class _PowerUpIcon extends StatelessWidget {
         return const Color(0xFF7B1FA2);
       case PowerUpType.blackHole:
         return const Color(0xFF311B92);
+      case PowerUpType.giant:
+        return const Color(0xFFE65100);
     }
   }
 

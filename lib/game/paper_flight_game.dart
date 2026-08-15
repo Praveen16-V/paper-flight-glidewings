@@ -863,6 +863,12 @@ class PaperFlightGame extends FlameGame
   void onPlaneCrash({ObstacleType? obstacleType, ObstacleComponent? obstacle}) {
     if (_phase != GamePhase.playing) return;
 
+    // ── Giant Mode: the plane is the hazard now. Anything smashable it
+    // touches is blasted out of the sky instead of ending the run. Checked
+    // before every other branch (including Zen and trials) because a
+    // destroyed obstacle is not a collision at all.
+    if (obstacle != null && _tryGiantSmash(obstacle)) return;
+
     // ── Zen Flight (Task 8): there is no death — a gentle bump pushes the
     // plane aside and life goes on.
     if (mode == GameMode.zen) {
@@ -1015,6 +1021,30 @@ class PaperFlightGame extends FlameGame
       _phase = GamePhase.gameOver;
       _finalizeRun(wasRevived: false);
     });
+  }
+
+  /// Giant Mode contact resolution.
+  ///
+  /// Returns true when the hazard was destroyed and the collision should be
+  /// treated as never having happened. Un-smashable hazards (the boss, and the
+  /// weather forces that are not solid objects) fall through to the normal
+  /// crash path, so Giant Mode is a power trip rather than blanket immunity.
+  bool _tryGiantSmash(ObstacleComponent obstacle) {
+    if (!powerUpState.giantActive) return false;
+    if (!obstacle.type.isGiantSmashable) return false;
+
+    if (!obstacle.smashByGiant(plane.position.clone())) return false;
+
+    plane.playGiantSmashAnimation();
+    gameFeelSystem.onShieldBreak();
+    scoringSystem.addBonusPoints(GameConfig.giantSmashPoints);
+    world.add(FloatingScoreText(
+      position: obstacle.position.clone(),
+      text: '+${GameConfig.giantSmashPoints}',
+      color: const Color(0xFFFFC107),
+      fontSize: 16,
+    ));
+    return true;
   }
 
   /// Called by rewarded-ad revive flow.
@@ -1337,7 +1367,10 @@ class PaperFlightGame extends FlameGame
       case PowerUpType.doubleScore:
       case PowerUpType.shrink:
       case PowerUpType.blackHole:
+      case PowerUpType.giant:
         // Purely state-driven for their duration — no entry side effect.
+        // Giant Mode's growth is read straight off the session flag by the
+        // plane's scale and hitbox, so there is nothing to kick off here.
         break;
     }
   }
@@ -1369,6 +1402,7 @@ class PaperFlightGame extends FlameGame
       case PowerUpType.doubleScore:
       case PowerUpType.shrink:
       case PowerUpType.blackHole:
+      case PowerUpType.giant:
         break;
     }
   }

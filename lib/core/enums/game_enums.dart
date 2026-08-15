@@ -299,6 +299,26 @@ extension ObstacleLabel on ObstacleType {
       this == ObstacleType.weatherBalloon ||
       this == ObstacleType.hotAirBalloon;
 
+  /// Hazards a Giant-Mode plane can physically smash out of the sky.
+  ///
+  /// Deliberately broader than [isBlackHoleVacuumable]: a plane the size of a
+  /// building plausibly bulldozes gates, traffic and scenery, not just small
+  /// floaters. Only the boss and the un-hittable area hazards resist — the
+  /// weather ones (lightning, tornado, meteors) are forces rather than solid
+  /// objects, so there is nothing to send flying.
+  bool get isGiantSmashable {
+    switch (this) {
+      case ObstacleType.paperDragon:
+      case ObstacleType.lightningStrike:
+      case ObstacleType.tornado:
+      case ObstacleType.meteorShower:
+      case ObstacleType.stormCloud:
+        return false;
+      default:
+        return true;
+    }
+  }
+
   /// Small, individual hazards the Black Hole vacuum can drag in and swallow.
   /// Full-width gates, bosses and oncoming traffic stay immune so the vortex
   /// remains a tactical clear instead of an unconditional screen wipe.
@@ -459,6 +479,7 @@ enum PowerUpType {
   doubleScore, // 2x distance meters score (jet exhaust flame)
   shrink,      // compact micro-fold hitbox 0.35
   blackHole,   // cosmic vortex vacuums coins + small obstacles
+  giant,       // oversized plane that smashes hazards out of the sky
 }
 
 extension PowerUpLabel on PowerUpType {
@@ -511,6 +532,8 @@ extension PowerUpLabel on PowerUpType {
         return const Color(0xFFCE93D8);
       case PowerUpType.blackHole:
         return const Color(0xFF7C4DFF);
+      case PowerUpType.giant:
+        return const Color(0xFFFFB300);
     }
   }
 
@@ -532,6 +555,8 @@ extension PowerUpLabel on PowerUpType {
         return 'Shrink Fold';
       case PowerUpType.blackHole:
         return 'Black Hole';
+      case PowerUpType.giant:
+        return 'Giant Mode';
     }
   }
 
@@ -553,6 +578,8 @@ extension PowerUpLabel on PowerUpType {
         return 'shrink';
       case PowerUpType.blackHole:
         return 'black_hole';
+      case PowerUpType.giant:
+        return 'giant';
     }
   }
 
@@ -577,6 +604,8 @@ extension PowerUpLabel on PowerUpType {
         return 'Tiny hitbox';
       case PowerUpType.blackHole:
         return 'Vacuums coins & hazards';
+      case PowerUpType.giant:
+        return 'Smash through hazards!';
     }
   }
 }

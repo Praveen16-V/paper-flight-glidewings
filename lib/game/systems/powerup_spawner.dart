@@ -51,6 +51,7 @@ class PowerUpSpawner extends Component {
     PowerUpType.doubleScore: 1.1,
     PowerUpType.shrink: 1.0,
     PowerUpType.blackHole: 0.8,
+    PowerUpType.giant: 0.9,
   };
 
   @override

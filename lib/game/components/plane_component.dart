@@ -157,6 +157,7 @@ class PlaneComponent extends PositionComponent
   bool _slowMoActive = false;
   bool _doubleScoreActive = false;
   bool _shrinkActive = false;
+  bool _giantActive = false;
   bool _blackHoleActive = false;
 
   // Stacked power-up synergy channels.
@@ -279,11 +280,20 @@ class PlaneComponent extends PositionComponent
         .toDouble();
   }
 
-  double get _activeHitboxScale => _shrinkActive
-      ? math
-          .min(GameConfig.shrinkHitboxScale, _effectiveBaseHitboxScale)
-          .toDouble()
-      : _effectiveBaseHitboxScale;
+  /// Giant Mode must actually *reach* hazards to smash them, so it grows the
+  /// hitbox as well as the art. It takes precedence over Shrink: if both are
+  /// somehow live, the plane cannot be huge and tiny at once, and the
+  /// smashing fantasy is the one the player is being sold.
+  double get _activeHitboxScale {
+    if (_giantActive) {
+      return _effectiveBaseHitboxScale * GameConfig.giantHitboxScale;
+    }
+    return _shrinkActive
+        ? math
+            .min(GameConfig.shrinkHitboxScale, _effectiveBaseHitboxScale)
+            .toDouble()
+        : _effectiveBaseHitboxScale;
+  }
 
   void _syncHitboxGeometry() {
     final hbSize = size * _activeHitboxScale;
@@ -354,7 +364,9 @@ class PlaneComponent extends PositionComponent
     // ── Thermal Breathing Scale ──────────────────────────────────────────────
     final breathSin = math.sin(_animTime * 5.0);
     var breathScale = 1.0 + 0.042 * breathSin * _thermalBreathFactor;
-    if (_shrinkActive) {
+    if (_giantActive) {
+      breathScale *= GameConfig.giantVisualScale;
+    } else if (_shrinkActive) {
       breathScale *= GameConfig.shrinkVisualScale;
     }
 
@@ -2379,6 +2391,7 @@ class PlaneComponent extends PositionComponent
     _doubleScoreActive =
         session.activePowerUps.contains(PowerUpType.doubleScore);
     _shrinkActive = session.activePowerUps.contains(PowerUpType.shrink);
+    _giantActive = session.activePowerUps.contains(PowerUpType.giant);
     _blackHoleActive = session.activePowerUps.contains(PowerUpType.blackHole);
     _activePowerUps = Set<PowerUpType>.from(session.activePowerUps);
     _powerUpTimerSnapshot =
@@ -2423,7 +2436,7 @@ class PlaneComponent extends PositionComponent
       _crumpleAmount = (_crumpleAmount - dt / 3.5).clamp(0.0, 1.0);
     }
 
-    // Shrink + skin-synergy hitbox update.
+    // Shrink / Giant / skin-synergy hitbox update.
     _syncHitboxGeometry();
 
     // ── Vertical Physics ─────────────────────────────────────────────────────
@@ -2802,6 +2815,7 @@ class PlaneComponent extends PositionComponent
     _slowMoActive = false;
     _doubleScoreActive = false;
     _shrinkActive = false;
+    _giantActive = false;
     _blackHoleActive = false;
     _phaseShieldActive = false;
     _goldVortexActive = false;
@@ -2880,6 +2894,17 @@ class PlaneComponent extends PositionComponent
       ScaleEffect.by(
         Vector2.all(1.30),
         EffectController(duration: 0.07, reverseDuration: 0.10),
+      ),
+    );
+  }
+
+  /// A meaty recoil when the giant plane bulldozes a hazard.
+  void playGiantSmashAnimation() {
+    children.whereType<ScaleEffect>().toList().forEach(remove);
+    add(
+      ScaleEffect.by(
+        Vector2(1.12, 0.90),
+        EffectController(duration: 0.05, reverseDuration: 0.12),
       ),
     );
   }

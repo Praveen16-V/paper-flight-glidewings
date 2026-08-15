@@ -159,6 +159,8 @@ Color _powerUpColor(PowerUpType type) {
       return const Color(0xFFBA68C8); // lavender
     case PowerUpType.blackHole:
       return const Color(0xFF7C4DFF); // deep violet
+    case PowerUpType.giant:
+      return const Color(0xFFFFB300); // amber
   }
 }
 

@@ -225,6 +225,14 @@ class ScoringSystem extends Component {
     _streakScoreAccumulated += finalPoints;
   }
 
+  /// Flat bonus points from a one-off gameplay event (currently a Giant-Mode
+  /// smash). Kept separate from [awardStreakBonus] so plane-specific streak
+  /// multipliers do not silently scale unrelated rewards.
+  void addBonusPoints(int points) {
+    if (points <= 0) return;
+    _streakScoreAccumulated += points;
+  }
+
   void reset() {
     _score = 0;
     _coinsThisRun = 0;

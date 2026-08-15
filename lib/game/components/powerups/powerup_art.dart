@@ -43,6 +43,8 @@ class PowerUpArt {
         return const Color(0xFF7B1FA2);
       case PowerUpType.blackHole:
         return const Color(0xFF311B92);
+      case PowerUpType.giant:
+        return const Color(0xFFE65100);
     }
   }
 
@@ -136,6 +138,8 @@ class PowerUpArt {
         _shrink(canvas, r, phase);
       case PowerUpType.blackHole:
         _blackHole(canvas, r, phase);
+      case PowerUpType.giant:
+        _giant(canvas, r, phase);
     }
   }
 
@@ -671,5 +675,81 @@ class PowerUpArt {
         ..style = PaintingStyle.stroke
         ..strokeWidth = r * 0.06,
     );
+  }
+
+  // ── Giant Mode — a small plane dwarfed by a huge one, with impact marks ───
+
+  static void _giant(Canvas canvas, double r, double phase) {
+    final grow = math.sin(phase * 2.4) * 0.5 + 0.5;
+
+    // Outward "growing" pulse rings.
+    canvas.drawCircle(
+      Offset.zero,
+      r * (0.80 + grow * 0.34),
+      Paint()
+        ..color = const Color(0xFFFFD54F).withOpacity(0.55 * (1 - grow))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 0.10,
+    );
+
+    // The big plane.
+    final big = r * 0.92;
+    final bigPath = Path()
+      ..moveTo(0, -big)
+      ..lineTo(big * 0.86, big * 0.80)
+      ..lineTo(0, big * 0.40)
+      ..lineTo(-big * 0.86, big * 0.80)
+      ..close();
+    canvas.drawPath(
+      bigPath,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFF3E0), Color(0xFFFFB300), Color(0xFFE65100)],
+        ).createShader(
+          Rect.fromCenter(center: Offset.zero, width: big * 2, height: big * 2),
+        ),
+    );
+    canvas.drawPath(
+      bigPath,
+      Paint()
+        ..color = const Color(0xFF8C3B00)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 0.09,
+    );
+    // Centre crease.
+    canvas.drawLine(
+      Offset(0, -big),
+      Offset(0, big * 0.40),
+      Paint()
+        ..color = const Color(0xFF8C3B00).withOpacity(.7)
+        ..strokeWidth = r * 0.06,
+    );
+
+    // A tiny ghosted plane for scale — the whole point is "you are bigger".
+    final small = r * 0.26;
+    canvas.drawPath(
+      Path()
+        ..moveTo(-r * 0.74, -r * 0.52 - small)
+        ..lineTo(-r * 0.74 + small * 0.8, -r * 0.52 + small * 0.75)
+        ..lineTo(-r * 0.74, -r * 0.52 + small * 0.36)
+        ..lineTo(-r * 0.74 - small * 0.8, -r * 0.52 + small * 0.75)
+        ..close(),
+      Paint()..color = Colors.white.withOpacity(.55),
+    );
+
+    // Impact sparks flying off the leading edge.
+    final spark = Paint()..color = const Color(0xFFFFF176);
+    for (int i = 0; i < 4; i++) {
+      final t = (phase * 1.8 + i * 0.25) % 1.0;
+      final a = -math.pi / 2 + (i - 1.5) * 0.55;
+      final d = r * (0.9 + t * 0.8);
+      canvas.drawCircle(
+        Offset(math.cos(a) * d, math.sin(a) * d),
+        r * 0.11 * (1 - t),
+        spark..color = const Color(0xFFFFF176).withOpacity(1 - t),
+      );
+    }
   }
 }
