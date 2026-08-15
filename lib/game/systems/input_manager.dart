@@ -308,7 +308,11 @@ class InputManager extends Component {
   @override
   void update(double dt) {
     _updateHorizontalFromScheme();
-    _tickSnapRecharge(dt);
+    // Cooldowns only run while the player is actually flying, so pausing
+    // cannot be used to wait out a recharge.
+    if (game.phase == GamePhase.playing) {
+      _tickSnapRecharge(dt);
+    }
   }
 
   // ── Settings sync ─────────────────────────────────────────────────────────
@@ -543,8 +547,13 @@ class InputManager extends Component {
     _queueGestureAction();
   }
 
-  static double get _snapRechargePerMeter => 1.0 / GameConfig.snapRechargeMeters;
-
+  /// Drains the boost cooldown in real time.
+  ///
+  /// Recharge is wall-clock rather than distance-travelled so the wait is the
+  /// same 30 seconds everywhere in a run. The old distance rule quietly
+  /// recharged faster the further the player got, because scroll speed ramps
+  /// with distance — the boost became most available exactly when the run was
+  /// hardest, which is the wrong way round.
   void _tickSnapRecharge(double dt) {
     if (_snapCharges >= GameConfig.snapMaxCharges) {
       _snapRechargeProgress = 0.0;
@@ -557,21 +566,32 @@ class InputManager extends Component {
         multiplier = GameConfig.stuntSnapRechargeMultiplier;
       }
     } catch (_) {}
-    // Recharge based on scroll progress (px → approximate meters via /10 internally,
-    // but we keep original faster feel: px per second / rechargeMeters).
-    // Use effective scroll distance this frame.
-    _snapRechargeProgress += game.scrollSpeed * dt * _snapRechargePerMeter * multiplier;
+    _snapRechargeProgress +=
+        (dt / GameConfig.snapRechargeSeconds) * multiplier;
     if (_snapRechargeProgress >= 1.0) {
       _snapCharges = (_snapCharges + 1).clamp(0, GameConfig.snapMaxCharges);
       _snapRechargeProgress = 0.0;
     }
   }
 
+  /// Seconds left until the boost is usable again, or 0 when it is ready.
+  double get snapRechargeSecondsRemaining {
+    if (_snapCharges >= GameConfig.snapMaxCharges) return 0;
+    final remaining =
+        (1.0 - _snapRechargeProgress) * GameConfig.snapRechargeSeconds;
+    return remaining.clamp(0.0, GameConfig.snapRechargeSeconds).toDouble();
+  }
+
   /// Instantly restores [count] snap charges.
   void restoreSnapCharge([int count = 1]) {
-    final maxC = (game.plane.planeType == PlaneType.stuntFold && game.plane.planeLevel >= 3)
-        ? 3
-        : GameConfig.snapMaxCharges;
+    // A max-level Stunt Fold keeps its extra headroom; every other airframe
+    // is capped at the single boost the basic flight is designed around.
+    final maxC =
+        (game.plane.planeType == PlaneType.stuntFold && game.plane.planeLevel >= 3)
+            ? GameConfig.snapMaxCharges + 1
+            : GameConfig.snapMaxCharges;
     _snapCharges = (_snapCharges + count).clamp(0, maxC);
+    // A restored charge means the pending recharge is moot.
+    if (_snapCharges >= GameConfig.snapMaxCharges) _snapRechargeProgress = 0.0;
   }
 }

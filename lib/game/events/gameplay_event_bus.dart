@@ -18,7 +18,6 @@ class NearMissGameplayEvent extends GameplayEvent {
 
 /// Why a non-terminal defensive resource had to intervene.
 enum DefensiveSaveSource {
-  decoyClone,
   craneBrushOff,
   shieldReflection,
   shieldCharge,

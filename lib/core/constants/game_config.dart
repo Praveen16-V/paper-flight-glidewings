@@ -618,25 +618,58 @@ abstract class GameConfig {
   static const double powerUpSpawnY = -50.0;
   static const double powerUpRecycleY = 920.0;
   static const double powerUpBaseSpawnInterval = 8.0;
-  static const double shieldDuration = 0.0; // absorbs hits, no time limit
+
+  // Every power-up is timed. The Shield still absorbs impacts, but it also
+  // expires on its own clock so nothing can be carried indefinitely.
+  static const double shieldDuration = 8.0; // seconds
   static const double magnetDuration = 8.0; // seconds
   static const double ghostDuration = 4.0;  // seconds — phase through obstacles
   static const double slowMoDuration = 4.0; // seconds
   static const double coinRushDuration = 6.0; // seconds — 2× coin value + shower
   static const double doubleScoreDuration = 6.0; // seconds — 2x distance score
   static const double shrinkDuration = 5.0; // seconds — 0.35 hitbox
-  static const double windCallerDuration = 8.0; // seconds — calm wind & thermals
   static const double blackHoleDuration = 2.5; // seconds — cosmic vacuum
-  static const double turboDashDuration = 2.0; // seconds — invincible thrust dash
+  static const double giantDuration = 6.0; // seconds — smash through hazards
+  static const double blastDuration = 6.0; // seconds — auto-firing lasers
 
-  /// Returns the intended active duration of a timed power-up. Banked charge
-  /// bursts are deliberately shorter than the "world pickup" durations above so
-  /// firing a stored charge stays a quick tactical beat; Empowered bursts are
-  /// longer than either. This is the single source of truth used by the game
-  /// loop — per-type durations can no longer drift out of sync with gameplay.
-  static double powerUpActiveDuration(PowerUpType type, {required bool empowered}) {
-    if (empowered) return empoweredPowerUpBurstDuration;
-    final base = switch (type) {
+  // ── Power-Up Recharge ──────────────────────────────────────────────────────
+  /// After a power-up ends, that type goes on cooldown for this long before
+  /// another of the same kind can take effect.
+  ///
+  /// Without this, a run that happened to drop three Ghosts in a row could be
+  /// flown almost entirely inside one effect. A per-type cooldown keeps each
+  /// power-up a punctuation mark rather than a state the player lives in,
+  /// while still letting a *different* power-up be picked up immediately.
+  static const double powerUpRechargeSeconds = 12.0;
+
+  /// Per-type overrides. The strongest, most run-defining effects wait longer
+  /// than the ordinary ones.
+  static double powerUpRechargeFor(PowerUpType type) {
+    switch (type) {
+      case PowerUpType.giant:
+      case PowerUpType.blast:
+        // The two destroyers trivialise hazards while up, so they earn the
+        // longest wait.
+        return 20.0;
+      case PowerUpType.shield:
+      case PowerUpType.ghost:
+        // Defensive lifelines: frequent enough to save a run, not so frequent
+        // that the sky stops mattering.
+        return 15.0;
+      case PowerUpType.blackHole:
+      case PowerUpType.slowMo:
+      case PowerUpType.magnet:
+      case PowerUpType.coinRush:
+      case PowerUpType.doubleScore:
+      case PowerUpType.shrink:
+        return powerUpRechargeSeconds;
+    }
+  }
+
+  /// The full, declared lifetime of a power-up — the duration a world pickup
+  /// grants. Every type has one: nothing in the game is untimed any more.
+  static double powerUpFullDuration(PowerUpType type) {
+    return switch (type) {
       PowerUpType.shield => shieldDuration,
       PowerUpType.magnet => magnetDuration,
       PowerUpType.ghost => ghostDuration,
@@ -644,30 +677,23 @@ abstract class GameConfig {
       PowerUpType.coinRush => coinRushDuration,
       PowerUpType.doubleScore => doubleScoreDuration,
       PowerUpType.shrink => shrinkDuration,
-      PowerUpType.windCaller => windCallerDuration,
-      PowerUpType.decoyClone => 0.0, // charge-free, consumed on hit
       PowerUpType.blackHole => blackHoleDuration,
-      PowerUpType.turboDash => turboDashDuration,
+      PowerUpType.giant => giantDuration,
+      PowerUpType.blast => blastDuration,
     };
-    // Charge bursts stay snappy even where the raw duration is a long ride.
-    return base > chargePowerUpBurstDuration ? chargePowerUpBurstDuration : base;
   }
 
-  // Timed pickups are banked, then tapped deliberately instead of starting
-  // their countdown at an inconvenient moment.
-  static const int chargePowerUpMaxCharges = 3;
-  static const double chargePowerUpBurstDuration = 3.0;
+  /// Returns the active duration of a power-up. A pickup activates the instant
+  /// it is touched and runs for exactly this long — there is no banking, no
+  /// stacking and no alternate "burst" length, so what the player collects is
+  /// always what they get.
+  static double powerUpActiveDuration(PowerUpType type) =>
+      powerUpFullDuration(type);
 
-  // Three matching banked charges craft into one Empowered burst.
-  static const int empoweredPowerUpMaxCharges = 2;
-  static const double empoweredPowerUpBurstDuration = 5.0;
-  static const double empoweredMagnetRadius = 300.0;
-  static const double empoweredMagnetPullSpeed = 500.0;
-  static const double empoweredSlowMoMultiplier = 0.25;
-  static const double empoweredCoinRushValueMultiplier = 3.0;
-  static const double empoweredGoldVortexCoinValueMultiplier = 4.0;
-  static const double empoweredShrinkHitboxScale = 0.27;
-  static const double empoweredShrinkVisualScale = 0.56;
+  /// How long the "you picked this up" banner stays on screen. Long enough to
+  /// read the name and effect, short enough that it never becomes clutter the
+  /// player has to see past while dodging.
+  static const double pickupAnnouncementSeconds = 1.8;
 
   // ── Active Power-Up Status Ring ───────────────────────────────────────────
   static const double powerUpStatusRingRadius = 45.0;
@@ -710,28 +736,60 @@ abstract class GameConfig {
   static const double blackHoleObstaclePullSpeed = 230.0;
   static const double blackHoleSwallowDistance = 60.0;
 
-  // ── Turbo Dash Thrust ──────────────────────────────────────────────────────
-  /// In a vertical scroller the plane's "forward" is the world scroll itself,
-  /// so the dash is a short world-speed surge on top of the invulnerability
-  /// window — distance accrues faster while the blaze is burning.
-  static const double turboDashWorldSpeedMultiplier = 1.60;
+  // ── Giant Mode ────────────────────────────────────────────────────────────
+  /// How much larger the plane is drawn while Giant Mode runs. Big enough to
+  /// feel unmistakably powerful without swallowing the play area.
+  static const double giantVisualScale = 2.30;
 
-  /// The dash keeps the plane level: vertical velocity eases toward this
-  /// gentle climb target for the duration of the burst.
-  static const double turboDashUpwardGlideTarget = -60.0;
+  /// The hitbox grows too — the fantasy is a plane that occupies real space,
+  /// so it must actually *reach* hazards to smash them. Kept slightly under
+  /// the visual scale so contact still looks like contact.
+  static const double giantHitboxScale = 2.05;
 
-  // ── Shield Stacking ────────────────────────────────────────────────────────
-  /// A world Shield pickup adds one absorbing charge on top of any existing
-  /// shield, capped here so shields stay a lifeline rather than a wall.
-  static const int shieldMaxStackedCharges = 3;
+  /// Speed the smashed hazard is thrown away from the impact point (px/s).
+  static const double giantSmashLaunchSpeed = 720.0;
+
+  /// Extra spin applied to a launched hazard (radians/s), so debris tumbles
+  /// rather than sliding flatly off screen.
+  static const double giantSmashSpinSpeed = 9.0;
+
+  /// Seconds a smashed hazard stays visible while it is flung away, before it
+  /// is recycled. Short: this is a reaction, not a physics toy.
+  static const double giantSmashFlightSeconds = 0.55;
+
+  /// Points awarded per hazard smashed — a small bounty that rewards flying
+  /// *through* traffic rather than around it while Giant Mode is up.
+  static const int giantSmashPoints = 25;
+
+  // ── Blast Mode ────────────────────────────────────────────────────────────
+  /// Seconds between automatic shots. Fast enough to feel like a weapon,
+  /// slow enough that each kill reads as a distinct event.
+  static const double blastFireInterval = 0.28;
+
+  /// How far ahead of the plane the lasers acquire targets (px). Limited so
+  /// the player still has to fly toward danger rather than watching the whole
+  /// screen clear itself.
+  static const double blastRange = 520.0;
+
+  /// Half-width of the firing cone around the plane's column (px). Hazards
+  /// outside this corridor are ignored, keeping the fantasy directional.
+  static const double blastAimHalfWidth = 150.0;
+
+  /// How long a laser bolt stays visible (seconds).
+  static const double blastBoltLifetime = 0.14;
+
+  /// Points awarded per hazard shot down.
+  static const int blastKillPoints = 20;
+
+  // ── Shield ────────────────────────────────────────────────────────────────
+  /// Absorbing hits granted by one Shield pickup. Collecting a Shield always
+  /// grants exactly this — pickups refresh the effect rather than stacking, so
+  /// a shield stays a lifeline and never becomes an accumulated wall.
+  static const int shieldChargesPerPickup = 1;
 
   // ── Stacked Power-Up Combos ───────────────────────────────────────────────
   /// Magnet + Coin Rush upgrades coin value to a Gold Vortex multiplier.
   static const double goldVortexCoinValueMultiplier = 3.0;
-
-  /// Slow-Mo + Turbo Dash creates Time Dash: invincible Turbo flight while the
-  /// world runs even slower than ordinary Slow-Mo.
-  static const double timeDashWorldSpeedMultiplier = 0.35;
 
   /// How often Coin Rush rains down a coin shower (seconds).
   static const double coinRushShowerInterval = 0.8;
@@ -778,8 +836,11 @@ abstract class GameConfig {
   /// tilt so thumb steering feels responsive.
   static const double joystickMaxSteerSpeed = 170.0;
 
-  // ── Snap Burst (Paper-Snap) ───────────────────────────────────────────────
-  static const int snapMaxCharges = 2;
+  // ── Snap Burst (Paper-Snap / BOOST) ───────────────────────────────────────
+  /// The basic flight has exactly one boost. Holding a second charge let the
+  /// player double-boost out of trouble, which blunted the decision; with a
+  /// single charge, spending it is a real commitment.
+  static const int snapMaxCharges = 1;
   /// Snap burst velocity (px/s upward, negative).
   static const double snapBurstVelocity = -252.0; // 1.8 × liftSnapKick
 
@@ -788,8 +849,13 @@ abstract class GameConfig {
   static const double snapFlickMaxDurationMs = 220.0; // ms
   static const double snapFlickMinVelocity = 320.0; // px/s upward
 
-  /// Distance (meters) to recharge one snap charge.
-  static const double snapRechargeMeters = 200.0;
+  /// Seconds to recharge the boost after it is spent.
+  ///
+  /// Deliberately wall-clock rather than distance-based: a fixed 30s is a
+  /// promise the player can learn and plan around, whereas a distance cost
+  /// silently recharged faster the further into a run they got (scroll speed
+  /// ramps with distance), which is exactly backwards.
+  static const double snapRechargeSeconds = 30.0;
 
   // ── Snap Charge Ring ─────────────────────────────────────────────────────
   static const double snapRingRadius = 32.0;

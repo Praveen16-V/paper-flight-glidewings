@@ -136,16 +136,10 @@ class ScoringSystem extends Component {
     // Coin Rush: every coin is worth 2× for the duration of the power-up.
     final session = game.ref.read(gameSessionProvider);
     if (session.activePowerUps.contains(PowerUpType.coinRush)) {
-      final empowered = session.activeEmpoweredPowerUps
-          .contains(PowerUpType.coinRush);
       final coinMultiplier =
           session.activePowerUpCombos.contains(PowerUpCombo.goldVortex)
-              ? (empowered
-                  ? GameConfig.empoweredGoldVortexCoinValueMultiplier
-                  : GameConfig.goldVortexCoinValueMultiplier)
-              : (empowered
-                  ? GameConfig.empoweredCoinRushValueMultiplier
-                  : GameConfig.coinRushValueMultiplier);
+              ? GameConfig.goldVortexCoinValueMultiplier
+              : GameConfig.coinRushValueMultiplier;
       points = (points * coinMultiplier).toInt();
     }
     // Zen/Daily wingmen reward disciplined proximity with richer coin value.
@@ -229,6 +223,14 @@ class ScoringSystem extends Component {
       }
     } catch (_) {}
     _streakScoreAccumulated += finalPoints;
+  }
+
+  /// Flat bonus points from a one-off gameplay event (currently a Giant-Mode
+  /// smash). Kept separate from [awardStreakBonus] so plane-specific streak
+  /// multipliers do not silently scale unrelated rewards.
+  void addBonusPoints(int points) {
+    if (points <= 0) return;
+    _streakScoreAccumulated += points;
   }
 
   void reset() {

@@ -21,21 +21,21 @@ void main() {
       expect(GameConfig.goldVortexCoinValueMultiplier, 3.0);
     });
 
-    test('detects Time Dash from Slow-Mo + Turbo Dash', () {
-      final combos = powerUpCombosFor({
-        PowerUpType.slowMo,
-        PowerUpType.turboDash,
-      });
-      expect(combos, contains(PowerUpCombo.timeDash));
-      expect(
-        GameConfig.timeDashWorldSpeedMultiplier,
-        lessThan(GameConfig.slowMoPowerUpMultiplier),
-      );
-    });
-
     test('does not create a combo from an incomplete pair', () {
       final combos = powerUpCombosFor({PowerUpType.magnet});
       expect(combos, isEmpty);
+    });
+
+    test('every remaining combo is built from power-ups that still exist', () {
+      for (final combo in PowerUpCombo.values) {
+        for (final ingredient in combo.ingredients) {
+          expect(
+            PowerUpType.values,
+            contains(ingredient),
+            reason: '${combo.displayName} needs a power-up that was removed',
+          );
+        }
+      }
     });
   });
 }

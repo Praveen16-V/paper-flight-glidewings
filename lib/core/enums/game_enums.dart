@@ -299,6 +299,34 @@ extension ObstacleLabel on ObstacleType {
       this == ObstacleType.weatherBalloon ||
       this == ObstacleType.hotAirBalloon;
 
+  /// Hazards a Giant-Mode plane can physically smash out of the sky.
+  ///
+  /// Deliberately broader than [isBlackHoleVacuumable]: a plane the size of a
+  /// building plausibly bulldozes gates, traffic and scenery, not just small
+  /// floaters. Only the boss and the un-hittable area hazards resist — the
+  /// weather ones (lightning, tornado, meteors) are forces rather than solid
+  /// objects, so there is nothing to send flying.
+  bool get isGiantSmashable {
+    switch (this) {
+      case ObstacleType.paperDragon:
+      case ObstacleType.lightningStrike:
+      case ObstacleType.tornado:
+      case ObstacleType.meteorShower:
+      case ObstacleType.stormCloud:
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  /// Hazards the Blast Mode lasers can shoot down.
+  ///
+  /// Shares Giant Mode's taxonomy: solid objects can be destroyed, the boss
+  /// resists, and the weather forces have nothing to shoot. Keeping the two
+  /// rules identical means a player only has to learn one idea — "the sky is
+  /// destructible except for storms and the dragon".
+  bool get isBlastDestructible => isGiantSmashable;
+
   /// Small, individual hazards the Black Hole vacuum can drag in and swallow.
   /// Full-width gates, bosses and oncoming traffic stay immune so the vortex
   /// remains a tactical clear instead of an unconditional screen wipe.
@@ -458,27 +486,12 @@ enum PowerUpType {
   coinRush,    // 2x coin value + coin shower
   doubleScore, // 2x distance meters score (jet exhaust flame)
   shrink,      // compact micro-fold hitbox 0.35
-  windCaller,  // calm adverse wind, compass & thermals
-  decoyClone,  // 2 ghost decoy planes absorb next 2 hits
   blackHole,   // cosmic vortex vacuums coins + small obstacles
-  turboDash,   // short invincible blazing thrust dash
+  giant,       // oversized plane that smashes hazards out of the sky
+  blast,       // auto-firing lasers that destroy hazards ahead
 }
 
 extension PowerUpLabel on PowerUpType {
-  /// Timed effects are stored as charges and manually fired as a short burst.
-  bool get isChargeBased => switch (this) {
-        PowerUpType.magnet ||
-        PowerUpType.ghost ||
-        PowerUpType.slowMo ||
-        PowerUpType.coinRush ||
-        PowerUpType.doubleScore ||
-        PowerUpType.shrink ||
-        PowerUpType.windCaller ||
-        PowerUpType.blackHole ||
-        PowerUpType.turboDash => true,
-        PowerUpType.shield || PowerUpType.decoyClone => false,
-      };
-
   /// Hangar-evolvable effects currently supported by the live game loop.
   bool get hasEvolution =>
       this == PowerUpType.magnet || this == PowerUpType.shield;
@@ -526,14 +539,12 @@ extension PowerUpLabel on PowerUpType {
         return const Color(0xFFFF7043);
       case PowerUpType.shrink:
         return const Color(0xFFCE93D8);
-      case PowerUpType.windCaller:
-        return const Color(0xFF00E5FF);
-      case PowerUpType.decoyClone:
-        return const Color(0xFF9FA8DA);
       case PowerUpType.blackHole:
         return const Color(0xFF7C4DFF);
-      case PowerUpType.turboDash:
-        return const Color(0xFFFF3D00);
+      case PowerUpType.giant:
+        return const Color(0xFFFFB300);
+      case PowerUpType.blast:
+        return const Color(0xFFFF1744);
     }
   }
 
@@ -553,14 +564,12 @@ extension PowerUpLabel on PowerUpType {
         return 'Double Score';
       case PowerUpType.shrink:
         return 'Shrink Fold';
-      case PowerUpType.windCaller:
-        return 'Wind Caller';
-      case PowerUpType.decoyClone:
-        return 'Decoy Clones';
       case PowerUpType.blackHole:
         return 'Black Hole';
-      case PowerUpType.turboDash:
-        return 'Turbo Dash';
+      case PowerUpType.giant:
+        return 'Giant Mode';
+      case PowerUpType.blast:
+        return 'Blast Mode';
     }
   }
 
@@ -580,20 +589,46 @@ extension PowerUpLabel on PowerUpType {
         return 'double_score';
       case PowerUpType.shrink:
         return 'shrink';
-      case PowerUpType.windCaller:
-        return 'wind_caller';
-      case PowerUpType.decoyClone:
-        return 'decoy_clone';
       case PowerUpType.blackHole:
         return 'black_hole';
-      case PowerUpType.turboDash:
-        return 'turbo_dash';
+      case PowerUpType.giant:
+        return 'giant';
+      case PowerUpType.blast:
+        return 'blast';
+    }
+  }
+
+  /// One-line summary of what the effect actually does, shown in the pickup
+  /// announcement. Kept to a few words so it can be read at a glance mid-run
+  /// without taking the player's attention off the sky.
+  String get pickupSummary {
+    switch (this) {
+      case PowerUpType.shield:
+        return 'Absorbs an impact';
+      case PowerUpType.magnet:
+        return 'Pulls in nearby coins';
+      case PowerUpType.ghost:
+        return 'Phase through hazards';
+      case PowerUpType.slowMo:
+        return 'The world slows down';
+      case PowerUpType.coinRush:
+        return 'Double coin value';
+      case PowerUpType.doubleScore:
+        return 'Double distance score';
+      case PowerUpType.shrink:
+        return 'Tiny hitbox';
+      case PowerUpType.blackHole:
+        return 'Vacuums coins & hazards';
+      case PowerUpType.giant:
+        return 'Smash through hazards!';
+      case PowerUpType.blast:
+        return 'Lasers destroy hazards';
     }
   }
 }
 
 /// Named synergy states created by stacking compatible active power-ups.
-enum PowerUpCombo { phaseShield, goldVortex, timeDash }
+enum PowerUpCombo { phaseShield, goldVortex }
 
 /// High-risk variants collected directly from corrupted pickups. They are
 /// intentionally separate from charge inventory: accepting the pickup starts
@@ -627,6 +662,18 @@ extension CorruptedPowerUpInfo on CorruptedPowerUpType {
         return const Color(0xFF7C4DFF);
     }
   }
+
+  /// The catch, stated plainly. A corrupted pickup fires the moment it is
+  /// touched, so the announcement has to tell the player what they just
+  /// accepted rather than what they gained.
+  String get warning {
+    switch (this) {
+      case CorruptedPowerUpType.cursedMagnet:
+        return 'Drags hazards at you too!';
+      case CorruptedPowerUpType.unstableGhost:
+        return 'Phasing — but you teleport!';
+    }
+  }
 }
 
 extension PowerUpComboInfo on PowerUpCombo {
@@ -636,8 +683,6 @@ extension PowerUpComboInfo on PowerUpCombo {
         return 'Phase Shield';
       case PowerUpCombo.goldVortex:
         return 'Gold Vortex';
-      case PowerUpCombo.timeDash:
-        return 'Time Dash';
     }
   }
 
@@ -647,8 +692,6 @@ extension PowerUpComboInfo on PowerUpCombo {
         return const {PowerUpType.shield, PowerUpType.ghost};
       case PowerUpCombo.goldVortex:
         return const {PowerUpType.magnet, PowerUpType.coinRush};
-      case PowerUpCombo.timeDash:
-        return const {PowerUpType.slowMo, PowerUpType.turboDash};
     }
   }
 
@@ -658,8 +701,6 @@ extension PowerUpComboInfo on PowerUpCombo {
         return const Color(0xFF80DEEA);
       case PowerUpCombo.goldVortex:
         return const Color(0xFFFFD740);
-      case PowerUpCombo.timeDash:
-        return const Color(0xFFB388FF);
     }
   }
 }

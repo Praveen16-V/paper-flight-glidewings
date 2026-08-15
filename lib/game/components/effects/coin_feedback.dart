@@ -123,22 +123,20 @@ void spawnCrashFeedback(
   _playSfx('crash.wav');
 }
 
-/// Spawns a satisfying power-up pickup: a colored energy burst in the
-/// power-up's signature color plus a floating banner announcing its name.
+/// Spawns the in-world half of a power-up pickup: a colored energy burst in
+/// the power-up's signature color, plus the pickup sting.
+///
+/// The name and effect are announced by the HUD banner rather than by floating
+/// world text — one clear, readable message beats two competing ones, and the
+/// banner can hold the emblem and the effect summary at a fixed, legible spot
+/// instead of drifting off wherever the plane happened to be.
 void spawnPowerUpFeedback(
   PaperFlightGame game,
   Vector2 position,
   PowerUpType type,
 ) {
-  final world = game.world;
-  world.add(ColoredBurst(position: position.clone(), color: _powerUpColor(type)));
-  world.add(
-    FloatingScoreText(
-      position: position.clone(),
-      text: type.displayName.toUpperCase(),
-      color: _powerUpColor(type),
-      fontSize: 22,
-    ),
+  game.world.add(
+    ColoredBurst(position: position.clone(), color: _powerUpColor(type)),
   );
   _playSfx('powerup_pickup.wav');
 }
@@ -159,14 +157,12 @@ Color _powerUpColor(PowerUpType type) {
       return const Color(0xFFFF5722); // deep orange
     case PowerUpType.shrink:
       return const Color(0xFFBA68C8); // lavender
-    case PowerUpType.windCaller:
-      return const Color(0xFF00E5FF); // electric cyan
-    case PowerUpType.decoyClone:
-      return const Color(0xFF7986CB); // indigo
     case PowerUpType.blackHole:
       return const Color(0xFF7C4DFF); // deep violet
-    case PowerUpType.turboDash:
-      return const Color(0xFFFF3D00); // blaze red
+    case PowerUpType.giant:
+      return const Color(0xFFFFB300); // amber
+    case PowerUpType.blast:
+      return const Color(0xFFFF1744); // laser red
   }
 }
 

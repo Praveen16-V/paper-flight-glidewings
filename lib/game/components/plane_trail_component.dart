@@ -69,7 +69,6 @@ class PlaneTrailComponent extends Component
         pc?.skinSynergy.trailEffect == SkinTrailEffect.petals;
 
     final powerUps = gameRef.powerUpState;
-    final bool isTurboDash = powerUps.turboDashActive;
     final bool isGhost = powerUps.ghostActive;
     final bool isDoubleScore = powerUps.doubleScoreActive;
     final bool isCoinRush = powerUps.coinRushActive;
@@ -95,11 +94,9 @@ class PlaneTrailComponent extends Component
           final wind = gameRef.windSystem.windAt(lane);
           final windDrift = wind.lateralForce * (1.0 - headFraction) * 0.20;
 
-          final Color segColor = isTurboDash
-              ? const Color(0xFFFF5722)
-              : (isGhost
-                  ? const Color(0xFF00E5FF)
-                  : _getSegmentColor(skin, headFraction, i));
+          final Color segColor = isGhost
+              ? const Color(0xFF00E5FF)
+              : _getSegmentColor(skin, headFraction, i);
 
           final paint = Paint()
             ..color = segColor.withOpacity(alpha)
@@ -139,9 +136,7 @@ class PlaneTrailComponent extends Component
       final windDrift = wind.lateralForce * (1.0 - headFraction) * 0.22;
 
       final Color segColor;
-      if (isTurboDash) {
-        segColor = (i % 2 == 0) ? const Color(0xFFFF3D00) : const Color(0xFFFFD54F);
-      } else if (isGhost) {
+      if (isGhost) {
         segColor = const Color(0xFF00E5FF);
       } else if (isDoubleScore) {
         segColor = const Color(0xFFFF5722);

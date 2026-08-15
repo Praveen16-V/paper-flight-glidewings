@@ -95,14 +95,13 @@ class ThermalColumnSystem extends Component {
 
   void _syncColumnsToWind() {
     final wind = game.windSystem;
-    final windCallerOwnsTheAir = wind.windCallerActive;
 
     for (var lane = 0; lane < GameConfig.windLaneCount; lane++) {
       final column = _columns[lane];
       final laneWind = wind.windAt(lane);
-      final shouldFormColumn = !windCallerOwnsTheAir &&
+      final shouldFormColumn =
           laneWind.type == WindType.thermal &&
-          laneWind.liftBonus >= GameConfig.thermalColumnMinimumLift;
+              laneWind.liftBonus >= GameConfig.thermalColumnMinimumLift;
 
       if (!shouldFormColumn) {
         column.fadeOut();

@@ -150,6 +150,11 @@ abstract class ObstacleComponent extends PositionComponent
     combinationId = null;
     setObstacleSynergy(null);
     _nearMissAwarded = false;
+    _smashed = false;
+    _smashVelocity = Vector2.zero();
+    _smashSpin = 0;
+    _smashElapsed = 0;
+    angle = 0;
     _durability = 0;
     _minNearMissClearance = double.infinity;
     if (!retainsHitboxesWhenInactive) {
@@ -359,6 +364,14 @@ abstract class ObstacleComponent extends PositionComponent
   void update(double dt) {
     if (!_active) return;
 
+    // A hazard smashed by a Giant-Mode plane is no longer part of the course:
+    // it tumbles away on its own velocity and cannot collide again.
+    if (_smashed) {
+      _updateSmashFlight(dt);
+      super.update(dt);
+      return;
+    }
+
     animTime += dt;
     position.y += game.scrollSpeed * dt;
 
@@ -420,6 +433,109 @@ abstract class ObstacleComponent extends PositionComponent
     recycleAfterInteraction();
   }
 
+  // ── Giant Mode smash ───────────────────────────────────────────────────────
+
+  /// True once this hazard has been knocked out of the sky by a Giant-Mode
+  /// plane. It keeps rendering while it tumbles away, but is inert.
+  bool _smashed = false;
+  bool get isSmashed => _smashed;
+
+  Vector2 _smashVelocity = Vector2.zero();
+  double _smashSpin = 0;
+  double _smashElapsed = 0;
+
+  /// Knocks this hazard away from [impactPoint].
+  ///
+  /// The obstacle is deactivated for collision purposes immediately — the
+  /// plane must never be able to hit it twice — but stays on screen briefly,
+  /// tumbling outward, so the player actually sees the hit land. Returns
+  /// false when the hazard is not smashable or is already flying.
+  bool smashByGiant(Vector2 impactPoint) {
+    if (!_active || _smashed) return false;
+    if (!type.isGiantSmashable) return false;
+
+    _smashed = true;
+    // Never award a near-miss for something that was destroyed.
+    _nearMissAwarded = true;
+
+    // Launch away from the impact, biased upward and sideways so debris
+    // clears the flight path instead of hanging in front of the player.
+    final centre = Vector2(position.x, position.y + size.y * .5);
+    var away = centre - impactPoint;
+    if (away.length < 1) {
+      // Dead-centre hit: pick a side deterministically rather than dividing
+      // by a near-zero length.
+      away = Vector2(position.x < impactPoint.x ? -1 : 1, -0.6);
+    }
+    away.normalize();
+    // Upward bias. Applied to an already-unit vector, so the result can never
+    // collapse to zero length before the second normalize.
+    away.y -= 0.55;
+    away.normalize();
+
+    _smashVelocity = away * GameConfig.giantSmashLaunchSpeed;
+    _smashSpin = (away.x >= 0 ? 1 : -1) * GameConfig.giantSmashSpinSpeed;
+    _smashElapsed = 0;
+
+    // Collision hitboxes come off right away so the wreck is pure spectacle.
+    removeAll(children.whereType<ShapeHitbox>().toList());
+    _cachedHitboxes = const [];
+
+    game.world.add(
+      ColoredBurst(position: centre.clone(), color: const Color(0xFFFFC107)),
+    );
+    return true;
+  }
+
+  /// Destroys this hazard with a Blast Mode laser.
+  ///
+  /// Reuses the smash flight path so shot-down debris tumbles away exactly
+  /// like a Giant-Mode hit — one wreck behaviour, two ways to cause it.
+  /// Returns false when the hazard cannot be shot down or is already dying.
+  bool destroyByBlast(Vector2 impactPoint) {
+    if (!_active || _smashed) return false;
+    if (!type.isBlastDestructible) return false;
+
+    _smashed = true;
+    _nearMissAwarded = true;
+
+    // Shot from below, so the wreck is kicked upward and outward.
+    final centre = Vector2(position.x, position.y + size.y * .5);
+    var away = centre - impactPoint;
+    if (away.length < 1) {
+      away = Vector2(position.x < impactPoint.x ? -1 : 1, -1);
+    }
+    away.normalize();
+    away.y -= 0.9; // stronger upward kick than a body-check
+    away.normalize();
+
+    _smashVelocity = away * (GameConfig.giantSmashLaunchSpeed * 0.8);
+    _smashSpin = (away.x >= 0 ? 1 : -1) * GameConfig.giantSmashSpinSpeed;
+    _smashElapsed = 0;
+
+    removeAll(children.whereType<ShapeHitbox>().toList());
+    _cachedHitboxes = const [];
+
+    game.world.add(
+      ColoredBurst(position: centre.clone(), color: const Color(0xFFFF5252)),
+    );
+    return true;
+  }
+
+  void _updateSmashFlight(double dt) {
+    _smashElapsed += dt;
+    position += _smashVelocity * dt;
+    // Gravity-ish arc so the debris falls away rather than flying forever.
+    _smashVelocity.y += 900 * dt;
+    angle += _smashSpin * dt;
+
+    if (_smashElapsed >= GameConfig.giantSmashFlightSeconds ||
+        position.y > GameConfig.obstacleRecycleY) {
+      _active = false;
+      onRecycle?.call(this);
+    }
+  }
+
   void updateObstacle(double dt) {}
 
   double get dynamicMovementFactor {
@@ -442,9 +558,25 @@ abstract class ObstacleComponent extends PositionComponent
     PositionComponent other,
   ) {
     super.onCollisionStart(intersectionPoints, other);
-    if (!_active) return;
+    if (!_active || _smashed) return;
     if (other is PlaneComponent) {
       _nearMissAwarded = true;
+      game.onPlaneCrash(obstacleType: type, obstacle: this);
+    }
+  }
+
+  @override
+  void onCollision(
+    Set<Vector2> intersectionPoints,
+    PositionComponent other,
+  ) {
+    super.onCollision(intersectionPoints, other);
+    if (!_active || _smashed) return;
+    // onCollisionStart only fires on entry. Giant Mode can begin while a
+    // hazard is *already* overlapping the (now much larger) plane, so that
+    // hazard would otherwise sit inside the giant untouched. Re-resolving
+    // while Giant is up lets it be smashed on the next frame instead.
+    if (other is PlaneComponent && game.powerUpState.giantActive) {
       game.onPlaneCrash(obstacleType: type, obstacle: this);
     }
   }
@@ -455,11 +587,10 @@ abstract class ObstacleComponent extends PositionComponent
     if (_nearMissAwarded) return;
     if (game.phase != GamePhase.playing) return;
 
-    // Phasing effects (ghost, unstable ghost, turbo dash) remove the risk,
-    // so they never earn near-miss rewards.
+    // Phasing effects (ghost, unstable ghost) remove the risk, so they never
+    // earn near-miss rewards.
     if (game.powerUpState.ghostActive ||
-        game.powerUpState.unstableGhostActive ||
-        game.powerUpState.turboDashActive) {
+        game.powerUpState.unstableGhostActive) {
       return;
     }
 
