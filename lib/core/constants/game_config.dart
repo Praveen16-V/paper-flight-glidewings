@@ -618,25 +618,22 @@ abstract class GameConfig {
   static const double powerUpSpawnY = -50.0;
   static const double powerUpRecycleY = 920.0;
   static const double powerUpBaseSpawnInterval = 8.0;
-  static const double shieldDuration = 0.0; // absorbs hits, no time limit
+
+  // Every power-up is timed. The Shield still absorbs impacts, but it also
+  // expires on its own clock so nothing can be carried indefinitely.
+  static const double shieldDuration = 8.0; // seconds
   static const double magnetDuration = 8.0; // seconds
   static const double ghostDuration = 4.0;  // seconds — phase through obstacles
   static const double slowMoDuration = 4.0; // seconds
   static const double coinRushDuration = 6.0; // seconds — 2× coin value + shower
   static const double doubleScoreDuration = 6.0; // seconds — 2x distance score
   static const double shrinkDuration = 5.0; // seconds — 0.35 hitbox
-  static const double windCallerDuration = 8.0; // seconds — calm wind & thermals
   static const double blackHoleDuration = 2.5; // seconds — cosmic vacuum
-  static const double turboDashDuration = 2.0; // seconds — invincible thrust dash
 
-  /// Returns the intended active duration of a timed power-up. Banked charge
-  /// bursts are deliberately shorter than the "world pickup" durations above so
-  /// firing a stored charge stays a quick tactical beat; Empowered bursts are
-  /// longer than either. This is the single source of truth used by the game
-  /// loop — per-type durations can no longer drift out of sync with gameplay.
-  static double powerUpActiveDuration(PowerUpType type, {required bool empowered}) {
-    if (empowered) return empoweredPowerUpBurstDuration;
-    final base = switch (type) {
+  /// The full, declared lifetime of a power-up — the duration a world pickup
+  /// grants. Every type has one: nothing in the game is untimed any more.
+  static double powerUpFullDuration(PowerUpType type) {
+    return switch (type) {
       PowerUpType.shield => shieldDuration,
       PowerUpType.magnet => magnetDuration,
       PowerUpType.ghost => ghostDuration,
@@ -644,30 +641,21 @@ abstract class GameConfig {
       PowerUpType.coinRush => coinRushDuration,
       PowerUpType.doubleScore => doubleScoreDuration,
       PowerUpType.shrink => shrinkDuration,
-      PowerUpType.windCaller => windCallerDuration,
-      PowerUpType.decoyClone => 0.0, // charge-free, consumed on hit
       PowerUpType.blackHole => blackHoleDuration,
-      PowerUpType.turboDash => turboDashDuration,
     };
-    // Charge bursts stay snappy even where the raw duration is a long ride.
-    return base > chargePowerUpBurstDuration ? chargePowerUpBurstDuration : base;
   }
 
-  // Timed pickups are banked, then tapped deliberately instead of starting
-  // their countdown at an inconvenient moment.
-  static const int chargePowerUpMaxCharges = 3;
-  static const double chargePowerUpBurstDuration = 3.0;
+  /// Returns the active duration of a power-up. A pickup activates the instant
+  /// it is touched and runs for exactly this long — there is no banking, no
+  /// stacking and no alternate "burst" length, so what the player collects is
+  /// always what they get.
+  static double powerUpActiveDuration(PowerUpType type) =>
+      powerUpFullDuration(type);
 
-  // Three matching banked charges craft into one Empowered burst.
-  static const int empoweredPowerUpMaxCharges = 2;
-  static const double empoweredPowerUpBurstDuration = 5.0;
-  static const double empoweredMagnetRadius = 300.0;
-  static const double empoweredMagnetPullSpeed = 500.0;
-  static const double empoweredSlowMoMultiplier = 0.25;
-  static const double empoweredCoinRushValueMultiplier = 3.0;
-  static const double empoweredGoldVortexCoinValueMultiplier = 4.0;
-  static const double empoweredShrinkHitboxScale = 0.27;
-  static const double empoweredShrinkVisualScale = 0.56;
+  /// How long the "you picked this up" banner stays on screen. Long enough to
+  /// read the name and effect, short enough that it never becomes clutter the
+  /// player has to see past while dodging.
+  static const double pickupAnnouncementSeconds = 1.8;
 
   // ── Active Power-Up Status Ring ───────────────────────────────────────────
   static const double powerUpStatusRingRadius = 45.0;
@@ -710,28 +698,15 @@ abstract class GameConfig {
   static const double blackHoleObstaclePullSpeed = 230.0;
   static const double blackHoleSwallowDistance = 60.0;
 
-  // ── Turbo Dash Thrust ──────────────────────────────────────────────────────
-  /// In a vertical scroller the plane's "forward" is the world scroll itself,
-  /// so the dash is a short world-speed surge on top of the invulnerability
-  /// window — distance accrues faster while the blaze is burning.
-  static const double turboDashWorldSpeedMultiplier = 1.60;
-
-  /// The dash keeps the plane level: vertical velocity eases toward this
-  /// gentle climb target for the duration of the burst.
-  static const double turboDashUpwardGlideTarget = -60.0;
-
-  // ── Shield Stacking ────────────────────────────────────────────────────────
-  /// A world Shield pickup adds one absorbing charge on top of any existing
-  /// shield, capped here so shields stay a lifeline rather than a wall.
-  static const int shieldMaxStackedCharges = 3;
+  // ── Shield ────────────────────────────────────────────────────────────────
+  /// Absorbing hits granted by one Shield pickup. Collecting a Shield always
+  /// grants exactly this — pickups refresh the effect rather than stacking, so
+  /// a shield stays a lifeline and never becomes an accumulated wall.
+  static const int shieldChargesPerPickup = 1;
 
   // ── Stacked Power-Up Combos ───────────────────────────────────────────────
   /// Magnet + Coin Rush upgrades coin value to a Gold Vortex multiplier.
   static const double goldVortexCoinValueMultiplier = 3.0;
-
-  /// Slow-Mo + Turbo Dash creates Time Dash: invincible Turbo flight while the
-  /// world runs even slower than ordinary Slow-Mo.
-  static const double timeDashWorldSpeedMultiplier = 0.35;
 
   /// How often Coin Rush rains down a coin shower (seconds).
   static const double coinRushShowerInterval = 0.8;

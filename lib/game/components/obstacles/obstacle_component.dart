@@ -455,11 +455,10 @@ abstract class ObstacleComponent extends PositionComponent
     if (_nearMissAwarded) return;
     if (game.phase != GamePhase.playing) return;
 
-    // Phasing effects (ghost, unstable ghost, turbo dash) remove the risk,
-    // so they never earn near-miss rewards.
+    // Phasing effects (ghost, unstable ghost) remove the risk, so they never
+    // earn near-miss rewards.
     if (game.powerUpState.ghostActive ||
-        game.powerUpState.unstableGhostActive ||
-        game.powerUpState.turboDashActive) {
+        game.powerUpState.unstableGhostActive) {
       return;
     }
 

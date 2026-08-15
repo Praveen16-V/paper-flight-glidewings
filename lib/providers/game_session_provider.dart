@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/constants/game_config.dart';
 import '../core/enums/game_enums.dart';
 import '../models/run_result.dart';
 
@@ -32,6 +31,36 @@ class TrialOutcome {
   final bool isNewBestStars;
 }
 
+/// A power-up pickup the player should be told about.
+///
+/// Carries an [id] because the same power-up can legitimately be collected
+/// twice in a row: the id changes on every pickup, which is what lets the HUD
+/// replay its entry animation instead of treating the second grab as a
+/// no-change rebuild.
+class PickupAnnouncement {
+  const PickupAnnouncement({
+    required this.id,
+    required this.type,
+    this.corrupted,
+  });
+
+  final int id;
+  final PowerUpType type;
+
+  /// Set when the pickup was a corrupted bargain, so the banner can warn
+  /// rather than celebrate.
+  final CorruptedPowerUpType? corrupted;
+
+  bool get isCorrupted => corrupted != null;
+
+  /// Headline text: the name of what was just collected.
+  String get title =>
+      (corrupted?.displayName ?? type.displayName).toUpperCase();
+
+  /// Supporting line explaining what it does.
+  String get subtitle => corrupted?.warning ?? type.pickupSummary;
+}
+
 /// Ephemeral state for an active or just-completed game session.
 /// Lives in Riverpod so the HUD overlay and game-over screen can react to it.
 /// Reset on each new run — not persisted to Hive.
@@ -49,13 +78,11 @@ class GameSessionState {
     this.comboGauge = 0.0,
     this.currentBiome = Biome.city,
     this.activePowerUps = const {},
-    this.powerUpCharges = const {},
-    this.empoweredPowerUpCharges = const {},
-    this.activeEmpoweredPowerUps = const {},
     this.activeCorruptedPowerUps = const {},
     this.corruptedPowerUpRemaining = const {},
     this.shieldActive = false,
     this.powerUpRemaining = const {},
+    this.pickupAnnouncement,
     this.lastRunResult,
     this.canRevive = true, // one free revive attempt per run
     this.runTimeSeconds = 0,
@@ -80,14 +107,10 @@ class GameSessionState {
   /// being collected; each coin restores exactly one notch.
   final double comboGauge;
   final Biome currentBiome;
+  /// Power-ups running right now. A pickup activates on contact, so this is
+  /// simply "what the player is currently benefiting from" — there is no
+  /// separate bank of stored charges.
   final Set<PowerUpType> activePowerUps;
-
-  /// Banked charges for manually activated timed power-ups.
-  final Map<PowerUpType, int> powerUpCharges;
-
-  /// Crafted three-charge bursts and currently active empowered effects.
-  final Map<PowerUpType, int> empoweredPowerUpCharges;
-  final Set<PowerUpType> activeEmpoweredPowerUps;
 
   /// Immediate risk/reward effects from corrupted world pickups.
   final Set<CorruptedPowerUpType> activeCorruptedPowerUps;
@@ -100,6 +123,11 @@ class GameSessionState {
 
   final bool shieldActive;
   final Map<PowerUpType, double> powerUpRemaining;
+
+  /// The most recent power-up pickup, surfaced so the HUD can announce it to
+  /// the player. Cleared once the banner has had its moment on screen.
+  final PickupAnnouncement? pickupAnnouncement;
+
   final RunResult? lastRunResult;
   final bool canRevive;
 
@@ -125,13 +153,12 @@ class GameSessionState {
     double? comboGauge,
     Biome? currentBiome,
     Set<PowerUpType>? activePowerUps,
-    Map<PowerUpType, int>? powerUpCharges,
-    Map<PowerUpType, int>? empoweredPowerUpCharges,
-    Set<PowerUpType>? activeEmpoweredPowerUps,
     Set<CorruptedPowerUpType>? activeCorruptedPowerUps,
     Map<CorruptedPowerUpType, double>? corruptedPowerUpRemaining,
     bool? shieldActive,
     Map<PowerUpType, double>? powerUpRemaining,
+    PickupAnnouncement? pickupAnnouncement,
+    bool clearPickupAnnouncement = false,
     RunResult? lastRunResult,
     bool? canRevive,
     double? runTimeSeconds,
@@ -151,17 +178,15 @@ class GameSessionState {
       comboGauge: comboGauge ?? this.comboGauge,
       currentBiome: currentBiome ?? this.currentBiome,
       activePowerUps: activePowerUps ?? this.activePowerUps,
-      powerUpCharges: powerUpCharges ?? this.powerUpCharges,
-      empoweredPowerUpCharges:
-          empoweredPowerUpCharges ?? this.empoweredPowerUpCharges,
-      activeEmpoweredPowerUps:
-          activeEmpoweredPowerUps ?? this.activeEmpoweredPowerUps,
       activeCorruptedPowerUps:
           activeCorruptedPowerUps ?? this.activeCorruptedPowerUps,
       corruptedPowerUpRemaining:
           corruptedPowerUpRemaining ?? this.corruptedPowerUpRemaining,
       shieldActive: shieldActive ?? this.shieldActive,
       powerUpRemaining: powerUpRemaining ?? this.powerUpRemaining,
+      pickupAnnouncement: clearPickupAnnouncement
+          ? null
+          : (pickupAnnouncement ?? this.pickupAnnouncement),
       lastRunResult: lastRunResult ?? this.lastRunResult,
       canRevive: canRevive ?? this.canRevive,
       runTimeSeconds: runTimeSeconds ?? this.runTimeSeconds,
@@ -172,6 +197,9 @@ class GameSessionState {
 }
 
 class GameSessionNotifier extends Notifier<GameSessionState> {
+  /// Monotonic id source for pickup announcements.
+  int _announcementCounter = 0;
+
   @override
   GameSessionState build() => const GameSessionState();
 
@@ -237,71 +265,105 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
     state = state.copyWith(powerUpRemaining: timers);
   }
 
-  void activatePowerUp(PowerUpType type, {bool empowered = false}) {
-    final updated = Set<PowerUpType>.from(state.activePowerUps)..add(type);
-    final activeEmpowered =
-        Set<PowerUpType>.from(state.activeEmpoweredPowerUps);
-    if (empowered) {
-      activeEmpowered.add(type);
-    } else {
-      activeEmpowered.remove(type);
+  /// Advances every live power-up clock by [elapsed] seconds and drops any
+  /// effect whose timer reached zero. This is the single expiry authority:
+  /// power-ups end because their timer ran out, never because some unrelated
+  /// wall-clock callback happened to fire.
+  ///
+  /// Returns the set of types that expired on this tick so the game loop can
+  /// unwind their side effects (timescale, decoy charges, shield charges).
+  Set<PowerUpType> tickPowerUpTimers(double elapsed) {
+    if (elapsed <= 0) return const {};
+    if (state.activePowerUps.isEmpty && state.activeCorruptedPowerUps.isEmpty) {
+      return const {};
     }
+
+    final timers = Map<PowerUpType, double>.from(state.powerUpRemaining);
+    final expired = <PowerUpType>{};
+    for (final type in state.activePowerUps) {
+      final remaining = timers[type];
+      if (remaining == null) continue;
+      final next = remaining - elapsed;
+      if (next <= 0) {
+        expired.add(type);
+        timers.remove(type);
+      } else {
+        timers[type] = next;
+      }
+    }
+
+    final corruptedRemaining =
+        Map<CorruptedPowerUpType, double>.from(state.corruptedPowerUpRemaining);
+    final corruptedExpired = <CorruptedPowerUpType>{};
+    for (final type in state.activeCorruptedPowerUps) {
+      final remaining = corruptedRemaining[type];
+      if (remaining == null) continue;
+      final next = remaining - elapsed;
+      if (next <= 0) {
+        corruptedExpired.add(type);
+        corruptedRemaining.remove(type);
+      } else {
+        corruptedRemaining[type] = next;
+      }
+    }
+
+    if (expired.isEmpty && corruptedExpired.isEmpty) {
+      state = state.copyWith(
+        powerUpRemaining: timers,
+        corruptedPowerUpRemaining: corruptedRemaining,
+      );
+      return const {};
+    }
+
+    final active = Set<PowerUpType>.from(state.activePowerUps)
+      ..removeAll(expired);
+    final activeCorrupted =
+        Set<CorruptedPowerUpType>.from(state.activeCorruptedPowerUps)
+          ..removeAll(corruptedExpired);
+
+    state = state.copyWith(
+      activePowerUps: active,
+      activeCorruptedPowerUps: activeCorrupted,
+      powerUpRemaining: timers,
+      corruptedPowerUpRemaining: corruptedRemaining,
+      shieldActive:
+          expired.contains(PowerUpType.shield) ? false : state.shieldActive,
+    );
+    return expired;
+  }
+
+  /// Announces a pickup so the HUD can tell the player what they just got.
+  /// Each call gets a fresh id so repeat pickups of the same type still
+  /// re-trigger the banner.
+  void announcePickup(PowerUpType type, {CorruptedPowerUpType? corrupted}) {
+    state = state.copyWith(
+      pickupAnnouncement: PickupAnnouncement(
+        id: ++_announcementCounter,
+        type: type,
+        corrupted: corrupted,
+      ),
+    );
+  }
+
+  /// Retires the current banner once it has finished its time on screen.
+  void clearPickupAnnouncement([int? id]) {
+    final current = state.pickupAnnouncement;
+    if (current == null) return;
+    // Ignore a stale dismissal from a banner that has already been replaced
+    // by a newer pickup.
+    if (id != null && current.id != id) return;
+    state = state.copyWith(clearPickupAnnouncement: true);
+  }
+
+  /// Activates a power-up immediately. Collecting a type that is already
+  /// running simply refreshes it (the caller republishes the timer), so
+  /// effects never stack into compounding advantages.
+  void activatePowerUp(PowerUpType type) {
+    final updated = Set<PowerUpType>.from(state.activePowerUps)..add(type);
     state = state.copyWith(
       activePowerUps: updated,
-      activeEmpoweredPowerUps: activeEmpowered,
       shieldActive: type == PowerUpType.shield ? true : state.shieldActive,
     );
-  }
-
-  /// Adds a normal charge. Returns true when the third matching pickup is
-  /// crafted into an Empowered charge instead of remaining in the normal bank.
-  bool addPowerUpCharge(PowerUpType type, {int maxCharges = 3}) {
-    final charges = Map<PowerUpType, int>.from(state.powerUpCharges);
-    final empowered =
-        Map<PowerUpType, int>.from(state.empoweredPowerUpCharges);
-    final next = (charges[type] ?? 0) + 1;
-    var crafted = false;
-    if (next >= maxCharges) {
-      charges.remove(type);
-      empowered[type] = ((empowered[type] ?? 0) + 1)
-          .clamp(0, GameConfig.empoweredPowerUpMaxCharges)
-          .toInt();
-      crafted = true;
-    } else {
-      charges[type] = next;
-    }
-    state = state.copyWith(
-      powerUpCharges: charges,
-      empoweredPowerUpCharges: empowered,
-    );
-    return crafted;
-  }
-
-  bool consumePowerUpCharge(PowerUpType type) {
-    final current = state.powerUpCharges[type] ?? 0;
-    if (current <= 0) return false;
-    final charges = Map<PowerUpType, int>.from(state.powerUpCharges);
-    if (current == 1) {
-      charges.remove(type);
-    } else {
-      charges[type] = current - 1;
-    }
-    state = state.copyWith(powerUpCharges: charges);
-    return true;
-  }
-
-  bool consumeEmpoweredPowerUpCharge(PowerUpType type) {
-    final current = state.empoweredPowerUpCharges[type] ?? 0;
-    if (current <= 0) return false;
-    final charges =
-        Map<PowerUpType, int>.from(state.empoweredPowerUpCharges);
-    if (current == 1) {
-      charges.remove(type);
-    } else {
-      charges[type] = current - 1;
-    }
-    state = state.copyWith(empoweredPowerUpCharges: charges);
-    return true;
   }
 
   void activateCorruptedPowerUp(CorruptedPowerUpType type, double duration) {
@@ -337,26 +399,54 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
 
   void deactivatePowerUp(PowerUpType type) {
     final updated = Set<PowerUpType>.from(state.activePowerUps)..remove(type);
-    final activeEmpowered =
-        Set<PowerUpType>.from(state.activeEmpoweredPowerUps)..remove(type);
     state = state.copyWith(
       activePowerUps: updated,
-      activeEmpoweredPowerUps: activeEmpowered,
       shieldActive: type == PowerUpType.shield ? false : state.shieldActive,
       powerUpRemaining: Map<PowerUpType, double>.from(state.powerUpRemaining)..remove(type),
     );
   }
 
+  /// The shield's last charge was spent on an impact. It ends early — and its
+  /// countdown is cleared with it so the HUD never shows a ring for an effect
+  /// that is already gone.
   void consumeShield() {
     final updated = Set<PowerUpType>.from(state.activePowerUps)
       ..remove(PowerUpType.shield);
-    state = state.copyWith(activePowerUps: updated, shieldActive: false);
+    state = state.copyWith(
+      activePowerUps: updated,
+      shieldActive: false,
+      powerUpRemaining: Map<PowerUpType, double>.from(state.powerUpRemaining)
+        ..remove(PowerUpType.shield),
+    );
+  }
+
+  /// Ends every live effect at once.
+  ///
+  /// The loop's timer tick only advances while the run is playing, so anything
+  /// still running when a run finishes would otherwise stay frozen on the HUD
+  /// with a half-drained ring. A run that is over has no active power-ups.
+  void clearAllPowerUps() {
+    state = state.copyWith(
+      activePowerUps: const {},
+      activeCorruptedPowerUps: const {},
+      powerUpRemaining: const {},
+      corruptedPowerUpRemaining: const {},
+      shieldActive: false,
+      clearPickupAnnouncement: true,
+    );
   }
 
   void triggerGameOver(RunResult result) {
     state = state.copyWith(
       phase: GamePhase.gameOver,
       lastRunResult: result,
+      // A finished run shows no live effects.
+      activePowerUps: const {},
+      activeCorruptedPowerUps: const {},
+      powerUpRemaining: const {},
+      corruptedPowerUpRemaining: const {},
+      shieldActive: false,
+      clearPickupAnnouncement: true,
     );
   }
 
@@ -366,6 +456,12 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
       phase: GamePhase.gameOver,
       trialOutcome: outcome,
       lastRunResult: null,
+      activePowerUps: const {},
+      activeCorruptedPowerUps: const {},
+      powerUpRemaining: const {},
+      corruptedPowerUpRemaining: const {},
+      shieldActive: false,
+      clearPickupAnnouncement: true,
     );
   }
 
@@ -375,14 +471,27 @@ class GameSessionNotifier extends Notifier<GameSessionState> {
       phase: GamePhase.gameOver,
       lastRunResult: null,
       trialOutcome: null,
+      activePowerUps: const {},
+      activeCorruptedPowerUps: const {},
+      powerUpRemaining: const {},
+      corruptedPowerUpRemaining: const {},
+      shieldActive: false,
+      clearPickupAnnouncement: true,
     );
   }
 
+  /// Reviving resumes the run with a clean slate: whatever was running when
+  /// the plane went down died with it, so no stale ring survives the revive.
   void useRevive() {
     state = state.copyWith(
       phase: GamePhase.playing,
       canRevive: false,
+      activePowerUps: const {},
+      activeCorruptedPowerUps: const {},
+      powerUpRemaining: const {},
+      corruptedPowerUpRemaining: const {},
       shieldActive: false,
+      clearPickupAnnouncement: true,
     );
   }
 

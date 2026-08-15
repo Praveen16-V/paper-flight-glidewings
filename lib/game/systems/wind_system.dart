@@ -156,19 +156,6 @@ class WindSystem extends Component with HasGameRef<PaperFlightGame> {
       );
     }
 
-    try {
-      if (gameRef.powerUpState.windCallerActive) {
-        // Wind Caller power-up: disables adverse wind lanes, creates calm
-        // updrafts, and also suppresses pocket samples in [turbulenceAt].
-        return const LaneWind(
-          lateralForce: 0,
-          liftBonus: 80.0,
-          type: WindType.thermal,
-          intensity: 0.6,
-        );
-      }
-    } catch (_) {}
-
     final noiseVal = _noise.fbm(
       laneIndex * GameConfig.windNoiseLaneScale,
       _time,
@@ -269,9 +256,9 @@ class WindSystem extends Component with HasGameRef<PaperFlightGame> {
   }
 
   /// Samples the local cells at [normX]. A null result means normal lane wind
-  /// is sufficient. Wind Caller deliberately calms both lane and pocket gusts.
+  /// is sufficient.
   TurbulenceSample? turbulenceAt(double normX) {
-    if (_pockets.isEmpty || _isWindCallerActive) return null;
+    if (_pockets.isEmpty) return null;
 
     var totalLateralForce = 0.0;
     var strongestInfluence = 0.0;
@@ -428,17 +415,6 @@ class WindSystem extends Component with HasGameRef<PaperFlightGame> {
 
   double _randomRange(double min, double max) =>
       min + _rng.nextDouble() * (max - min);
-
-  /// True while Wind Caller is calming natural lane and pocket weather.
-  bool get windCallerActive => _isWindCallerActive;
-
-  bool get _isWindCallerActive {
-    try {
-      return gameRef.powerUpState.windCallerActive;
-    } catch (_) {
-      return false;
-    }
-  }
 
   /// Lets plane mechanics tune gravity/control response without duplicating
   /// biome decisions in individual components.

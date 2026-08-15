@@ -12,9 +12,8 @@ class LivePowerUpState {
   /// Ghost phasing — obstacles ignore near-miss tracking, birds get scared.
   bool ghostActive = false;
 
-  /// Magnet coin pull (normal or empowered burst).
+  /// Magnet coin pull.
   bool magnetActive = false;
-  bool magnetEmpowered = false;
 
   /// Hangar evolution level of the Magnet (1 or 2). This is save data, not
   /// session state — the game refreshes it on run start and at the periodic
@@ -27,9 +26,6 @@ class LivePowerUpState {
   /// Black Hole cosmic vacuum — pulls coins and small hazards into the vortex.
   bool blackHoleActive = false;
 
-  /// Turbo Dash invulnerable thrust window.
-  bool turboDashActive = false;
-
   /// Slow-Mo — the world and simulation run at reduced timescale.
   bool slowMoActive = false;
 
@@ -38,9 +34,6 @@ class LivePowerUpState {
 
   /// Double Score — doubled distance score.
   bool doubleScoreActive = false;
-
-  /// Wind Caller — calms adverse wind lanes into favourable updrafts.
-  bool windCallerActive = false;
 
   /// Cursed Magnet (corrupted pickup) — pulls coins *and* hazards at the plane.
   bool cursedMagnetActive = false;
@@ -52,15 +45,11 @@ class LivePowerUpState {
     final active = session.activePowerUps;
     ghostActive = active.contains(PowerUpType.ghost);
     magnetActive = active.contains(PowerUpType.magnet);
-    magnetEmpowered =
-        session.activeEmpoweredPowerUps.contains(PowerUpType.magnet);
     shieldActive = session.shieldActive;
     blackHoleActive = active.contains(PowerUpType.blackHole);
-    turboDashActive = active.contains(PowerUpType.turboDash);
     slowMoActive = active.contains(PowerUpType.slowMo);
     coinRushActive = active.contains(PowerUpType.coinRush);
     doubleScoreActive = active.contains(PowerUpType.doubleScore);
-    windCallerActive = active.contains(PowerUpType.windCaller);
     cursedMagnetActive = session.activeCorruptedPowerUps
         .contains(CorruptedPowerUpType.cursedMagnet);
     unstableGhostActive = session.activeCorruptedPowerUps
@@ -70,15 +59,12 @@ class LivePowerUpState {
   void reset() {
     ghostActive = false;
     magnetActive = false;
-    magnetEmpowered = false;
     magnetLevel = 1;
     shieldActive = false;
     blackHoleActive = false;
-    turboDashActive = false;
     slowMoActive = false;
     coinRushActive = false;
     doubleScoreActive = false;
-    windCallerActive = false;
     cursedMagnetActive = false;
     unstableGhostActive = false;
   }

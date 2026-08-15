@@ -314,9 +314,9 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
   /// Distinct synthesized activation cue for each power-up family. The sounds
   /// are plane-focused and volume-gated by player settings so they remain clear
   /// on small mobile speakers.
-  void onPowerUpActivated(PowerUpType type, {bool empowered = false}) {
+  void onPowerUpActivated(PowerUpType type) {
     if (!_settings().sfxEnabled) return;
-    final volume = _settings().sfxVolume * (empowered ? .95 : .72);
+    final volume = _settings().sfxVolume * .72;
     switch (type) {
       case PowerUpType.shield:
         _playSynth(AudioSynth.shieldHum(volume: .55), volume: volume);
@@ -325,19 +325,14 @@ class GameFeelSystem extends Component with HasGameRef<PaperFlightGame> {
       case PowerUpType.ghost:
         _playSynth(AudioSynth.ghostWhisper(volume: .48), volume: volume);
       case PowerUpType.slowMo:
-      case PowerUpType.windCaller:
         _playSynth(AudioSynth.timeRipple(volume: .46), volume: volume);
       case PowerUpType.coinRush:
       case PowerUpType.doubleScore:
         _playSynth(AudioSynth.chime(660, volume: .42), volume: volume);
       case PowerUpType.shrink:
         _playSynth(AudioSynth.paperCrease(volume: .55), volume: volume);
-      case PowerUpType.decoyClone:
-        _playSynth(AudioSynth.ghostWhisper(volume: .32), volume: volume);
       case PowerUpType.blackHole:
         _playSynth(AudioSynth.voidPulse(volume: .52), volume: volume);
-      case PowerUpType.turboDash:
-        _playSynth(AudioSynth.turboSpool(volume: .62), volume: volume);
     }
   }
 

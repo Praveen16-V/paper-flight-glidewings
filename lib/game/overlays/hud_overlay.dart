@@ -11,6 +11,7 @@ import '../../core/constants/game_config.dart';
 import '../../core/enums/game_enums.dart';
 import '../../core/widgets/mode_card.dart';
 import '../../core/widgets/paper_icons.dart';
+import '../../core/widgets/powerup_emblem.dart';
 import '../../providers/game_session_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/daily_seed_service.dart';
@@ -125,6 +126,24 @@ class HudOverlay extends ConsumerWidget {
               ),
             ),
 
+          // ── Pickup announcement ────────────────────────────────────────
+          // Centred above the plane, clear of the score and combo strips.
+          if (session.pickupAnnouncement != null)
+            Positioned(
+              top: 132,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: _PickupAnnouncementBanner(
+                  announcement: session.pickupAnnouncement!,
+                  paused: session.phase != GamePhase.playing,
+                  onDismiss: (id) => ref
+                      .read(gameSessionProvider.notifier)
+                      .clearPickupAnnouncement(id),
+                ),
+              ),
+            ),
+
           // ── Active power-up icons (bottom-left) ────────────────────────
           Positioned(
             bottom: 100,
@@ -133,12 +152,7 @@ class HudOverlay extends ConsumerWidget {
               activePowerUps: session.activePowerUps,
               activeCombos: session.activePowerUpCombos,
               activeCorrupted: session.activeCorruptedPowerUps,
-              charges: session.powerUpCharges,
-              empoweredCharges: session.empoweredPowerUpCharges,
               remaining: session.powerUpRemaining,
-              onActivateCharge: game.triggerPowerUpCharge,
-              onActivateEmpowered: (type) =>
-                  game.triggerPowerUpCharge(type, empowered: true),
             ),
           ),
 
@@ -568,32 +582,26 @@ class _ComboDisplay extends StatelessWidget {
   }
 }
 
+/// Shows what is running right now, and nothing else.
+///
+/// Power-ups activate the moment they are collected, so there is no inventory
+/// to display and no button to press — every row here is a live effect with a
+/// draining countdown, and it disappears the instant that effect ends.
 class _PowerUpBar extends StatelessWidget {
   const _PowerUpBar({
     required this.activePowerUps,
     required this.activeCombos,
     required this.activeCorrupted,
-    required this.charges,
-    required this.empoweredCharges,
     required this.remaining,
-    required this.onActivateCharge,
-    required this.onActivateEmpowered,
   });
   final Set<PowerUpType> activePowerUps;
   final Set<PowerUpCombo> activeCombos;
   final Set<CorruptedPowerUpType> activeCorrupted;
-  final Map<PowerUpType, int> charges;
-  final Map<PowerUpType, int> empoweredCharges;
   final Map<PowerUpType, double> remaining;
-  final bool Function(PowerUpType type) onActivateCharge;
-  final bool Function(PowerUpType type) onActivateEmpowered;
 
   @override
   Widget build(BuildContext context) {
-    if (activePowerUps.isEmpty &&
-        charges.isEmpty &&
-        empoweredCharges.isEmpty &&
-        activeCorrupted.isEmpty) {
+    if (activePowerUps.isEmpty && activeCorrupted.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -603,40 +611,178 @@ class _PowerUpBar extends StatelessWidget {
       children: [
         for (final combo in activeCombos)
           Padding(
+            key: ValueKey('combo.${combo.name}'),
             padding: const EdgeInsets.only(bottom: 6),
             child: _PowerUpComboPill(combo: combo),
           ),
         for (final corrupted in activeCorrupted)
           Padding(
+            key: ValueKey('corrupt.${corrupted.name}'),
             padding: const EdgeInsets.only(bottom: 6),
             child: _CorruptedPowerUpPill(type: corrupted),
           ),
-        for (final entry in empoweredCharges.entries)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: _PowerUpChargeIcon(
-              type: entry.key,
-              charges: entry.value,
-              empowered: true,
-              onTap: () => onActivateEmpowered(entry.key),
-            ),
-          ),
-        for (final entry in charges.entries)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: _PowerUpChargeIcon(
-              type: entry.key,
-              charges: entry.value,
-              onTap: () => onActivateCharge(entry.key),
-            ),
-          ),
+        // Keyed by type so Flutter animates the row that actually changed
+        // rather than reusing a neighbour's slot when one effect ends.
         ...activePowerUps.map((type) {
           return Padding(
+            key: ValueKey('power.${type.name}'),
             padding: const EdgeInsets.only(bottom: 6),
             child: _PowerUpIcon(type: type, remaining: remaining[type]),
           );
         }),
       ],
+    );
+  }
+}
+
+/// The "you just picked this up" banner.
+///
+/// Power-ups now activate on contact, so the player never chooses when an
+/// effect starts — that makes a clear, immediate announcement essential:
+/// without it, a Shrink or a Wind Caller changes how the plane behaves with no
+/// explanation. The banner names the pickup, shows its emblem, and says in a
+/// few words what it does, then gets out of the way.
+class _PickupAnnouncementBanner extends StatefulWidget {
+  const _PickupAnnouncementBanner({
+    super.key,
+    required this.announcement,
+    required this.paused,
+    required this.onDismiss,
+  });
+
+  final PickupAnnouncement announcement;
+
+  /// While the run is paused the banner holds its place instead of timing
+  /// out behind the pause menu.
+  final bool paused;
+
+  final void Function(int id) onDismiss;
+
+  @override
+  State<_PickupAnnouncementBanner> createState() =>
+      _PickupAnnouncementBannerState();
+}
+
+class _PickupAnnouncementBannerState extends State<_PickupAnnouncementBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: Duration(
+      milliseconds:
+          (GameConfig.pickupAnnouncementSeconds * 1000).round(),
+    ),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _play();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PickupAnnouncementBanner old) {
+    super.didUpdateWidget(old);
+    // A new pickup (even the same type again) restarts the entry animation.
+    if (old.announcement.id != widget.announcement.id) {
+      _play();
+    } else if (old.paused != widget.paused) {
+      if (widget.paused) {
+        _controller.stop();
+      } else {
+        _resume();
+      }
+    }
+  }
+
+  void _play() => _resume(from: 0);
+
+  void _resume({double? from}) {
+    if (widget.paused) return;
+    _controller.forward(from: from).whenComplete(() {
+      // Only dismiss on a genuine completion, not on an interruption from a
+      // pause or a replacing pickup.
+      if (mounted && _controller.value >= 1.0) {
+        widget.onDismiss(widget.announcement.id);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final a = widget.announcement;
+    final tint = a.isCorrupted ? a.corrupted!.color : a.type.visualColor;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = _controller.value;
+        // Pop in fast, hold, then fade and drift up on the way out.
+        final entryT = (t / 0.18).clamp(0.0, 1.0);
+        // easeOutBack overshoots past 1, which is what gives the pop; keep it
+        // for motion but drive opacity from the un-overshot progress.
+        final entry = Curves.easeOutBack.transform(entryT);
+        final exit = t < 0.72 ? 0.0 : ((t - 0.72) / 0.28).clamp(0.0, 1.0);
+        final opacity = (entryT - exit).clamp(0.0, 1.0);
+
+        return Opacity(
+          opacity: opacity,
+          child: Transform.translate(
+            offset: Offset(0, (1 - entry) * 16 - exit * 20),
+            child: Transform.scale(scale: 0.86 + 0.14 * entry, child: child),
+          ),
+        );
+      },
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFF0B1520).withOpacity(.88),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: tint.withOpacity(.85), width: 1.6),
+          boxShadow: [
+            BoxShadow(color: tint.withOpacity(.45), blurRadius: 16),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 9, 16, 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PowerUpEmblem(type: a.type, size: 34),
+              const SizedBox(width: 11),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    a.title,
+                    style: AppTypography.overline.copyWith(
+                      color: Colors.white,
+                      fontSize: 13,
+                      letterSpacing: 1.0,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    a.subtitle,
+                    style: AppTypography.overline.copyWith(
+                      color: tint,
+                      fontSize: 10,
+                      letterSpacing: .3,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -697,85 +843,6 @@ class _CorruptedPowerUpPill extends StatelessWidget {
   }
 }
 
-class _PowerUpChargeIcon extends StatelessWidget {
-  const _PowerUpChargeIcon({
-    required this.type,
-    required this.charges,
-    required this.onTap,
-    this.empowered = false,
-  });
-
-  final PowerUpType type;
-  final int charges;
-  final VoidCallback onTap;
-  final bool empowered;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = empowered
-        ? const Color(0xFFFFD740)
-        : _PowerUpIcon.colorForType(type);
-    return Semantics(
-      button: true,
-      label: 'Activate ${empowered ? 'empowered ' : ''}${type.displayName}, $charges charges',
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: color.withOpacity(.92),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white.withOpacity(.82), width: 1.4),
-            boxShadow: [
-              BoxShadow(color: color.withOpacity(.58), blurRadius: 10),
-            ],
-          ),
-          child: Stack(
-            children: [
-              Center(
-                child: Icon(
-                  _PowerUpIcon.iconForType(type),
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-              if (empowered)
-                const Positioned(
-                  left: 2,
-                  top: 1,
-                  child: Icon(Icons.star_rounded,
-                      color: Color(0xFFFFF59D), size: 15),
-                ),
-              Positioned(
-                right: 2,
-                bottom: 2,
-                child: Container(
-                  width: 16,
-                  height: 16,
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF17232D),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(
-                    '$charges',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _PowerUpIcon extends StatelessWidget {
   const _PowerUpIcon({required this.type, this.remaining});
   final PowerUpType type;
@@ -783,45 +850,114 @@ class _PowerUpIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final warning = remaining != null && remaining! <= 1.5;
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: warning ? 1 : 0), duration: const Duration(milliseconds: 280),
-      builder: (context, pulse, child) => CustomPaint(
-        painter: _PowerTimerPainter(progress: remaining == null ? 1 : (remaining! / _duration(type)).clamp(0.0, 1.0), warning: warning, pulse: pulse),
-        child: child,
-      ),
-      child: Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        color: colorForType(type),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: colorForType(type).withOpacity(0.4),
-            blurRadius: 6,
-            spreadRadius: 0,
+    final total = _duration(type);
+    final left = remaining ?? total;
+    final progress = (left / total).clamp(0.0, 1.0);
+    // The last stretch is the part that changes decisions, so it gets a
+    // colour shift and a pulse rather than just a shorter arc.
+    final warning = left <= 1.5;
+    final tint = warning ? const Color(0xFFFF5252) : colorForType(type);
+
+    return Semantics(
+      label: '${type.displayName} active, '
+          '${left.ceil()} second${left.ceil() == 1 ? '' : 's'} remaining',
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: warning ? 1 : 0),
+        duration: const Duration(milliseconds: 280),
+        builder: (context, pulse, child) {
+          return Transform.scale(
+            scale: 1 + pulse * 0.04,
+            alignment: Alignment.centerLeft,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFF0B1520).withOpacity(.82),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: tint.withOpacity((.55 + pulse * .45).clamp(0.0, 1.0)),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color:
+                        tint.withOpacity((.30 + pulse * .25).clamp(0.0, 1.0)),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: child,
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(5, 5, 9, 5),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Emblem with its radial countdown — the same art as the pickup.
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    CustomPaint(
+                      size: const Size(32, 32),
+                      painter: _PowerTimerPainter(
+                        progress: progress,
+                        warning: warning,
+                        pulse: warning ? 1 : 0,
+                      ),
+                    ),
+                    PowerUpEmblem(type: type, size: 22),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 7),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Naming the effect means the player never has to decode an
+                  // icon to know what is currently changing their flight.
+                  Text(
+                    type.displayName.toUpperCase(),
+                    style: AppTypography.overline.copyWith(
+                      color: Colors.white,
+                      fontSize: 8.5,
+                      letterSpacing: .6,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  // Linear drain: easier to read at a glance than an arc.
+                  SizedBox(
+                    width: 52,
+                    height: 3,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        backgroundColor: Colors.white.withOpacity(.16),
+                        valueColor: AlwaysStoppedAnimation<Color>(tint),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Center(
-        child: Icon(
-          iconForType(type),
-          color: Colors.white,
-          size: 18,
         ),
       ),
-    ));
+    );
   }
 
   double _duration(PowerUpType type) {
     // Match the game loop's single source of truth so the radial countdown
-    // divides by the same duration the burst was actually given.
-    if (type.isChargeBased) {
-      return GameConfig.powerUpActiveDuration(type, empowered: false);
-    }
-    return 1.0;
+    // divides by the same duration the burst was actually given. Every type
+    // is timed now, including Shield and Decoy Clones.
+    final duration =
+        GameConfig.powerUpActiveDuration(type);
+    return duration > 0 ? duration : 1.0;
   }
 
   static Color colorForType(PowerUpType type) {
@@ -840,46 +976,59 @@ class _PowerUpIcon extends StatelessWidget {
         return const Color(0xFFE64A19);
       case PowerUpType.shrink:
         return const Color(0xFF7B1FA2);
-      case PowerUpType.windCaller:
-        return const Color(0xFF0097A7);
-      case PowerUpType.decoyClone:
-        return const Color(0xFF5C6BC0);
       case PowerUpType.blackHole:
         return const Color(0xFF311B92);
-      case PowerUpType.turboDash:
-        return const Color(0xFFFF3D00);
     }
   }
 
-  static IconData iconForType(PowerUpType type) {
-    switch (type) {
-      case PowerUpType.shield:
-        return Icons.shield_rounded;
-      case PowerUpType.magnet:
-        return Icons.my_location_rounded;
-      case PowerUpType.ghost:
-        return Icons.visibility_off_rounded;
-      case PowerUpType.slowMo:
-        return Icons.timer_rounded;
-      case PowerUpType.coinRush:
-        return Icons.monetization_on_rounded;
-      case PowerUpType.doubleScore:
-        return Icons.flash_on_rounded;
-      case PowerUpType.shrink:
-        return Icons.compress_rounded;
-      case PowerUpType.windCaller:
-        return Icons.explore_rounded;
-      case PowerUpType.decoyClone:
-        return Icons.content_copy_rounded;
-      case PowerUpType.blackHole:
-        return Icons.donut_large_rounded;
-      case PowerUpType.turboDash:
-        return Icons.rocket_launch_rounded;
-    }
-  }
 }
 
-class _PowerTimerPainter extends CustomPainter { const _PowerTimerPainter({required this.progress, required this.warning, required this.pulse}); final double progress; final bool warning; final double pulse; @override void paint(Canvas c, Size s) { final p=Paint()..color=(warning ? Colors.redAccent : Colors.white).withOpacity(warning ? .65 + pulse*.35 : .85)..style=PaintingStyle.stroke..strokeWidth=2.5..strokeCap=StrokeCap.round; c.drawArc(Rect.fromLTWH(1,1,s.width-2,s.height-2),-1.57,6.283*progress,false,p); } @override bool shouldRepaint(covariant _PowerTimerPainter o)=>o.progress!=progress||o.warning!=warning||o.pulse!=pulse; }
+/// Radial countdown drawn behind an active power-up's emblem.
+class _PowerTimerPainter extends CustomPainter {
+  const _PowerTimerPainter({
+    required this.progress,
+    required this.warning,
+    required this.pulse,
+  });
+
+  final double progress;
+  final bool warning;
+  final double pulse;
+
+  @override
+  void paint(Canvas c, Size s) {
+    final rect = Rect.fromLTWH(1, 1, s.width - 2, s.height - 2);
+
+    // Unfilled remainder, so the ring reads as a gauge rather than a stray arc.
+    c.drawArc(
+      rect,
+      0,
+      6.283,
+      false,
+      Paint()
+        ..color = Colors.white.withOpacity(.14)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
+
+    c.drawArc(
+      rect,
+      -1.57,
+      6.283 * progress.clamp(0.0, 1.0),
+      false,
+      Paint()
+        ..color = (warning ? Colors.redAccent : Colors.white)
+            .withOpacity((warning ? .65 + pulse * .35 : .85).clamp(0.0, 1.0))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _PowerTimerPainter o) =>
+      o.progress != progress || o.warning != warning || o.pulse != pulse;
+}
 
 class _PauseButton extends StatelessWidget {
   const _PauseButton({required this.game});

@@ -50,10 +50,7 @@ class PowerUpSpawner extends Component {
     PowerUpType.coinRush: 1.0,
     PowerUpType.doubleScore: 1.1,
     PowerUpType.shrink: 1.0,
-    PowerUpType.windCaller: 1.0,
-    PowerUpType.decoyClone: 0.9,
     PowerUpType.blackHole: 0.8,
-    PowerUpType.turboDash: 0.9,
   };
 
   @override
@@ -137,9 +134,8 @@ class PowerUpSpawner extends Component {
   }
 
   PowerUpType _pickType() {
-    // Suppress an immediate repeat of the previous pickup so the charge bank
-    // fills with variety; fall back to the plain roll when nothing else is
-    // available (never the case with 11 types, but kept total).
+    // Suppress an immediate repeat of the previous pickup so drops stay
+    // varied; fall back to the plain roll when nothing else is available.
     final previous = _lastSpawnedType;
     if (previous != null) {
       final pool = PowerUpType.values.where((t) => t != previous).toList();

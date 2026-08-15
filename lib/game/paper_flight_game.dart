@@ -239,8 +239,6 @@ class PaperFlightGame extends FlameGame
   int get shieldChargesRemaining => _shieldChargesRemaining;
 
   // Decoy clone charges remaining.
-  int _decoyCloneCharges = 0;
-  int get decoyCloneCharges => _decoyCloneCharges;
 
   double _unstableGhostTeleportTimer = 0;
 
@@ -448,31 +446,24 @@ class PaperFlightGame extends FlameGame
       return;
     }
 
-    // Timed bursts expire on a wall-clock Future.delayed, so the published
-    // HUD countdown must drain in real time too — draining it by scaledDt
-    // made the ring lag behind the real expiry during Slow-Mo.
+    // Every power-up ends because its own timer ran out. The clocks are
+    // driven here, from the game loop, so they only advance while the run is
+    // actually playing — a paused run no longer burns a Shield or a Ghost.
+    // Unscaled dt keeps the countdown honest during Slow-Mo: the HUD ring and
+    // the real expiry stay locked together.
     _powerUpTimerAccumulator += dt;
     if (_powerUpTimerAccumulator >= GameConfig.hudUpdateIntervalSeconds) {
       final elapsed = _powerUpTimerAccumulator;
       _powerUpTimerAccumulator = 0;
-      final notifier = ref.read(gameSessionProvider.notifier);
-      for (final type in session.activePowerUps) {
-        final remaining = session.powerUpRemaining[type];
-        if (remaining != null) {
-          notifier.setPowerUpTimer(
-            type,
-            (remaining - elapsed).clamp(0.0, 999.0).toDouble(),
-          );
-        }
+      final expired =
+          ref.read(gameSessionProvider.notifier).tickPowerUpTimers(elapsed);
+      for (final type in expired) {
+        _onPowerUpExpired(type);
       }
-      for (final type in session.activeCorruptedPowerUps) {
-        final remaining = session.corruptedPowerUpRemaining[type];
-        if (remaining != null) {
-          notifier.setCorruptedPowerUpTimer(
-            type,
-            (remaining - elapsed).clamp(0.0, 999.0).toDouble(),
-          );
-        }
+      if (expired.isNotEmpty) {
+        // Components read the cached snapshot; refresh it in the same frame
+        // so an expired effect stops rendering immediately.
+        powerUpState.syncFrom(ref.read(gameSessionProvider));
       }
     }
 
@@ -497,23 +488,10 @@ class PaperFlightGame extends FlameGame
     }
 
     // Apply power-up world-speed overrides (they drive this frame's motion
-    // and the distance it travels). Time Dash owns the stack when Slow-Mo and
-    // Turbo Dash are both live; otherwise each acts alone.
+    // and the distance it travels).
     double effectiveSpeed = _scrollSpeed;
-    final activeCombos = session.activePowerUpCombos;
-    if (activeCombos.contains(PowerUpCombo.timeDash)) {
-      effectiveSpeed *= session.activeEmpoweredPowerUps
-              .contains(PowerUpType.slowMo)
-          ? GameConfig.empoweredSlowMoMultiplier
-          : GameConfig.timeDashWorldSpeedMultiplier;
-    } else if (session.activePowerUps.contains(PowerUpType.slowMo)) {
-      effectiveSpeed *= session.activeEmpoweredPowerUps
-              .contains(PowerUpType.slowMo)
-          ? GameConfig.empoweredSlowMoMultiplier
-          : GameConfig.slowMoPowerUpMultiplier;
-    } else if (session.activePowerUps.contains(PowerUpType.turboDash)) {
-      // The dash itself: an invulnerable world-speed surge.
-      effectiveSpeed *= GameConfig.turboDashWorldSpeedMultiplier;
+    if (session.activePowerUps.contains(PowerUpType.slowMo)) {
+      effectiveSpeed *= GameConfig.slowMoPowerUpMultiplier;
     }
 
     // Accumulate distance from this frame's effective speed.
@@ -818,12 +796,14 @@ class PaperFlightGame extends FlameGame
           : 0;
 
       // Paper Bomber starting shield charges (2 at L1/L2, 3 at L3) / Biplane L3
+      // These airframe perks grant a real Shield, so they run on the same
+      // countdown as a Shield pickup rather than lasting the whole run.
       if (pType == PlaneType.bomber) {
         _shieldChargesRemaining = pLvl >= 3 ? 3 : 2;
-        ref.read(gameSessionProvider.notifier).activatePowerUp(PowerUpType.shield);
+        _activateStartingShield();
       } else if (pType == PlaneType.biplane && pLvl >= 3) {
         _shieldChargesRemaining = 1;
-        ref.read(gameSessionProvider.notifier).activatePowerUp(PowerUpType.shield);
+        _activateStartingShield();
       } else {
         _shieldChargesRemaining = 0;
       }
@@ -900,6 +880,9 @@ class PaperFlightGame extends FlameGame
       pauseEngine();
       inputManager.pauseSensors();
       gameFeelSystem.onCrash();
+      _clearPowerUpEffectState();
+      ref.read(gameSessionProvider.notifier).clearAllPowerUps();
+      powerUpState.reset();
       Future.delayed(
         Duration(milliseconds: (GameConfig.trialCrashFreezeSeconds * 1000).round()),
         () {
@@ -923,14 +906,6 @@ class PaperFlightGame extends FlameGame
       return;
     }
 
-    // Time Dash inherits Turbo's invulnerability while Slow-Mo owns the world
-    // speed; keep the dedicated branch before base ghost/turbo handling so the
-    // combined effect can surface its special impact feedback.
-    if (activeCombos.contains(PowerUpCombo.timeDash)) {
-      plane.playTimeDashPhaseAnimation();
-      return;
-    }
-
     // Unstable Ghost carries the normal phase benefit, offset by its forced
     // random teleports in the flight loop.
     if (session.activeCorruptedPowerUps
@@ -939,26 +914,9 @@ class PaperFlightGame extends FlameGame
       return;
     }
 
-    // Ghost or Turbo Dash: the plane phases straight through every obstacle.
-    if (session.activePowerUps.contains(PowerUpType.ghost) ||
-        session.activePowerUps.contains(PowerUpType.turboDash)) {
+    // Ghost: the plane phases straight through every obstacle.
+    if (session.activePowerUps.contains(PowerUpType.ghost)) {
       plane.playGhostPhaseAnimation();
-      return;
-    }
-
-    // Decoy Clones: absorb the next 2 obstacle hits.
-    if (_decoyCloneCharges > 0) {
-      _decoyCloneCharges--;
-      plane.playGhostPhaseAnimation();
-      gameFeelSystem.onShieldBreak();
-      scoringSystem.onObstacleHit();
-      gameplayEvents.emit(const DefensiveSaveGameplayEvent(
-        source: DefensiveSaveSource.decoyClone,
-        severity: .65,
-      ));
-      if (_decoyCloneCharges <= 0) {
-        ref.read(gameSessionProvider.notifier).deactivatePowerUp(PowerUpType.decoyClone);
-      }
       return;
     }
 
@@ -1035,6 +993,11 @@ class PaperFlightGame extends FlameGame
     pauseEngine();
     inputManager.pauseSensors();
     gameFeelSystem.onCrash();
+    // The run is over: end every live effect now rather than leaving a frozen,
+    // half-drained ring on screen behind the results transition.
+    _clearPowerUpEffectState();
+    ref.read(gameSessionProvider.notifier).clearAllPowerUps();
+    powerUpState.reset();
 
     // Brief freeze then transition to game over. We fire the navigation
     // (triggerGameOver) immediately after the short hit-stop so the results
@@ -1063,7 +1026,25 @@ class PaperFlightGame extends FlameGame
     // being replaced. Resume it when an in-place revive is requested.
     resumeEngine();
     plane.revive();
+    // Whatever was running when the plane went down died with it. Unwind the
+    // game-side effect state to match the cleared session, or a Slow-Mo that
+    // was live at the crash would leave the revived run stuck in slow time.
+    _clearPowerUpEffectState();
     ref.read(gameSessionProvider.notifier).useRevive();
+    powerUpState.reset();
+    try {
+      powerUpState.magnetLevel = powerUpLevel(PowerUpType.magnet);
+    } catch (_) {}
+  }
+
+  /// Resets the game-side half of every power-up effect. The session holds the
+  /// flags and countdowns; these are the knock-on values the loop owns.
+  void _clearPowerUpEffectState() {
+    _timeScale = 1.0;
+    _shieldChargesRemaining = 0;
+    _coinRushShowerTimer = 0;
+    _powerUpTimerAccumulator = 0;
+    _unstableGhostTeleportTimer = 0;
   }
 
   // ── Zen Flight (Task 8) ───────────────────────────────────────────────────
@@ -1109,6 +1090,8 @@ class PaperFlightGame extends FlameGame
     _phase = GamePhase.gameOver;
     pauseEngine();
     inputManager.pauseSensors();
+    _clearPowerUpEffectState();
+    powerUpState.reset();
     unawaited(
       AnalyticsService.instance.logZenCompleted(
         distanceMeters: _distanceMeters,
@@ -1126,6 +1109,8 @@ class PaperFlightGame extends FlameGame
     if (_phase != GamePhase.playing) return;
     pauseEngine();
     _phase = GamePhase.gameOver;
+    _clearPowerUpEffectState();
+    powerUpState.reset();
     _finalizeTrial(completed: true, timedOut: false);
   }
 
@@ -1134,6 +1119,8 @@ class PaperFlightGame extends FlameGame
     if (_phase != GamePhase.playing) return;
     pauseEngine();
     _phase = GamePhase.gameOver;
+    _clearPowerUpEffectState();
+    powerUpState.reset();
     _finalizeTrial(completed: false, timedOut: true);
   }
 
@@ -1231,18 +1218,17 @@ class PaperFlightGame extends FlameGame
     ref.read(gameSessionProvider.notifier).resume();
   }
 
-  void applySlowMo(double duration, {bool empowered = false}) {
-    // The timescale slows the whole simulation. An Empowered burst uses the
-    // deeper multiplier so entities and world scroll agree — otherwise planes
-    // and hazards would run at normal pace inside a slowed world.
-    _timeScale = empowered
-        ? GameConfig.empoweredSlowMoMultiplier
-        : GameConfig.slowMoPowerUpMultiplier;
-    Future.delayed(Duration(milliseconds: (duration * 1000).toInt()), () {
-      if (_disposed) return;
-      _timeScale = 1.0;
-      ref.read(gameSessionProvider.notifier).deactivatePowerUp(PowerUpType.slowMo);
-    });
+  /// Engages the Slow-Mo timescale for [duration] seconds. Restoring normal
+  /// time is the timer tick's job ([_onPowerUpExpired]), so the effect ends
+  /// exactly when the countdown the player sees reaches zero.
+  void applySlowMo(double duration) {
+    // The timescale slows the whole simulation so entities and world scroll
+    // agree — otherwise planes and hazards would run at normal pace inside a
+    // slowed world.
+    _timeScale = GameConfig.slowMoPowerUpMultiplier;
+    final notifier = ref.read(gameSessionProvider.notifier);
+    notifier.activatePowerUp(PowerUpType.slowMo);
+    notifier.setPowerUpTimer(PowerUpType.slowMo, duration);
   }
 
   /// Death Defying near-miss reward: a micro hit-stop freeze-frame followed by
@@ -1291,166 +1277,99 @@ class PaperFlightGame extends FlameGame
       type,
       GameConfig.corruptedPowerUpDuration,
     );
+    // Corrupted bargains fire on contact, so the announcement has to warn
+    // about the downside the player just accepted.
+    notifier.announcePickup(type.baseType, corrupted: type);
     if (type == CorruptedPowerUpType.unstableGhost) {
       _unstableGhostTeleportTimer = 0;
     }
-    Future.delayed(
-      Duration(
-        milliseconds: (GameConfig.corruptedPowerUpDuration * 1000).toInt(),
-      ),
-      () {
-        if (!_disposed) notifier.deactivateCorruptedPowerUp(type);
-      },
-    );
+    // Expiry is driven by the loop's timer tick, exactly like every ordinary
+    // power-up — the curse ends when its countdown reaches zero.
   }
 
-  /// Receives a world pickup. Timed effects are banked as charges so their
-  /// burst never starts while the player has no tactical use for it.
-  void collectPowerUp(PowerUpType type) {
-    if (type.isChargeBased) {
-      final crafted = ref.read(gameSessionProvider.notifier).addPowerUpCharge(
-            type,
-            maxCharges: GameConfig.chargePowerUpMaxCharges,
-          );
-      if (crafted) {
-        world.add(ColoredBurst(
-          position: plane.position.clone(),
-          color: const Color(0xFFFFD740),
-        ));
-        world.add(FloatingScoreText(
-          position: plane.position.clone(),
-          text: 'EMPOWERED ${type.displayName.toUpperCase()}!',
-          color: const Color(0xFFFFD740),
-          fontSize: 16,
-        ));
-      }
-      return;
-    }
-    applyPowerUp(type);
-  }
+  /// Receives a world pickup. The effect starts the instant the plane touches
+  /// it — nothing is banked, and nothing has to be fired manually.
+  ///
+  /// Collecting a type that is already running refreshes its timer back to
+  /// full rather than stacking a second copy, so a power-up is always worth
+  /// grabbing but can never compound into a runaway advantage.
+  void collectPowerUp(PowerUpType type) => applyPowerUp(type);
 
-  /// Called by the HUD charge button or a plane signature gesture. Returns
-  /// false without consuming anything when the burst is already active or no
-  /// selected charge is banked.
-  bool triggerPowerUpCharge(PowerUpType type, {bool empowered = false}) {
-    if (!type.isChargeBased) return false;
-    final session = ref.read(gameSessionProvider);
-    if (session.activePowerUps.contains(type)) return false;
-    final consumed = empowered
-        ? ref.read(gameSessionProvider.notifier).consumeEmpoweredPowerUpCharge(type)
-        : ref.read(gameSessionProvider.notifier).consumePowerUpCharge(type);
-    if (!consumed) return false;
-    spawnPowerUpFeedback(this, plane.position, type);
-    applyPowerUp(type, empowered: empowered);
-    return true;
-  }
-
-  /// Applies an already-activated timed/charge power-up effect. Shared by HUD
-  /// charges and gesture-triggered plane signature power-ups.
-  void applyPowerUp(PowerUpType type, {bool empowered = false}) {
+  /// Starts (or refreshes) a power-up and its countdown. Shared by world
+  /// pickups and gesture-triggered plane signature power-ups.
+  void applyPowerUp(PowerUpType type) {
     // Track for challenge "without power-up" and "use power-ups"
     _powerUpUsedThisRun = true;
     _powerUpsUsedThisRun++;
 
     final notifier = ref.read(gameSessionProvider.notifier);
-    // Per-type durations keep every power-up distinct; charge bursts are
-    // capped at the quick tactical length by the config helper itself.
-    final burstDuration =
-        GameConfig.powerUpActiveDuration(type, empowered: empowered);
-    gameFeelSystem.onPowerUpActivated(type, empowered: empowered);
+    // Per-type durations keep every power-up distinct.
+    final duration = GameConfig.powerUpActiveDuration(type);
+    gameFeelSystem.onPowerUpActivated(type);
+
+    // Uniform activation: every type goes active with a full countdown, and
+    // the loop's timer tick is what ends it. Re-collecting simply resets the
+    // clock to full. Only the per-type *entry* side effects differ below.
+    notifier.activatePowerUp(type);
+    notifier.setPowerUpTimer(type, duration);
+    // Tell the player what they just picked up and what it does.
+    notifier.announcePickup(type);
+
     switch (type) {
       case PowerUpType.shield:
-        // Absorbs hits — no timer; consumed on impact. A world Shield pickup
-        // adds one absorbing charge on top of whatever is already carried
-        // (Bomber starts with 2–3), capped so shields stay a lifeline.
-        notifier.activatePowerUp(PowerUpType.shield);
-        _shieldChargesRemaining =
-            (_shieldChargesRemaining + 1) > GameConfig.shieldMaxStackedCharges
-                ? GameConfig.shieldMaxStackedCharges
-                : _shieldChargesRemaining + 1;
-      case PowerUpType.magnet:
-        notifier.activatePowerUp(PowerUpType.magnet, empowered: empowered);
-        notifier.setPowerUpTimer(PowerUpType.magnet, burstDuration);
-        Future.delayed(
-          Duration(milliseconds: (burstDuration * 1000).toInt()),
-          () {
-            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.magnet);
-          },
+        // Absorbs hits for as long as its timer runs. A pickup sets the shield
+        // to its standard strength rather than adding to what is already
+        // carried — no stacking. An airframe that already carries a stronger
+        // built-in shield (Bomber) keeps it rather than being downgraded.
+        _shieldChargesRemaining = math.max(
+          _shieldChargesRemaining,
+          GameConfig.shieldChargesPerPickup,
         );
       case PowerUpType.ghost:
         // Phase through every obstacle + chromatic aberration entry!
-        notifier.activatePowerUp(PowerUpType.ghost, empowered: empowered);
-        notifier.setPowerUpTimer(PowerUpType.ghost, burstDuration);
         gameFeelSystem.onGhostActivated();
-        Future.delayed(
-          Duration(milliseconds: (burstDuration * 1000).toInt()),
-          () {
-            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.ghost);
-          },
-        );
       case PowerUpType.slowMo:
-        notifier.activatePowerUp(PowerUpType.slowMo, empowered: empowered);
-        notifier.setPowerUpTimer(PowerUpType.slowMo, burstDuration);
-        applySlowMo(burstDuration, empowered: empowered);
+        applySlowMo(duration);
       case PowerUpType.coinRush:
         // 2× coin value for the duration, plus an immediate coin shower.
-        notifier.activatePowerUp(PowerUpType.coinRush, empowered: empowered);
-        notifier.setPowerUpTimer(PowerUpType.coinRush, burstDuration);
         beginCoinRush();
-        Future.delayed(
-          Duration(milliseconds: (burstDuration * 1000).toInt()),
-          () {
-            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.coinRush);
-          },
-        );
+      case PowerUpType.magnet:
       case PowerUpType.doubleScore:
-        notifier.activatePowerUp(PowerUpType.doubleScore, empowered: empowered);
-        notifier.setPowerUpTimer(PowerUpType.doubleScore, burstDuration);
-        Future.delayed(
-          Duration(milliseconds: (burstDuration * 1000).toInt()),
-          () {
-            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.doubleScore);
-          },
-        );
       case PowerUpType.shrink:
-        notifier.activatePowerUp(PowerUpType.shrink, empowered: empowered);
-        notifier.setPowerUpTimer(PowerUpType.shrink, burstDuration);
-        Future.delayed(
-          Duration(milliseconds: (burstDuration * 1000).toInt()),
-          () {
-            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.shrink);
-          },
-        );
-      case PowerUpType.windCaller:
-        notifier.activatePowerUp(PowerUpType.windCaller, empowered: empowered);
-        notifier.setPowerUpTimer(PowerUpType.windCaller, burstDuration);
-        Future.delayed(
-          Duration(milliseconds: (burstDuration * 1000).toInt()),
-          () {
-            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.windCaller);
-          },
-        );
-      case PowerUpType.decoyClone:
-        _decoyCloneCharges = 2;
-        notifier.activatePowerUp(PowerUpType.decoyClone);
       case PowerUpType.blackHole:
-        notifier.activatePowerUp(PowerUpType.blackHole, empowered: empowered);
-        notifier.setPowerUpTimer(PowerUpType.blackHole, burstDuration);
-        Future.delayed(
-          Duration(milliseconds: (burstDuration * 1000).toInt()),
-          () {
-            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.blackHole);
-          },
-        );
-      case PowerUpType.turboDash:
-        notifier.activatePowerUp(PowerUpType.turboDash, empowered: empowered);
-        notifier.setPowerUpTimer(PowerUpType.turboDash, burstDuration);
-        Future.delayed(
-          Duration(milliseconds: (burstDuration * 1000).toInt()),
-          () {
-            if (!_disposed) notifier.deactivatePowerUp(PowerUpType.turboDash);
-          },
-        );
+        // Purely state-driven for their duration — no entry side effect.
+        break;
+    }
+  }
+
+  /// Grants an airframe's built-in starting Shield with a normal Shield
+  /// countdown attached, so no run begins with an untimed effect.
+  void _activateStartingShield() {
+    final notifier = ref.read(gameSessionProvider.notifier);
+    notifier.activatePowerUp(PowerUpType.shield);
+    notifier.setPowerUpTimer(
+      PowerUpType.shield,
+      GameConfig.powerUpActiveDuration(PowerUpType.shield),
+    );
+  }
+
+  /// Unwinds the side effects of a power-up whose timer just ran out. Called
+  /// only from the loop's timer tick, so expiry is always in lockstep with the
+  /// countdown the player sees.
+  void _onPowerUpExpired(PowerUpType type) {
+    switch (type) {
+      case PowerUpType.shield:
+        _shieldChargesRemaining = 0;
+      case PowerUpType.slowMo:
+        _timeScale = 1.0;
+      case PowerUpType.coinRush:
+        _coinRushShowerTimer = 0;
+      case PowerUpType.magnet:
+      case PowerUpType.ghost:
+      case PowerUpType.doubleScore:
+      case PowerUpType.shrink:
+      case PowerUpType.blackHole:
+        break;
     }
   }
 
@@ -1470,8 +1389,8 @@ class PaperFlightGame extends FlameGame
     final save = ref.read(saveDataProvider);
     final planeType = PlaneType.values[save.equippedPlaneIndex.clamp(0, PlaneType.values.length - 1)];
 
-    // Dart/Crane's signature action is the charge-based paper-snap burst —
-    // the only power-up allowed in Zen Flight (no timed abilities there).
+    // Dart/Crane's signature action is the paper-snap burst — the only
+    // power-up allowed in Zen Flight (no timed abilities there).
     if (planeType.usesBoostAsSignatureAction) {
       inputManager.requestSnapFromButton();
       return;
@@ -1488,7 +1407,10 @@ class PaperFlightGame extends FlameGame
       return;
     }
 
-    triggerPowerUpCharge(type);
+    // Item 10 will gate this behind a per-power-up recharge timer; for now the
+    // signature action fires its effect directly.
+    spawnPowerUpFeedback(this, plane.position, type);
+    applyPowerUp(type);
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────

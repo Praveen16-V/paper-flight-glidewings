@@ -5,37 +5,31 @@ import 'package:paper_flight/game/live_powerup_state.dart';
 import 'package:paper_flight/providers/game_session_provider.dart';
 
 void main() {
-  group('power-up durations are per-type and capped for charge bursts', () {
-    test('empowered bursts always use the empowered duration', () {
+  group('power-up durations are per-type', () {
+    test('every power-up is timed — none lasts forever', () {
       for (final type in PowerUpType.values) {
         expect(
-          GameConfig.powerUpActiveDuration(type, empowered: true),
-          GameConfig.empoweredPowerUpBurstDuration,
+          GameConfig.powerUpFullDuration(type),
+          greaterThan(0),
+          reason: '${type.displayName} must expire on a timer',
+        );
+        expect(
+          GameConfig.powerUpActiveDuration(type),
+          greaterThan(0),
+          reason: '${type.displayName} must expire on a timer',
         );
       }
     });
 
-    test('normal bursts never exceed the quick tactical length', () {
+    test('a pickup always grants the full declared duration', () {
+      // No banked "burst" variant exists any more, so collecting a power-up
+      // gives exactly the duration the config declares for it.
       for (final type in PowerUpType.values) {
         expect(
-          GameConfig.powerUpActiveDuration(type, empowered: false),
-          lessThanOrEqualTo(GameConfig.chargePowerUpBurstDuration),
+          GameConfig.powerUpActiveDuration(type),
+          GameConfig.powerUpFullDuration(type),
         );
       }
-    });
-
-    test('short declared durations stay short instead of inflating to the cap',
-        () {
-      expect(
-        GameConfig.powerUpActiveDuration(PowerUpType.turboDash,
-            empowered: false),
-        GameConfig.turboDashDuration,
-      );
-      expect(
-        GameConfig.powerUpActiveDuration(PowerUpType.blackHole,
-            empowered: false),
-        GameConfig.blackHoleDuration,
-      );
     });
   });
 
@@ -79,22 +73,9 @@ void main() {
     });
   });
 
-  group('Turbo Dash is an actual thrust surge', () {
-    test('the dash accelerates the world scroll', () {
-      expect(GameConfig.turboDashWorldSpeedMultiplier, greaterThan(1.0));
-    });
-
-    test('Time Dash still runs slower than plain Slow-Mo', () {
-      expect(
-        GameConfig.timeDashWorldSpeedMultiplier,
-        lessThan(GameConfig.slowMoPowerUpMultiplier),
-      );
-    });
-  });
-
-  group('shield stacking', () {
-    test('a pickup adds to existing charges but stays capped', () {
-      expect(GameConfig.shieldMaxStackedCharges, greaterThanOrEqualTo(2));
+  group('shields do not stack', () {
+    test('a pickup grants a fixed shield strength', () {
+      expect(GameConfig.shieldChargesPerPickup, greaterThan(0));
     });
   });
 
@@ -129,14 +110,11 @@ void main() {
         activePowerUps: {
           PowerUpType.ghost,
           PowerUpType.blackHole,
-          PowerUpType.turboDash,
           PowerUpType.slowMo,
           PowerUpType.coinRush,
           PowerUpType.doubleScore,
-          PowerUpType.windCaller,
           PowerUpType.magnet,
         },
-        activeEmpoweredPowerUps: {PowerUpType.magnet},
         activeCorruptedPowerUps: {
           CorruptedPowerUpType.cursedMagnet,
           CorruptedPowerUpType.unstableGhost,
@@ -147,13 +125,10 @@ void main() {
       snapshot.syncFrom(active);
       expect(snapshot.ghostActive, isTrue);
       expect(snapshot.blackHoleActive, isTrue);
-      expect(snapshot.turboDashActive, isTrue);
       expect(snapshot.slowMoActive, isTrue);
       expect(snapshot.coinRushActive, isTrue);
       expect(snapshot.doubleScoreActive, isTrue);
-      expect(snapshot.windCallerActive, isTrue);
       expect(snapshot.magnetActive, isTrue);
-      expect(snapshot.magnetEmpowered, isTrue);
       expect(snapshot.cursedMagnetActive, isTrue);
       expect(snapshot.unstableGhostActive, isTrue);
       expect(snapshot.shieldActive, isTrue);
@@ -161,13 +136,10 @@ void main() {
       snapshot.reset();
       expect(snapshot.ghostActive, isFalse);
       expect(snapshot.blackHoleActive, isFalse);
-      expect(snapshot.turboDashActive, isFalse);
       expect(snapshot.slowMoActive, isFalse);
       expect(snapshot.coinRushActive, isFalse);
       expect(snapshot.doubleScoreActive, isFalse);
-      expect(snapshot.windCallerActive, isFalse);
       expect(snapshot.magnetActive, isFalse);
-      expect(snapshot.magnetEmpowered, isFalse);
       expect(snapshot.cursedMagnetActive, isFalse);
       expect(snapshot.unstableGhostActive, isFalse);
       expect(snapshot.shieldActive, isFalse);

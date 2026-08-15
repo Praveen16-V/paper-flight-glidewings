@@ -49,7 +49,7 @@ import 'plane_trail_component.dart';
 ///     Magnet orbiting particles & flux arcs, Ghost trailing after-images & wobble,
 ///     SlowMo stretched blur & time lines, Coin Rush Saturn ring of gold coins & dust emitters,
 ///     Stacking VFX resonant interlacing, Double Score jet exhaust, Shrink micro-fold,
-///     Wind Caller compass, Decoy Clones, Black Hole vortex, Turbo Dash blazing plasma).
+///     Black Hole vortex).
 class PlaneComponent extends PositionComponent
     with HasGameRef<PaperFlightGame>, CollisionCallbacks {
   PlaneComponent({
@@ -157,21 +157,15 @@ class PlaneComponent extends PositionComponent
   bool _slowMoActive = false;
   bool _doubleScoreActive = false;
   bool _shrinkActive = false;
-  bool _empoweredShrinkActive = false;
-  bool _windCallerActive = false;
-  bool _decoyCloneActive = false;
   bool _blackHoleActive = false;
-  bool _turboDashActive = false;
 
   // Stacked power-up synergy channels.
   bool _phaseShieldActive = false;
   bool _goldVortexActive = false;
-  bool _timeDashActive = false;
   bool _cursedMagnetActive = false;
   bool _unstableGhostActive = false;
   Set<PowerUpType> _activePowerUps = const {};
   Map<PowerUpType, double> _powerUpTimerSnapshot = const {};
-  Set<PowerUpType> _activeEmpoweredPowerUps = const {};
   Set<CorruptedPowerUpType> _activeCorruptedPowerUps = const {};
   Map<CorruptedPowerUpType, double> _corruptedTimerSnapshot = const {};
 
@@ -182,7 +176,6 @@ class PlaneComponent extends PositionComponent
   double _coinRushPhase = 0.0; // 3.0 Hz
   double _slowMoPhase = 0.0; // 1.0 Hz slow tick
   double _doubleScorePhase = 0.0; // 12.0 Hz jet exhaust flutter
-  double _turboDashPhase = 0.0; // 20.0 Hz blaze
   double _blackHoleAngle = 0.0; // 180 deg/s cosmic vortex
 
   double _shieldHitRippleTimer = 0.0;
@@ -288,12 +281,7 @@ class PlaneComponent extends PositionComponent
 
   double get _activeHitboxScale => _shrinkActive
       ? math
-          .min(
-            _empoweredShrinkActive
-                ? GameConfig.empoweredShrinkHitboxScale
-                : GameConfig.shrinkHitboxScale,
-            _effectiveBaseHitboxScale,
-          )
+          .min(GameConfig.shrinkHitboxScale, _effectiveBaseHitboxScale)
           .toDouble()
       : _effectiveBaseHitboxScale;
 
@@ -367,9 +355,7 @@ class PlaneComponent extends PositionComponent
     final breathSin = math.sin(_animTime * 5.0);
     var breathScale = 1.0 + 0.042 * breathSin * _thermalBreathFactor;
     if (_shrinkActive) {
-      breathScale *= _empoweredShrinkActive
-          ? GameConfig.empoweredShrinkVisualScale
-          : GameConfig.shrinkVisualScale;
+      breathScale *= GameConfig.shrinkVisualScale;
     }
 
     // ── Crosswind-amplified wing flex ───────────────────────────────────────
@@ -1982,14 +1968,10 @@ class PlaneComponent extends PositionComponent
     if (_coinRushActive) _drawCoinRushGlow(canvas, w, h);
     if (_shieldActive) _drawShieldBubble(canvas, w, h);
     if (_doubleScoreActive) _drawDoubleScoreFlame(canvas, w, h);
-    if (_windCallerActive) _drawWindCallerCompass(canvas, w, h);
-    if (_decoyCloneActive) _drawDecoyClones(canvas, w, h);
     if (_blackHoleActive) _drawBlackHoleVortex(canvas, w, h);
-    if (_turboDashActive) _drawTurboDashBlaze(canvas, w, h);
 
     if (_phaseShieldActive) _drawPhaseShieldCombo(canvas, w, h);
     if (_goldVortexActive) _drawGoldVortexCombo(canvas, w, h);
-    if (_timeDashActive) _drawTimeDashCombo(canvas, w, h);
     if (_cursedMagnetActive) _drawCursedMagnetOverlay(canvas, w, h);
     if (_unstableGhostActive) _drawUnstableGhostOverlay(canvas, w, h);
 
@@ -1999,7 +1981,8 @@ class PlaneComponent extends PositionComponent
         (_magnetActive ? 1 : 0) +
         (_coinRushActive ? 1 : 0) +
         (_doubleScoreActive ? 1 : 0) +
-        (_turboDashActive ? 1 : 0);
+        (_blackHoleActive ? 1 : 0);
+
     if (activeCount >= 2) {
       _drawStackingAura(canvas, w, h);
     }
@@ -2246,45 +2229,7 @@ class PlaneComponent extends PositionComponent
     canvas.drawPath(flamePath, flamePaint);
   }
 
-  // H. Wind Caller: 8-Point Compass Rose
-  void _drawWindCallerCompass(Canvas canvas, double w, double h) {
-    final rose = Paint()
-      ..color = const Color(0xAA00E5FF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.4;
-    final center = Offset(w / 2, h / 2 - 16);
-    canvas.drawCircle(center, 7, rose);
-    canvas.drawLine(Offset(center.dx, center.dy - 11),
-        Offset(center.dx, center.dy + 11), rose);
-    canvas.drawLine(Offset(center.dx - 11, center.dy),
-        Offset(center.dx + 11, center.dy), rose);
-  }
-
-  // I. Decoy Clones: 2 Flanking Ghost Paper Planes
-  void _drawDecoyClones(Canvas canvas, double w, double h) {
-    final decoyPaint = Paint()
-      ..color = const Color(0x447986CB)
-      ..style = PaintingStyle.fill;
-    final decoyRim = Paint()
-      ..color = const Color(0x88C5CAE9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    for (final dx in [-36.0, 36.0]) {
-      final cx = w / 2 + dx;
-      final cy = h / 2 + 4;
-      final path = Path()
-        ..moveTo(cx, cy - 14)
-        ..lineTo(cx - 12, cy + 10)
-        ..lineTo(cx, cy + 5)
-        ..lineTo(cx + 12, cy + 10)
-        ..close();
-      canvas.drawPath(path, decoyPaint);
-      canvas.drawPath(path, decoyRim);
-    }
-  }
-
-  // J. Black Hole: Cosmic Accretion Vortex
+  // H. Black Hole: Cosmic Accretion Vortex
   void _drawBlackHoleVortex(Canvas canvas, double w, double h) {
     final center = Offset(w / 2, h / 2);
     final vortex = Paint()
@@ -2306,24 +2251,6 @@ class PlaneComponent extends PositionComponent
         Paint()
           ..color = Colors.black
           ..style = PaintingStyle.fill);
-  }
-
-  // K. Turbo Dash: Blazing Hypersonic Plasma Barrier Cone
-  void _drawTurboDashBlaze(Canvas canvas, double w, double h) {
-    final blaze = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xCCFFFFFF), Color(0xAAFF3D00), Color(0x00FF9100)],
-      ).createShader(Rect.fromLTWH(w / 2 - 18, h / 2 - 28, 36, 40))
-      ..style = PaintingStyle.fill;
-
-    final cone = Path()
-      ..moveTo(w / 2, h / 2 - 28)
-      ..lineTo(w / 2 - 20, h / 2 + 10)
-      ..lineTo(w / 2 + 20, h / 2 + 10)
-      ..close();
-    canvas.drawPath(cone, blaze);
   }
 
   // ── Stacked Power-Up Combo Overlays ───────────────────────────────────────
@@ -2375,24 +2302,6 @@ class PlaneComponent extends PositionComponent
         2.1,
         coin,
       );
-    }
-  }
-
-  void _drawTimeDashCombo(Canvas canvas, double w, double h) {
-    final center = Offset(w / 2, h / 2);
-    final ring = Paint()
-      ..color = const Color(0xCCB388FF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8;
-    canvas.drawCircle(center, w * .82, ring);
-    for (var i = 0; i < 4; i++) {
-      final y = h * (.18 + i.toDouble() * .20);
-      final line = Paint()
-        ..color = const Color(0x8864FFDA)
-        ..strokeWidth = 1.2;
-      final shift = math.sin(_turboDashPhase * .65 + i.toDouble()) * 5;
-      canvas.drawLine(
-          Offset(w * .05 + shift, y), Offset(w * .95 + shift, y), line);
     }
   }
 
@@ -2470,19 +2379,10 @@ class PlaneComponent extends PositionComponent
     _doubleScoreActive =
         session.activePowerUps.contains(PowerUpType.doubleScore);
     _shrinkActive = session.activePowerUps.contains(PowerUpType.shrink);
-    _empoweredShrinkActive =
-        session.activeEmpoweredPowerUps.contains(PowerUpType.shrink);
-    _windCallerActive = session.activePowerUps.contains(PowerUpType.windCaller);
-    _decoyCloneActive =
-        session.activePowerUps.contains(PowerUpType.decoyClone) ||
-            game.decoyCloneCharges > 0;
     _blackHoleActive = session.activePowerUps.contains(PowerUpType.blackHole);
-    _turboDashActive = session.activePowerUps.contains(PowerUpType.turboDash);
     _activePowerUps = Set<PowerUpType>.from(session.activePowerUps);
     _powerUpTimerSnapshot =
         Map<PowerUpType, double>.from(session.powerUpRemaining);
-    _activeEmpoweredPowerUps =
-        Set<PowerUpType>.from(session.activeEmpoweredPowerUps);
     _activeCorruptedPowerUps =
         Set<CorruptedPowerUpType>.from(session.activeCorruptedPowerUps);
     _corruptedTimerSnapshot = Map<CorruptedPowerUpType, double>.from(
@@ -2490,7 +2390,6 @@ class PlaneComponent extends PositionComponent
     final combos = session.activePowerUpCombos;
     _phaseShieldActive = combos.contains(PowerUpCombo.phaseShield);
     _goldVortexActive = combos.contains(PowerUpCombo.goldVortex);
-    _timeDashActive = combos.contains(PowerUpCombo.timeDash);
     _cursedMagnetActive = session.activeCorruptedPowerUps
         .contains(CorruptedPowerUpType.cursedMagnet);
     _unstableGhostActive = session.activeCorruptedPowerUps
@@ -2503,7 +2402,6 @@ class PlaneComponent extends PositionComponent
     _coinRushPhase += dt * (3.0 * 2 * math.pi);
     _slowMoPhase += dt * (1.0 * 2 * math.pi);
     _doubleScorePhase += dt * (12.0 * 2 * math.pi);
-    _turboDashPhase += dt * (20.0 * 2 * math.pi);
     _blackHoleAngle += dt * (180.0 * math.pi / 180.0);
 
     if (_shieldHitRippleTimer > 0) {
@@ -2609,26 +2507,13 @@ class PlaneComponent extends PositionComponent
       _playSnapBurstEffect();
     }
 
-    // Turbo Dash upward glide assist — keeps the surge level.
-    if (_turboDashActive) {
-      _velocityY = MathUtils.lerp(
-        _velocityY,
-        GameConfig.turboDashUpwardGlideTarget,
-        dt * 5.0,
-      );
-    }
-
     // Thermal lift comes from a real, visible column inside a favourable lane
-    // rather than from an invisible quarter-screen strip. Wind Caller retains
-    // its intentionally broad calm-updraft effect as a power-up exception.
+    // rather than from an invisible quarter-screen strip.
     final normX = position.x / GameConfig.designWidth;
     final laneIndex = wind.laneForNormX(normX);
     final laneWind = wind.windAt(laneIndex);
-    final windCallerThermal =
-        wind.windCallerActive && laneWind.type == WindType.thermal;
-    final thermalSample =
-        windCallerThermal ? null : game.thermalColumnSystem.sampleAt(position);
-    final inThermal = thermalSample != null || windCallerThermal;
+    final thermalSample = game.thermalColumnSystem.sampleAt(position);
+    final inThermal = thermalSample != null;
     _inThermal = inThermal;
 
     double surfLiftMultiplier = 1.0;
@@ -2917,14 +2802,9 @@ class PlaneComponent extends PositionComponent
     _slowMoActive = false;
     _doubleScoreActive = false;
     _shrinkActive = false;
-    _empoweredShrinkActive = false;
-    _windCallerActive = false;
-    _decoyCloneActive = false;
     _blackHoleActive = false;
-    _turboDashActive = false;
     _phaseShieldActive = false;
     _goldVortexActive = false;
-    _timeDashActive = false;
     _cursedMagnetActive = false;
     _unstableGhostActive = false;
     _shieldHitRippleTimer = 0.0;
@@ -3000,16 +2880,6 @@ class PlaneComponent extends PositionComponent
       ScaleEffect.by(
         Vector2.all(1.30),
         EffectController(duration: 0.07, reverseDuration: 0.10),
-      ),
-    );
-  }
-
-  void playTimeDashPhaseAnimation() {
-    children.whereType<ScaleEffect>().toList().forEach(remove);
-    add(
-      ScaleEffect.by(
-        Vector2(1.34, .94),
-        EffectController(duration: 0.06, reverseDuration: 0.10),
       ),
     );
   }

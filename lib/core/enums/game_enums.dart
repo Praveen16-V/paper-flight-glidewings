@@ -458,27 +458,10 @@ enum PowerUpType {
   coinRush,    // 2x coin value + coin shower
   doubleScore, // 2x distance meters score (jet exhaust flame)
   shrink,      // compact micro-fold hitbox 0.35
-  windCaller,  // calm adverse wind, compass & thermals
-  decoyClone,  // 2 ghost decoy planes absorb next 2 hits
   blackHole,   // cosmic vortex vacuums coins + small obstacles
-  turboDash,   // short invincible blazing thrust dash
 }
 
 extension PowerUpLabel on PowerUpType {
-  /// Timed effects are stored as charges and manually fired as a short burst.
-  bool get isChargeBased => switch (this) {
-        PowerUpType.magnet ||
-        PowerUpType.ghost ||
-        PowerUpType.slowMo ||
-        PowerUpType.coinRush ||
-        PowerUpType.doubleScore ||
-        PowerUpType.shrink ||
-        PowerUpType.windCaller ||
-        PowerUpType.blackHole ||
-        PowerUpType.turboDash => true,
-        PowerUpType.shield || PowerUpType.decoyClone => false,
-      };
-
   /// Hangar-evolvable effects currently supported by the live game loop.
   bool get hasEvolution =>
       this == PowerUpType.magnet || this == PowerUpType.shield;
@@ -526,14 +509,8 @@ extension PowerUpLabel on PowerUpType {
         return const Color(0xFFFF7043);
       case PowerUpType.shrink:
         return const Color(0xFFCE93D8);
-      case PowerUpType.windCaller:
-        return const Color(0xFF00E5FF);
-      case PowerUpType.decoyClone:
-        return const Color(0xFF9FA8DA);
       case PowerUpType.blackHole:
         return const Color(0xFF7C4DFF);
-      case PowerUpType.turboDash:
-        return const Color(0xFFFF3D00);
     }
   }
 
@@ -553,14 +530,8 @@ extension PowerUpLabel on PowerUpType {
         return 'Double Score';
       case PowerUpType.shrink:
         return 'Shrink Fold';
-      case PowerUpType.windCaller:
-        return 'Wind Caller';
-      case PowerUpType.decoyClone:
-        return 'Decoy Clones';
       case PowerUpType.blackHole:
         return 'Black Hole';
-      case PowerUpType.turboDash:
-        return 'Turbo Dash';
     }
   }
 
@@ -580,20 +551,38 @@ extension PowerUpLabel on PowerUpType {
         return 'double_score';
       case PowerUpType.shrink:
         return 'shrink';
-      case PowerUpType.windCaller:
-        return 'wind_caller';
-      case PowerUpType.decoyClone:
-        return 'decoy_clone';
       case PowerUpType.blackHole:
         return 'black_hole';
-      case PowerUpType.turboDash:
-        return 'turbo_dash';
+    }
+  }
+
+  /// One-line summary of what the effect actually does, shown in the pickup
+  /// announcement. Kept to a few words so it can be read at a glance mid-run
+  /// without taking the player's attention off the sky.
+  String get pickupSummary {
+    switch (this) {
+      case PowerUpType.shield:
+        return 'Absorbs an impact';
+      case PowerUpType.magnet:
+        return 'Pulls in nearby coins';
+      case PowerUpType.ghost:
+        return 'Phase through hazards';
+      case PowerUpType.slowMo:
+        return 'The world slows down';
+      case PowerUpType.coinRush:
+        return 'Double coin value';
+      case PowerUpType.doubleScore:
+        return 'Double distance score';
+      case PowerUpType.shrink:
+        return 'Tiny hitbox';
+      case PowerUpType.blackHole:
+        return 'Vacuums coins & hazards';
     }
   }
 }
 
 /// Named synergy states created by stacking compatible active power-ups.
-enum PowerUpCombo { phaseShield, goldVortex, timeDash }
+enum PowerUpCombo { phaseShield, goldVortex }
 
 /// High-risk variants collected directly from corrupted pickups. They are
 /// intentionally separate from charge inventory: accepting the pickup starts
@@ -627,6 +616,18 @@ extension CorruptedPowerUpInfo on CorruptedPowerUpType {
         return const Color(0xFF7C4DFF);
     }
   }
+
+  /// The catch, stated plainly. A corrupted pickup fires the moment it is
+  /// touched, so the announcement has to tell the player what they just
+  /// accepted rather than what they gained.
+  String get warning {
+    switch (this) {
+      case CorruptedPowerUpType.cursedMagnet:
+        return 'Drags hazards at you too!';
+      case CorruptedPowerUpType.unstableGhost:
+        return 'Phasing — but you teleport!';
+    }
+  }
 }
 
 extension PowerUpComboInfo on PowerUpCombo {
@@ -636,8 +637,6 @@ extension PowerUpComboInfo on PowerUpCombo {
         return 'Phase Shield';
       case PowerUpCombo.goldVortex:
         return 'Gold Vortex';
-      case PowerUpCombo.timeDash:
-        return 'Time Dash';
     }
   }
 
@@ -647,8 +646,6 @@ extension PowerUpComboInfo on PowerUpCombo {
         return const {PowerUpType.shield, PowerUpType.ghost};
       case PowerUpCombo.goldVortex:
         return const {PowerUpType.magnet, PowerUpType.coinRush};
-      case PowerUpCombo.timeDash:
-        return const {PowerUpType.slowMo, PowerUpType.turboDash};
     }
   }
 
@@ -658,8 +655,6 @@ extension PowerUpComboInfo on PowerUpCombo {
         return const Color(0xFF80DEEA);
       case PowerUpCombo.goldVortex:
         return const Color(0xFFFFD740);
-      case PowerUpCombo.timeDash:
-        return const Color(0xFFB388FF);
     }
   }
 }

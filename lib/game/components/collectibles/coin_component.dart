@@ -151,23 +151,18 @@ class CoinComponent extends CircleComponent
       // Interceptor downside: no coin attraction
     } else if (powerUps.magnetActive) {
       final magnetLevel = powerUps.magnetLevel;
-      final empowered = powerUps.magnetEmpowered;
-      final radius = empowered
-          ? GameConfig.empoweredMagnetRadius
-          : (magnetLevel >= 2
-              ? GameConfig.magnetLevel2Radius
-              : GameConfig.coinMagnetRadius);
-      final pullSpeed = empowered
-          ? GameConfig.empoweredMagnetPullSpeed
-          : (magnetLevel >= 2
-              ? GameConfig.magnetLevel2PullSpeed
-              : GameConfig.coinMagnetPullSpeed);
+      final radius = magnetLevel >= 2
+          ? GameConfig.magnetLevel2Radius
+          : GameConfig.coinMagnetRadius;
+      final pullSpeed = magnetLevel >= 2
+          ? GameConfig.magnetLevel2PullSpeed
+          : GameConfig.coinMagnetPullSpeed;
       final dist = MathUtils.distance(
         position.x, position.y,
         plane.position.x, plane.position.y,
       );
       if (variant == CollectibleVariant.gem3D &&
-          (magnetLevel >= 2 || empowered) &&
+          magnetLevel >= 2 &&
           dist < GameConfig.magnetLevel2GemAutoCollectRadius) {
         _collect();
         return;
